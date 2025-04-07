@@ -1,0 +1,54 @@
+{
+  "name": "polecheck-desktop",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Desktop application for Street View measurements using Google Maps APIs.",
+  "author": "Your Name <your.email@example.com>",
+  "type": "module",
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "clean": "rm -rf dist dist-electron",
+    "dev:vite": "vite",
+    "tsc:main:watch": "tsc -p tsconfig.node.json --outDir dist-electron/main --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput",
+    "tsc:preload:watch": "tsc -p tsconfig.node.json --outDir dist-electron/preload --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput",
+    "dev:electron": "wait-on tcp:5173 dist-electron/main/main.js dist-electron/preload/preload.js && electron dist-electron/main/main.js",
+    "dev": "npm run clean && concurrently \"npm:dev:vite\" \"npm:tsc:main:watch\" \"npm:tsc:preload:watch\" \"npm:dev:electron\" --kill-others 'npm:dev:electron'",
+    "build:vite": "vite build",
+    "build:electron": "echo \"Using vite build for Electron output\"",
+    "build": "npm run clean && npm run typecheck && vite build && electron-builder",
+    "typecheck": "tsc --noEmit -p tsconfig.json --composite false",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@googlemaps/js-api-loader": "^1.16.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.86",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.17.0",
+    "@typescript-eslint/parser": "^7.17.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.8",
+    "typescript": "^5.5.4",
+    "vite": "^5.3.5",
+    "vite-plugin-electron": "^0.29.0",
+    "wait-on": "^7.2.0"
+  }
+}

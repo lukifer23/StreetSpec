@@ -1,0 +1,27 @@
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5; /* Above MapView, below potential future UI elements */
+  cursor: crosshair; 
+  /* Default allows clicks through to map */
+  pointer-events: none; 
+}
+
+.overlayActive {
+  /* When measuring, capture clicks and block map interaction */
+  pointer-events: auto; 
+}
+
+.measurementCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  /* Canvas itself doesn't capture clicks, the overlay div does */
+  pointer-events: none; 
+  z-index: 6; /* Draw above overlay background if needed, but below UI */
+} 

@@ -1,0 +1,79 @@
+.appContainer {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevent body scroll */
+  background-color: #f4f7f9; /* Lighter grey background */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #333;
+}
+
+.header {
+  padding: 12px 20px; /* Slightly more padding */
+  background-color: #ffffff; /* White header */
+  border-bottom: 1px solid #e0e0e0; /* Lighter border */
+  display: flex;
+  align-items: center;
+  gap: 15px; /* Space between items in header */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  z-index: 10; /* Ensure header is above map potentially */
+}
+
+.headerTitle {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #212529;
+  margin-right: auto; /* Pushes search box to the right if needed */
+}
+
+.mainContent {
+  flex-grow: 1;
+  display: flex;
+  overflow: hidden; /* Prevent internal scrollbars if not needed */
+}
+
+.sidebar {
+  width: 300px; /* Wider sidebar */
+  border-right: 1px solid #e0e0e0;
+  padding: 20px;
+  background-color: #ffffff;
+  overflow-y: auto; /* Allow sidebar scroll if content overflows */
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #495057;
+  font-weight: 600;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 10px;
+}
+
+.sidebarFooter {
+  margin-top: auto; 
+  padding-top: 15px;
+  border-top: 1px solid #e9ecef;
+  color: #6c757d;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.mapArea {
+  flex-grow: 1;
+  position: relative; /* For potential overlays */
+  background-color: #e0e0e0; /* Keep placeholder bg */
+}
+
+.loadingPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: #6c757d;
+  font-size: 1.1rem;
+  background-color: #f8f9fa; 
+} 
