@@ -4,13 +4,20 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  /* Base colors can be adjusted or removed if App.module.css handles everything */
+  /* color: rgba(255, 255, 255, 0.87); */
+  /* background-color: #242424; */
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box; /* Apply border-box globally */
 }
 
 a {
@@ -23,11 +30,10 @@ a:hover {
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  margin: 0; /* Keep margin reset */
+  min-height: 100vh; /* Ensure body takes at least full height */
+  /* Removed display: flex; and place-items: center; */
+  /* Let the App component control the direct children layout */
 }
 
 h1 {

@@ -1,4 +1,10 @@
 import { CameraParams, Point, Vector3 } from '../types/common';
+import { DecodedDepthData } from './depth'; // Import depth data type
+
+// Helper function to calculate the dot product of two vectors
+const dotProduct = (v1: Vector3, v2: Vector3): number => {
+    return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+};
 
 // Helper function to convert degrees to radians
 const degreesToRadians = (degrees: number): number => {
@@ -49,6 +55,7 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // NDC range from -1 to 1, with (0,0) at the center.
     const ndcX = (screenPoint.x / viewWidth) * 2 - 1;
     const ndcY = 1 - (screenPoint.y / viewHeight) * 2; // Invert Y because screen Y is down
+    console.log(`  screenToWorld Input: screenY=${screenPoint.y}, viewHeight=${viewHeight}, ndcY=${ndcY.toFixed(4)}`);
 
     // 2. Account for FOV and aspect ratio
     // Calculate the distance from the camera to the projection plane based on FOV
@@ -67,19 +74,21 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
         y: ndcY, 
         z: zDistance,
     };
+    console.log(`  screenToWorld Initial Vector: y=${vector.y.toFixed(4)}, z=${vector.z.toFixed(4)}, fov=${fov.toFixed(2)}`);
 
     // 4. Apply rotations based on camera heading and pitch
     // Convert heading and pitch to radians
     const headingRad = degreesToRadians(heading);
-    const pitchRad = degreesToRadians(pitch);
+    const pitchRad = degreesToRadians(pitch); // REVERT: Use original pitch 
 
     // Pitch rotation (around X-axis)
-    // Positive pitch looks down, negative looks up
-    // We need to rotate the *opposite* way because we're transforming the point
-    const cosPitch = Math.cos(-pitchRad);
-    const sinPitch = Math.sin(-pitchRad);
-    let rotatedY = vector.y * cosPitch - vector.z * sinPitch;
-    let rotatedZ = vector.y * sinPitch + vector.z * cosPitch;
+    // REVERT: Use -pitchRad again in rotation formulas
+    const cosPitch = Math.cos(-pitchRad); 
+    const sinPitch = Math.sin(-pitchRad); 
+    let rotatedY = vector.y * cosPitch - vector.z * sinPitch; 
+    let rotatedZ = vector.y * sinPitch + vector.z * cosPitch; 
+    // REVERT: Log message
+    console.log(`  screenToWorld After Pitch (${pitch.toFixed(2)}deg): rotatedY=${rotatedY.toFixed(4)}, vector.y=${vector.y.toFixed(4)}, vector.z=${vector.z.toFixed(4)}, sinPitch=${sinPitch.toFixed(4)}`);
     vector = { x: vector.x, y: rotatedY, z: rotatedZ };
 
     // Heading rotation (around Y-axis)
@@ -94,7 +103,9 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // 5. Normalize the vector to get a unit direction vector
     // Conventionally, in Street View context: +Y is up, +X is right, +Z is forward.
     // Our calculation results in +Z forward, +Y up, +X right relative to camera view. Let's keep this.
-    return normalizeVector(vector);
+    const normalized = normalizeVector(vector);
+    console.log(`  screenToWorld Final Normalized: y=${normalized.y.toFixed(4)}`);
+    return normalized;
 }
 
 /**
@@ -110,10 +121,12 @@ export function estimateGroundPlaneIntersection(
     directionVector: Vector3,
     cameraHeight: number = 2.5 // Default assumed height
 ): Vector3 | null {
-    // Check if the vector points downwards (negative y component)
-    if (directionVector.y >= 0) {
-        // Vector points upwards or horizontally, won't intersect the ground plane below.
-        console.warn("Direction vector does not point towards the ground plane.", directionVector);
+    const HORIZON_THRESHOLD = 0.01; // Treat vectors with |y| < threshold as horizontal
+
+    // Check if the vector points downwards (negative y component) and is not too close to horizontal
+    if (directionVector.y >= 0 || Math.abs(directionVector.y) < HORIZON_THRESHOLD) {
+        // Vector points upwards or is too close to horizontal, won't intersect reliably.
+        console.warn(`Direction vector does not point sufficiently towards the ground plane (y=${directionVector.y.toFixed(4)}).`, directionVector);
         return null; 
     }
 
@@ -132,6 +145,68 @@ export function estimateGroundPlaneIntersection(
 }
 
 /**
+ * Calculates the 3D world coordinates corresponding to a 2D screen point using depth data.
+ * 
+ * @param screenPoint - The {x, y} pixel coordinates on the screen/canvas.
+ * @param cameraParams - Current camera parameters (heading, pitch, fov).
+ * @param viewWidth - The width of the viewport/canvas in pixels.
+ * @param viewHeight - The height of the viewport/canvas in pixels.
+ * @param depthData - Parsed depth data containing plane information.
+ * @returns The calculated 3D world point {x, y, z} relative to the camera, or null if no intersection is found.
+ */
+export function screenToWorldWithDepth(
+    screenPoint: Point,
+    cameraParams: CameraParams,
+    viewWidth: number,
+    viewHeight: number,
+    depthData: DecodedDepthData
+): Vector3 | null {
+    // 1. Get the 3D direction vector for the screen point
+    const directionVector = screenToWorld(screenPoint, cameraParams, viewWidth, viewHeight);
+
+    // 2. Iterate through depth map planes to find the intersection distance
+    let minDistance = Infinity;
+    const epsilon = 1e-6; // Small value to avoid division by zero and parallel checks
+
+    for (const plane of depthData.planes) {
+        // Construct the normal vector from the plane data
+        const normal: Vector3 = { x: plane.nx, y: plane.ny, z: plane.nz }; 
+        const planeDistance = plane.d; // Use the correct distance property 'd'
+
+        // Calculate the dot product of the direction vector and the plane normal
+        const dotVN = dotProduct(directionVector, normal);
+
+        // Check if the ray is parallel to the plane (dot product is close to zero)
+        if (Math.abs(dotVN) < epsilon) {
+            continue; // Skip this plane
+        }
+
+        // Calculate the distance 't' along the ray to the intersection point
+        // Formula: t = planeDistance / (directionVector . planeNormal)
+        const t = planeDistance / dotVN;
+
+        // We only care about intersections in front of the camera (t > 0)
+        if (t > epsilon && t < minDistance) {
+            minDistance = t;
+        }
+    }
+
+    // 3. If a valid intersection distance was found, calculate the world point
+    if (minDistance !== Infinity) {
+        const worldPoint: Vector3 = {
+            x: directionVector.x * minDistance,
+            y: directionVector.y * minDistance,
+            z: directionVector.z * minDistance,
+        };
+        console.log(`  screenToWorldWithDepth: Found intersection at distance ${minDistance.toFixed(2)}m`, worldPoint);
+        return worldPoint;
+    } else {
+        console.warn("screenToWorldWithDepth: No valid intersection found with depth planes for point:", screenPoint);
+        return null; // No valid intersection found
+    }
+}
+
+/**
  * Calculates the Euclidean distance between two 3D points.
  *
  * @param point1 - The first 3D point.
@@ -146,5 +221,7 @@ export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
 }
 
 // TODO:
-// - Consider alternative world point estimation methods (e.g., depth data if available, sphere projection)
+// - [DONE] Implement screenToWorldWithDepth
+// - Use screenToWorldWithDepth in measurement.ts
+// - Consider alternative world point estimation methods (e.g., ground plane) as fallback for screenToWorldWithDepth
 // - Refine camera height assumption or make it configurable 

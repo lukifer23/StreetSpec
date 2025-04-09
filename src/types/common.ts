@@ -25,6 +25,7 @@ export interface CameraParams {
   pitch?: number;        // Camera angle relative to horizon (degrees)
   zoom?: number;         // Street View zoom level (0 is widest)
   fov?: number;          // Calculated Field of View (degrees)
+  pano?: string;         // Optional: The current panorama ID
   // Potentially add: altitude, exact camera position vector later
 }
 
@@ -32,6 +33,7 @@ export interface CameraParams {
 export interface Measurement {
   id: string;           // Unique ID (e.g., uuid)
   label: string;        // User-defined label
+  name?: string;        // Optional user-defined name
   startPoint: Point;    // Screen coordinates
   endPoint: Point;
   distance: number;     // Calculated distance in meters
@@ -40,4 +42,11 @@ export interface Measurement {
   panoId?: string;       // Pano ID where measurement was taken
   cameraParams?: CameraParams; // Camera state when taken (optional, for context)
   error?: string; // Optional field for storing errors
+}
+
+// Structure for the returned ONNX depth map
+export interface OnnxDepthMap {
+  data: number[]; // Flattened Float32 array
+  width: number;
+  height: number;
 }

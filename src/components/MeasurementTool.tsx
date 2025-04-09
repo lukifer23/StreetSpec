@@ -1,17 +1,19 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Point, CameraParams, Measurement } from '../types/common';
-import { createMeasurement } from '../services/measurement';
+import React, { useState, useRef, useEffect } from 'react';
+import { Point, CameraParams, Measurement, OnnxDepthMap } from '../types/common';
+import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
+import { v4 as uuidv4 } from 'uuid';
 import styles from './MeasurementTool.module.css';
 
 interface MeasurementToolProps {
-  cameraParams: CameraParams | null; // Receive current camera state
-  onMeasurementComplete: (measurement: Measurement) => void; // Callback to save measurement
-  measurements: Measurement[]; // Add prop for completed measurements
+  cameraParams: CameraParams | null;
+  onnxDepthMap: OnnxDepthMap | null;
+  onMeasurementComplete: (measurement: Measurement) => void;
+  measurements: Measurement[];
 }
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasurementComplete, measurements }) => {
+const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDepthMap, onMeasurementComplete, measurements }) => {
   const [phase, setPhase] = useState<MeasurementPhase>('idle');
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [endPoint, setEndPoint] = useState<Point | null>(null);
@@ -21,7 +23,6 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
 
   const isActive = phase !== 'idle';
 
-  // Function to get click coordinates relative to the overlay
   const getClickCoords = (event: React.MouseEvent<HTMLDivElement>): Point | null => {
     if (!overlayRef.current) return null;
     const rect = overlayRef.current.getBoundingClientRect();
@@ -32,54 +33,83 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
   };
 
   const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!cameraParams || !isActive) return; // Ignore clicks if not active or no camera data
+    if (!cameraParams || !isActive) {
+      if (!cameraParams) console.warn("Cannot place point: Camera parameters not available yet.");
+      return;
+    }
 
     const coords = getClickCoords(event);
     if (!coords) return;
 
     if (phase === 'placingStart') {
-      console.log("Start Point Placed:", coords);
+      console.log("Base Point Placed:", coords);
       setStartPoint(coords);
       setPhase('placingEnd');
-      setCurrentMousePos(coords); // Initialize line drawing
+      setCurrentMousePos(coords);
+      setEndPoint(null);
     } else if (phase === 'placingEnd') {
-      console.log("End Point Placed:", coords);
+      console.log("Top Point Placed:", coords);
       setEndPoint(coords);
-      setPhase('idle'); // Measurement finished, go back to idle
+      setPhase('idle');
       setCurrentMousePos(null);
 
       if (startPoint) {
-        try {
-          // Get view dimensions from the overlay ref
-          const viewWidth = overlayRef.current?.offsetWidth;
-          const viewHeight = overlayRef.current?.offsetHeight;
-
-          if (!viewWidth || !viewHeight) {
-              console.error("Could not get view dimensions for measurement.");
-              throw new Error("View dimensions unavailable.");
-          }
-
-          // Pass dimensions to createMeasurement
-          const newMeasurement = createMeasurement(
-              startPoint, 
-              coords, // This is the endPoint screen coords
-              cameraParams, 
-              viewWidth, 
-              viewHeight
-          );
-          onMeasurementComplete(newMeasurement);
-        } catch (error) {
-            console.error("Error creating measurement:", error);
-            // TODO: Add user feedback for error
+        const viewHeight = overlayRef.current?.offsetHeight;
+        const viewWidth = overlayRef.current?.offsetWidth;
+        
+        if (!viewHeight || !viewWidth) {
+          console.error("Cannot measure: Overlay dimensions not available.");
+          setStartPoint(null);
+          setEndPoint(null);
+          return;
         }
+
+        const distanceToBase = estimateDistanceToPoint(
+          startPoint.x,
+          startPoint.y,
+          viewWidth,
+          viewHeight,
+          cameraParams,
+          onnxDepthMap
+        );
+
+        if (distanceToBase === null) {
+          console.error("Could not estimate distance to base point. Check depth map.");
+          setStartPoint(null);
+          setEndPoint(null);
+          return;
+        }
+
+        const estimatedHeight = calculateEstimatedHeight(
+          startPoint.y, 
+          coords.y,
+          viewHeight, 
+          cameraParams, 
+          distanceToBase
+        );
+
+        if (estimatedHeight !== null) {
+          const newMeasurement: Measurement = {
+            id: uuidv4(),
+            label: 'Est. Height',
+            distance: estimatedHeight,
+            startPoint: startPoint,
+            endPoint: coords,
+            unit: 'metric',
+            timestamp: Date.now(),
+          };
+          console.log("Created Estimated Measurement:", newMeasurement);
+          onMeasurementComplete(newMeasurement);
+        } else {
+           console.error("Failed to calculate estimated height.");
+        }
+
       }
-      // Reset points for next measurement
       setStartPoint(null);
       setEndPoint(null);
     }
   };
 
-  // Track mouse movement for drawing line preview
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {
       const coords = getClickCoords(event);
@@ -87,9 +117,6 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
     }
   };
 
-  // TODO: Add keyboard handler (e.g., Escape to cancel measurement)
-
-  // Drawing Effect
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
@@ -97,131 +124,109 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
 
     if (!context || !canvas || !overlay) return;
 
-    // Ensure canvas matches overlay size
     canvas.width = overlay.offsetWidth;
     canvas.height = overlay.offsetHeight;
 
-    // Clear canvas
     context.clearRect(0, 0, canvas.width, canvas.height);
 
-    // --- Draw Completed Measurements --- 
-    context.strokeStyle = '#ff00ff'; // Magenta for completed
+    context.strokeStyle = '#ff00ff';
     context.fillStyle = '#ff00ff';
     context.lineWidth = 2;
     context.font = '12px Arial';
     context.textAlign = 'center';
+    context.textBaseline = 'bottom';
 
     measurements.forEach(m => {
-      if (!m.startPoint || !m.endPoint) return; // Skip if points missing
+      if (!m.startPoint || !m.endPoint) return;
 
-      // Draw start point
       context.beginPath();
       context.arc(m.startPoint.x, m.startPoint.y, 5, 0, 2 * Math.PI);
       context.fill();
 
-      // Draw end point
       context.beginPath();
       context.arc(m.endPoint.x, m.endPoint.y, 5, 0, 2 * Math.PI);
       context.fill();
 
-      // Draw line
       context.beginPath();
       context.moveTo(m.startPoint.x, m.startPoint.y);
       context.lineTo(m.endPoint.x, m.endPoint.y);
       context.stroke();
 
-      // Draw distance text near the midpoint
       const midX = (m.startPoint.x + m.endPoint.x) / 2;
       const midY = (m.startPoint.y + m.endPoint.y) / 2;
-      context.fillStyle = 'white'; // White text
-      context.shadowColor = 'black'; // Black shadow for contrast
+      context.fillStyle = 'white';
+      context.shadowColor = 'black';
       context.shadowBlur = 4;
-      // TODO: Use actual calculated distance when available
-      context.fillText(`${m.distance.toFixed(2)}m`, midX, midY - 10); 
-      context.shadowBlur = 0; // Reset shadow
-      context.fillStyle = '#ff00ff'; // Reset fill style
+      context.fillText(`${m.label}: ${m.distance.toFixed(2)}${m.unit}`, midX + 10, midY);
+      context.shadowBlur = 0;
+      context.fillStyle = '#ff00ff';
 
     });
 
-    // Style for drawing
-    context.strokeStyle = '#ff00ff'; // Magenta color
-    context.fillStyle = '#ff00ff';
+    context.strokeStyle = '#00ffff';
+    context.fillStyle = '#00ffff';
     context.lineWidth = 2;
     const pointRadius = 4;
 
-    // Draw start point if placed
     if (startPoint) {
       context.beginPath();
       context.arc(startPoint.x, startPoint.y, pointRadius, 0, Math.PI * 2);
       context.fill();
     }
 
-    // Draw line preview if placing end point
     if (phase === 'placingEnd' && startPoint && currentMousePos) {
       context.beginPath();
       context.moveTo(startPoint.x, startPoint.y);
       context.lineTo(currentMousePos.x, currentMousePos.y);
+      context.setLineDash([5, 5]);
       context.stroke();
+      context.setLineDash([]);
 
-      // Draw temporary end point (cursor position)
       context.beginPath();
       context.arc(currentMousePos.x, currentMousePos.y, pointRadius, 0, Math.PI * 2);
       context.fill();
     }
 
-    // --- Draw Current Measurement (if active) --- 
-    if (!isActive) return;
+  }, [phase, startPoint, currentMousePos, measurements]);
 
-    // Use 'context' instead of 'ctx'
-    context.strokeStyle = '#00ffff'; // Cyan for active
-    context.fillStyle = '#00ffff';
-    context.lineWidth = 2;
-
-    // Draw start point if placed
-    if (startPoint) {
-        context.beginPath(); // Use context
-        context.arc(startPoint.x, startPoint.y, 5, 0, 2 * Math.PI); // Use context
-        context.fill(); // Use context
-    }
-
-    // Draw line preview to mouse position
-    // Use 'mousePos' instead of 'currentMousePos'
-    if (startPoint && currentMousePos && phase === 'placingEnd') {
-        context.beginPath(); // Use context
-        context.moveTo(startPoint.x, startPoint.y); // Use context
-        context.lineTo(currentMousePos.x, currentMousePos.y); // Use context and mousePos
-        context.setLineDash([5, 5]); // Dashed line for preview
-        context.stroke(); // Use context
-        context.setLineDash([]); // Reset line dash
-    }
-
-    // If a measurement was just completed (endPoint is set but phase is idle?)
-    // We might need a different way to show completed measurement line briefly?
-    // Or maybe that belongs to a separate display layer.
-
-  }, [phase, startPoint, currentMousePos]);
-
-  // TEMP: Button to start measurement (Replace with proper UI control later)
   const startMeasurement = () => {
-    console.log("Starting measurement...");
+    if (!cameraParams) {
+      alert("Camera parameters not yet available. Please wait a moment.");
+      return;
+    }
+    console.log("Starting height estimation...");
     setPhase('placingStart');
     setStartPoint(null);
     setEndPoint(null);
     setCurrentMousePos(null);
   };
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isActive) {
+        console.log("Measurement cancelled by Escape key.");
+        setPhase('idle');
+        setStartPoint(null);
+        setEndPoint(null);
+        setCurrentMousePos(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isActive]);
+
   return (
-    // Use class name conditional for pointer-events
     <div 
       ref={overlayRef}
       className={`${styles.overlay} ${isActive ? styles.overlayActive : ''}`}
       onClick={handleOverlayClick}
       onMouseMove={handleMouseMove}
     >
-        {/* Temporary Start Button - Position absolute or in a control panel */}
         {!isActive && (
             <button 
                 onClick={(e) => { e.stopPropagation(); startMeasurement(); }} 
+                disabled={!cameraParams || !onnxDepthMap}
+                title={!cameraParams ? "Waiting for camera parameters..." : !onnxDepthMap ? "Generate Depth Map first!" : "Start Height Estimation"}
                 style={{ 
                     position: 'absolute', 
                     bottom: '20px', 
@@ -229,10 +234,11 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
                     transform: 'translateX(-50%)', 
                     zIndex: 10, 
                     padding: '10px 15px',
-                    pointerEvents: 'auto' // Ensure button is always clickable
+                    cursor: (cameraParams && onnxDepthMap) ? 'pointer' : 'not-allowed',
+                    pointerEvents: 'auto'
                 }}
             >
-                Start Measuring
+                {!cameraParams ? 'Waiting for Camera...' : !onnxDepthMap ? 'Depth Map Needed' : 'Estimate Height'}
             </button>
         )}
         {isActive && (
@@ -242,10 +248,12 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
                 left: '10px', 
                 color: 'white', 
                 backgroundColor: 'rgba(0,0,0,0.6)', 
-                padding: '5px',
-                pointerEvents: 'none' // Info text shouldn't block clicks
+                padding: '5px 10px',
+                borderRadius: '4px',
+                fontSize: '0.9em',
+                pointerEvents: 'none'
              }}>
-                {phase === 'placingStart' ? 'Click to place START point' : 'Click to place END point'} (Esc to cancel)
+                {phase === 'placingStart' ? 'Click object BASE' : 'Click object TOP'} (Esc to cancel)
             </div>
         )}
         
@@ -254,4 +262,4 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onMeasu
   );
 };
 
-export default MeasurementTool; 
+export default MeasurementTool;

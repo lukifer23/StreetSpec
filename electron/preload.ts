@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+const { contextBridge, ipcRenderer } = require('electron')
 
 // --------- Preload Features (Context Isolation ON) --------
 // Expose protected methods that allow the renderer process to use
@@ -11,25 +11,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.send(channel, data);
     }
   },
-  receive: (channel: string, func: (...args: any[]) => void) => {
-    const validChannels = ['main-process-message']; // Add other valid channels
-    if (validChannels.includes(channel)) {
-      // Deliberately strip event as it includes `sender`
-      ipcRenderer.on(channel, (event, ...args) => func(...args));
-    }
+  onMainProcessMessage: (callback: (message: any) => void) => {
+    // Create a listener that calls the provided callback
+    const listener = (_event: Electron.IpcRendererEvent, message: any) => callback(message);
+    ipcRenderer.on('main-process-message', listener);
+    
+    // Return a function to remove the listener when no longer needed
+    return () => ipcRenderer.removeListener('main-process-message', listener);
   },
   // Add other APIs to expose here, e.g., invoke for two-way communication
   invoke: async (channel: string, data: any) => {
-      const validChannels = ['csv-export']; // Example channel for export
-      if (validChannels.includes(channel)) {
-          return await ipcRenderer.invoke(channel, data);
+      // Define valid channels for invoke
+      const validInvokeChannels = ['fetch-depth-data', 'csv-export', 'infer-depth']; // Add your invoke channels
+      if (validInvokeChannels.includes(channel)) {
+          try {
+              return await ipcRenderer.invoke(channel, data);
+          } catch (error) {
+              console.error(`[Preload] Error invoking channel '${channel}':`, error);
+              throw error; // Re-throw the error to be caught by the caller in the renderer
+          }
+      } else {
+          console.error(`[Preload] Invalid invoke channel attempted: ${channel}`);
+          throw new Error(`Invalid invoke channel: ${channel}`);
       }
-      throw new Error(`Invalid invoke channel: ${channel}`);
-  }
+  },
+  // The 'fetchDepthData' function is now implicitly covered by the generic 'invoke'
+  // fetchDepthData: (panoId: string): Promise<Uint8Array | null> => ipcRenderer.invoke('fetch-depth-data', panoId)
 })
 
+console.log('[Preload] Preload script contextBridge executed using require.');
 
-// Simple loading indicator logic (optional, can be removed if not desired)
+/* // --- Temporarily Commented Out Loading Indicator Logic --- 
 function domReady(condition: DocumentReadyState[] = ['complete', 'interactive']) {
   return new Promise((resolve) => {
     if (condition.includes(document.readyState)) {
@@ -117,4 +129,7 @@ ipcRenderer.on('main-process-message', () => {
 });
 
 // Fallback removal after a timeout
-setTimeout(removeLoading, 5000) 
+setTimeout(removeLoading, 5000)
+
+console.log('[Preload] Preload script executed successfully and electronAPI exposed.'); 
+*/ // --- End Commented Out Section --- 
