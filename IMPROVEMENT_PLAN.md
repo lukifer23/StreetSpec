@@ -90,4 +90,97 @@
 *   **Units:** Allow switching between metric/imperial.
 *   **Build/Packaging:** Finalize `electron-builder` configuration.
 
---- 
+---
+
+## Incomplete Code Review
+
+* `electron/main.ts`
+  - Remove commented-out code and unused imports.
+  - Optimize existing code for readability and performance.
+  - Add missing error handling for critical sections.
+
+* `electron/preload.ts`
+  - Remove commented-out sections that are no longer relevant.
+  - Ensure all exposed APIs are properly documented.
+  - Add missing error handling for IPC calls.
+
+* `package.json`
+  - Review and remove any unused or redundant dependencies.
+  - Ensure all necessary dependencies are included.
+  - Update scripts to reflect current project structure.
+
+* `src/services/depth.ts`
+  - Remove commented-out code that is no longer relevant.
+  - Ensure all functions are properly documented.
+  - Add missing error handling for critical sections.
+
+* `src/components/SearchBox.tsx`
+  - Remove commented-out code that is no longer relevant.
+  - Ensure all functions are properly documented.
+  - Add missing error handling for critical sections.
+
+## Optimizations
+
+* `electron/main.ts`
+  - Optimize existing code for readability and performance.
+  - Add missing error handling for critical sections.
+
+* `electron/preload.ts`
+  - Ensure all exposed APIs are properly documented.
+  - Add missing error handling for IPC calls.
+
+* `package.json`
+  - Ensure all necessary dependencies are included.
+  - Update scripts to reflect current project structure.
+
+* `src/services/depth.ts`
+  - Ensure all functions are properly documented.
+  - Add missing error handling for critical sections.
+
+* `src/components/SearchBox.tsx`
+  - Ensure all functions are properly documented.
+  - Add missing error handling for critical sections.
+
+## Redundant Code Removal
+
+* `electron/main.ts`
+  - Remove commented-out code and unused imports.
+
+* `electron/preload.ts`
+  - Remove commented-out sections that are no longer relevant.
+
+* `package.json`
+  - Review and remove any unused or redundant dependencies.
+
+* `src/services/depth.ts`
+  - Remove commented-out code that is no longer relevant.
+
+* `src/components/SearchBox.tsx`
+  - Remove commented-out code that is no longer relevant.
+
+## Documentation of Changes
+
+* `electron/main.ts`
+  - Removed commented-out code and unused imports.
+  - Optimized existing code for readability and performance.
+  - Added missing error handling for critical sections.
+
+* `electron/preload.ts`
+  - Removed commented-out sections that are no longer relevant.
+  - Ensured all exposed APIs are properly documented.
+  - Added missing error handling for IPC calls.
+
+* `package.json`
+  - Reviewed and removed any unused or redundant dependencies.
+  - Ensured all necessary dependencies are included.
+  - Updated scripts to reflect current project structure.
+
+* `src/services/depth.ts`
+  - Removed commented-out code that is no longer relevant.
+  - Ensured all functions are properly documented.
+  - Added missing error handling for critical sections.
+
+* `src/components/SearchBox.tsx`
+  - Removed commented-out code that is no longer relevant.
+  - Ensured all functions are properly documented.
+  - Added missing error handling for critical sections.
