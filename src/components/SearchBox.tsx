@@ -146,4 +146,4 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
   );
 };
 
-export default SearchBox; 
+export default SearchBox;
