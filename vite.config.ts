@@ -11,20 +11,11 @@ export default defineConfig(({ mode, command }) => {
   // Define the electron plugin configuration
   const electronPlugin = electron([
     {
-      // Main process configuration
+      // Main process entry for Vite plugin to launch Electron
       entry: path.resolve(__dirname, 'electron/main.ts'),
-      vite: {
-        build: {
-          rollupOptions: {
-            external: ['onnxruntime-node', 'sharp'], // Treat sharp as external too
-          },
-        },
-      },
-    },
-    {
-      // Preload script configuration
-      entry: path.resolve(__dirname, 'electron/preload.ts'),
+      // NO vite.build options here - tsc-watch handles compilation
     }
+    // Preload entry remains removed - tsc-watch handles it
   ]);
 
   return {

@@ -8,16 +8,19 @@ postMessage({ payload: 'removeLoading' }, '*')
 // Inspect the electronAPI object
 console.log('[Renderer] Checking window.electronAPI:', window.electronAPI);
 
-// Use the exposed API from the preload script
+// Example: Use the exposed API from the preload script
+// This is just an example; the App component might handle specific messages.
+// Commenting out as the listener isn't used directly here.
+/*
 if (window.electronAPI?.onMainProcessMessage) {
   const _removeListener = window.electronAPI.onMainProcessMessage((message) => {
-    console.log('[Renderer] Received from main:', message) 
+    console.log('[Renderer] Received example message from main:', message) 
   });
-  // TODO: Consider calling removeListener() when the component unmounts 
-  //       if this were inside a React component lifecycle.
+  // In a real app, manage the listener lifecycle (e.g., in a component)
 } else {
-  console.warn("'window.electronAPI.onMainProcessMessage' not found. IPC message listening disabled.");
+  console.warn("'window.electronAPI.onMainProcessMessage' not found.");
 }
+*/
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   // Removed StrictMode - Was causing double renders/API calls

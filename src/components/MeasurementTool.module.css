@@ -24,4 +24,68 @@
   /* Canvas itself doesn't capture clicks, the overlay div does */
   pointer-events: none; 
   z-index: 6; /* Draw above overlay background if needed, but below UI */
+}
+
+/* Container for measurement start buttons */
+.measurementButtonsContainer {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  background-color: rgba(40, 40, 40, 0.8);
+  padding: 8px 15px;
+  border-radius: 8px;
+  pointer-events: auto; /* Allow clicks on buttons */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+/* General button styling */
+.modeButton, .startButton {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background-color: #444;
+  color: #eee;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.modeButton:hover, .startButton:hover {
+  background-color: #555;
+}
+
+.modeButton:disabled, .startButton:disabled {
+  background-color: #333;
+  color: #888;
+  cursor: not-allowed;
+}
+
+/* Active mode button styling */
+.activeMode {
+  background-color: #007bff;
+  color: white;
+}
+
+.activeMode:hover {
+  background-color: #0056b3;
+}
+
+/* Prompt text styling */
+.promptText {
+  position: absolute;
+  bottom: 20px;
+  left: 10px;
+  color: white;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  pointer-events: none;
+}
+
+/* Cursor style when snapping to an edge */
+.snapCursor {
+  cursor: crosshair; /* Or a custom cursor */
 } 

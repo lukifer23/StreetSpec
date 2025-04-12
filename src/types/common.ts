@@ -30,14 +30,21 @@ export interface CameraParams {
 }
 
 // Represents a single measurement
+export type ConfidenceLevel = 'High' | 'Medium' | 'Low' | 'Unknown';
+
 export interface Measurement {
   id: string;           // Unique ID (e.g., uuid)
-  label: string;        // User-defined label
+  label: 'Height' | '3D Distance' | 'Area'; // Add Area type
   name?: string;        // Optional user-defined name
-  startPoint: Point;    // Screen coordinates
-  endPoint: Point;
-  distance: number;     // Calculated distance in meters
-  unit: 'metric' | 'imperial'; // Unit at time of calculation
+  // Make points more generic for different types
+  points: Point[]; // Store all points for polygon/line
+  startPoint?: Point; // Keep for backward compatibility or specific display?
+  startPointConfidence?: ConfidenceLevel; // Confidence at start point
+  endPoint?: Point; // Keep for backward compatibility or specific display?
+  endPointConfidence?: ConfidenceLevel; // Confidence at end point
+  // Store confidence for all points? Maybe later.
+  distance?: number;     // Calculated distance/height/area in meters/meters^2
+  unit?: 'metric' | 'imperial'; // Unit at time of calculation
   timestamp: number;    // Creation timestamp
   panoId?: string;       // Pano ID where measurement was taken
   cameraParams?: CameraParams; // Camera state when taken (optional, for context)
@@ -50,3 +57,5 @@ export interface OnnxDepthMap {
   width: number;
   height: number;
 }
+
+export type MeasurementPhase = 'idle' | 'placingHeightStart' | 'placingHeightEnd' | 'placingDistStart' | 'placingDistEnd' | 'placingAreaPoints' | 'placingAreaLastPoint';

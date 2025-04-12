@@ -24,40 +24,32 @@ export function estimateDistanceToPoint(
         console.warn("[estimateDistanceToPoint] Depth map data is missing or invalid.");
         return null;
     }
-    if (!cameraParams) {
-        console.warn("[estimateDistanceToPoint] Missing camera parameters for context.");
-        // Decide if you want to proceed without cameraParams or return null
-        // return null;
-    }
+    // No need to warn about cameraParams here, just use for logging if available
 
-    // Scale viewport coordinates to depth map coordinates
-    // Assuming viewport aspect ratio might differ from depth map
     const mapX = Math.round((pixelX / viewportWidth) * depthMap.width);
     const mapY = Math.round((pixelY / viewportHeight) * depthMap.height);
-
-    // Clamp coordinates to be within map bounds
     const clampedX = Math.max(0, Math.min(depthMap.width - 1, mapX));
     const clampedY = Math.max(0, Math.min(depthMap.height - 1, mapY));
-
-    // Calculate the index in the flattened depth array
     const index = clampedY * depthMap.width + clampedX;
 
+    console.log(`[estimateDistanceToPoint] Input: pixel=(${pixelX.toFixed(1)}, ${pixelY.toFixed(1)}), viewport=(${viewportWidth}x${viewportHeight})`);
+    console.log(`[estimateDistanceToPoint] Mapped Coords: raw=(${mapX}, ${mapY}), clamped=(${clampedX}, ${clampedY}), index=${index}`);
+
     if (index < 0 || index >= depthMap.data.length) {
-        console.error(`[estimateDistanceToPoint] Calculated index ${index} is out of bounds for depth map data (length ${depthMap.data.length}). Coords: (${pixelX}, ${pixelY}) -> (${mapX}, ${mapY}) -> (${clampedX}, ${clampedY})`);
+        console.error(`[estimateDistanceToPoint] Calculated index ${index} is out of bounds for depth map data (length ${depthMap.data.length}).`);
         return null;
     }
 
-    // Retrieve the depth value
     const distance = depthMap.data[index];
+    console.log(`[estimateDistanceToPoint] Raw depth value at index ${index}: ${distance}`);
 
     if (distance === undefined || distance === null || distance <= 0) {
-        console.warn(`[estimateDistanceToPoint] Invalid depth value (${distance}) found at index ${index} for coords (${clampedX}, ${clampedY}).`);
-        // Return null or a default value? Returning null for now.
+        console.warn(`[estimateDistanceToPoint] Invalid depth value (${distance}).`);
         return null;
     }
 
-    console.log(`[estimateDistanceToPoint] Sampled depth at (${clampedX}, ${clampedY}) [from pixel (${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})]: ${distance.toFixed(2)}m`);
-    return distance; // Return the depth value from the map
+    console.log(`[estimateDistanceToPoint] Returning distance: ${distance.toFixed(3)}m`);
+    return distance;
 }
 
 /**
@@ -68,6 +60,7 @@ export function estimateDistanceToPoint(
  * @param viewportHeight Total height of the viewport in pixels.
  * @param cameraParams Current camera parameters (fov, pitch).
  * @param distanceToBase Estimated distance from camera to the object's base (in meters).
+ * @param fovOverride Optional override for the field of view (in degrees).
  * @returns Estimated height in meters, or null if calculation is not possible.
  */
 export function calculateEstimatedHeight(
@@ -75,33 +68,36 @@ export function calculateEstimatedHeight(
     topPixelY: number,
     viewportHeight: number,
     cameraParams: CameraParams | null,
-    distanceToBase: number | null
+    distanceToBase: number | null,
+    fovOverride?: number | null
 ): number | null {
-    if (!cameraParams?.fov || !cameraParams?.pitch || distanceToBase === null) {
-        console.warn("[calculateEstimatedHeight] Missing inputs for calculation.");
+    console.log(`[calculateEstimatedHeight] Inputs: baseY=${basePixelY.toFixed(1)}, topY=${topPixelY.toFixed(1)}, vpHeight=${viewportHeight}, dist=${distanceToBase?.toFixed(3)}, fovOverride=${fovOverride}`);
+    
+    const fovToUse = (fovOverride && fovOverride > 0 && fovOverride < 180)
+                       ? fovOverride
+                       : cameraParams?.fov;
+
+    console.log(`[calculateEstimatedHeight] Resolved Params: fovToUse=${fovToUse?.toFixed(2)}, pitch=${cameraParams?.pitch?.toFixed(2)}`);
+
+    if (!fovToUse || cameraParams?.pitch === undefined || cameraParams?.pitch === null || distanceToBase === null) {
+        console.warn("[calculateEstimatedHeight] Missing resolved inputs (FOV, pitch, or distance) for calculation.");
         return null;
     }
 
-    // Simple linear FOV assumption (more accurate would use tan)
-    const verticalFovRadians = (cameraParams.fov * Math.PI) / 180;
-    
-    // Calculate angle for each pixel relative to the center (pitch angle)
+    const verticalFovRadians = (fovToUse * Math.PI) / 180; 
     const centerPixelY = viewportHeight / 2;
     const pitchRadians = (cameraParams.pitch * Math.PI) / 180;
-
-    // Angle relative to horizon for base and top points
-    // Note: Positive angle is downwards from horizon in this calculation
     const angleToBase = pitchRadians + ((basePixelY - centerPixelY) / viewportHeight) * verticalFovRadians;
     const angleToTop = pitchRadians + ((topPixelY - centerPixelY) / viewportHeight) * verticalFovRadians;
 
-    // Use tangent to find height relative to camera horizon plane
+    console.log(`[calculateEstimatedHeight] Angles (rad): pitch=${pitchRadians.toFixed(4)}, base=${angleToBase.toFixed(4)}, top=${angleToTop.toFixed(4)}`);
+
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
     const heightAtTop = distanceToBase * Math.tan(angleToTop);
-
-    // Estimated height is the difference
     const estimatedHeight = Math.abs(heightAtBase - heightAtTop);
 
-    console.log(`[calculateEstimatedHeight] BaseY: ${basePixelY}, TopY: ${topPixelY}, Dist: ${distanceToBase.toFixed(1)}, Pitch: ${cameraParams.pitch.toFixed(1)}, FOV: ${cameraParams.fov.toFixed(1)} -> Est Height: ${estimatedHeight.toFixed(2)}m`);
+    console.log(`[calculateEstimatedHeight] Intermediate heights: base=${heightAtBase.toFixed(3)}, top=${heightAtTop.toFixed(3)}`);
+    console.log(`[calculateEstimatedHeight] Final Estimated Height: ${estimatedHeight.toFixed(3)}m`);
 
     return estimatedHeight;
 } 

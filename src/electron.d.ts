@@ -2,9 +2,11 @@
 
 // Define the structure of the API exposed by the preload script
 export interface IElectronAPI {
-    fetchDepthData: (panoId: string) => Promise<Uint8Array | null>;
-    // Add the new function signature
+    // Removed fetchDepthData as it's covered by invoke
+    // fetchDepthData: (panoId: string) => Promise<Uint8Array | null>; 
     onMainProcessMessage: (callback: (message: any) => void) => () => void; // Returns a cleanup function
+    // Add the generic invoke method signature
+    invoke: (channel: string, data?: any) => Promise<any>;
     // Add other exposed functions here if needed
 }
 

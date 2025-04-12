@@ -78,42 +78,44 @@ function parseDepthMapData(decompressedBytes: Uint8Array): DecodedDepthData | nu
     }
 }
 
-
 /**
  * Fetches and parses the depth map data for a given panorama ID.
  * Uses unofficial Google endpoints and data formats.
+ * NOTE: THIS IS LIKELY DEPRECATED/UNUSED as the app uses ONNX inference.
+ * Kept for reference or potential future use.
  * 
  * @param panoId The panorama ID.
  * @returns A Promise resolving to the parsed depth data, or null if fetching/parsing fails.
  */
-// Make the outer function async
 export async function getParsedDepthData(panoId: string): Promise<DecodedDepthData | null> {
-    console.log(`Requesting depth data for panoId: ${panoId} via IPC.`);
+    console.warn(`[getParsedDepthData] This function is likely deprecated. Attempting to call main process for panoId: ${panoId}`);
     
     try {
-        // Request raw bytes from main process via IPC
-        const rawData: Uint8Array | null = await window.electronAPI.fetchDepthData(panoId);
+        // Request raw bytes from main process via IPC using the generic invoke
+        // IMPORTANT: Assumes a main process handler named 'fetch-raw-depth-bytes' exists!
+        // This handler was likely removed or never implemented.
+        const rawData: Uint8Array | null = await window.electronAPI.invoke('fetch-raw-depth-bytes', panoId); 
 
         if (!rawData) {
-            console.error("Received null data from main process for depth map.");
+            console.error("[getParsedDepthData] Received null data from main process (handler 'fetch-raw-depth-bytes' likely missing or failed).");
             return null;
         }
 
-        console.log(`Received ${rawData.length} raw bytes from main process.`);
+        console.log(`[getParsedDepthData] Received ${rawData.length} raw bytes from main process.`);
 
         // Parse the decompressed bytes
         const parsedData = parseDepthMapData(rawData);
 
         if (!parsedData) {
-            console.error("Failed to parse depth map data.");
+            console.error("[getParsedDepthData] Failed to parse depth map data.");
             return null;
         }
         
-        console.log("Successfully parsed depth data.");
+        console.log("[getParsedDepthData] Successfully parsed depth data (but this function is likely unused).");
         return parsedData;
 
     } catch (error) {
-        console.error("Error getting/parsing depth data:", error);
+        console.error("[getParsedDepthData] Error invoking 'fetch-raw-depth-bytes' or parsing data:", error);
         return null;
     }
 }

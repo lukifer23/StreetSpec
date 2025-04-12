@@ -1,17 +1,20 @@
 /// <reference types="@types/google.maps" />
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CameraParams, OnnxDepthMap } from '../types/common';
 import { calculateFov } from '../services/geometry';
 
 // Define interfaces
 interface MapViewProps {
-  lat?: number;
-  lng?: number;
-  onCameraParamsChange: (params: CameraParams) => void;
+  apiKey: string;
+  targetCoords: { lat: number; lng: number } | null;
+  onCameraChange: (params: CameraParams) => void;
+  showDepthMapOverlay: boolean;
+  depthMapOverlayUrl: string | null;
   isGeneratingMap: boolean;
   mapGenerationError: string | null;
   onnxDepthMap: OnnxDepthMap | null;
   onGenerateDepthMap: () => void;
+  isMeasurementActive: boolean;
 }
 
 // Default coords
@@ -31,21 +34,22 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 }
 
 const MapView: React.FC<MapViewProps> = ({ 
-  lat, 
-  lng, 
-  onCameraParamsChange,
+  apiKey,
+  targetCoords,
+  onCameraChange,
+  showDepthMapOverlay,
+  depthMapOverlayUrl,
   isGeneratingMap,
   mapGenerationError,
   onnxDepthMap,
-  onGenerateDepthMap
+  onGenerateDepthMap,
+  isMeasurementActive
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
-
-  // API Key access (ensure it's available)
-  // const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''; // No longer needed here
 
   // Initialization Effect
   useEffect(() => {
@@ -55,7 +59,7 @@ const MapView: React.FC<MapViewProps> = ({
     }
     console.log("MapView: Attempting StreetViewPanorama initialization...");
     try {
-      const initialPosition = { lat: lat ?? DEFAULT_LAT, lng: lng ?? DEFAULT_LNG };
+      const initialPosition = { lat: targetCoords?.lat ?? DEFAULT_LAT, lng: targetCoords?.lng ?? DEFAULT_LNG };
       const panorama = new google.maps.StreetViewPanorama(
         mapContainerRef.current!,
         {
@@ -72,21 +76,22 @@ const MapView: React.FC<MapViewProps> = ({
       streetViewRef.current = panorama;
       setIsInitialized(true);
       console.log("MapView: StreetViewPanorama instance created successfully.");
+
     } catch (error) {
       console.error("MapView: Error during StreetViewPanorama initialization:", error);
     }
-  }, [isInitialized, lat, lng]);
+  }, [isInitialized, targetCoords]);
 
   // Effect for Handling Prop Position Changes
   useEffect(() => {
-    if (streetViewRef.current && lat !== undefined && lng !== undefined) {
+    if (streetViewRef.current && targetCoords?.lat !== undefined && targetCoords?.lng !== undefined) {
       const currentPosition = streetViewRef.current.getPosition();
-      if (currentPosition?.lat() !== lat || currentPosition?.lng() !== lng) {
-        console.log(`MapView: Updating position via props to ${lat}, ${lng}`);
-        streetViewRef.current.setPosition({ lat, lng });
+      if (currentPosition?.lat() !== targetCoords.lat || currentPosition?.lng() !== targetCoords.lng) {
+        console.log(`MapView: Updating position via props to ${targetCoords.lat}, ${targetCoords.lng}`);
+        streetViewRef.current.setPosition({ lat: targetCoords.lat, lng: targetCoords.lng });
       }
     }
-  }, [lat, lng]);
+  }, [targetCoords]);
 
   // Effect for Subscribing to Panorama Events (stores params locally and calls prop)
   useEffect(() => {
@@ -114,7 +119,7 @@ const MapView: React.FC<MapViewProps> = ({
       // Store locally to enable/disable button
       setCurrentCameraParams(newParams); 
       // Propagate up to App
-      onCameraParamsChange(newParams); // Use the required prop callback
+      onCameraChange(newParams); // Use the required prop callback
     };
 
     const debouncedUpdateParams = debounce(updateLogic, 250); 
@@ -126,7 +131,54 @@ const MapView: React.FC<MapViewProps> = ({
     return () => {
       listeners.forEach(listener => listener.remove());
     };
-  }, [isInitialized, onCameraParamsChange]); // Depend on the prop callback
+  }, [isInitialized, onCameraChange]); // Depend on the prop callback
+
+  // Effect to control clickToGo based on measurement state
+  useEffect(() => {
+    if (streetViewRef.current) {
+      const clickable = !isMeasurementActive;
+      console.log(`[MapView] Setting clickToGo via effect: ${clickable}`);
+      streetViewRef.current.setOptions({ clickToGo: clickable });
+    }
+  }, [isMeasurementActive]); // Trigger when measurement active state changes
+
+  // Refactored Effect for Drawing Depth Map Overlay using PNG Data URL
+  useEffect(() => {
+    if (!overlayCanvasRef.current || !mapContainerRef.current) return;
+    const canvas = overlayCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const container = mapContainerRef.current;
+
+    if (!ctx) return;
+
+    // Match canvas size to container size
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+
+    if (showDepthMapOverlay && depthMapOverlayUrl) {
+      console.log("[MapView] Rendering depth map overlay from URL...");
+      const img = new Image();
+      img.onload = () => {
+        // Clear canvas before drawing
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw the loaded image scaled to fit the canvas
+        // Set transparency before drawing
+        ctx.globalAlpha = 0.7; // Adjust transparency (0.0 to 1.0)
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1.0; // Reset alpha
+        console.log("[MapView] Depth map overlay rendered from URL.");
+      };
+      img.onerror = (err) => {
+        console.error("[MapView] Error loading depth map overlay image:", err);
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear on error
+      };
+      img.src = depthMapOverlayUrl; // Set the source to the PNG Data URL
+    } else {
+      // Clear canvas if overlay is hidden or no URL
+      console.log("[MapView] Clearing depth map overlay.");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, [depthMapOverlayUrl, showDepthMapOverlay]); // Rerun when URL or toggle changes
 
   // --- UI Indicator for Depth Map Generation (Uses props now) ---
   const GenStatusIndicator = () => {
@@ -170,6 +222,21 @@ const MapView: React.FC<MapViewProps> = ({
       id="map-container" 
       style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#eee' }}
     >
+      {/* Overlay Canvas */} 
+      <canvas
+        ref={overlayCanvasRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%', // Let CSS handle display size
+          height: '100%', // Let CSS handle display size
+          pointerEvents: 'none', // Allow clicks to pass through to the map
+          zIndex: 50, // Below controls, above map tiles
+          opacity: 0.7 // Adjust overall opacity if needed
+        }}
+      />
+
       {isInitialized && (
         <>
           {/* Button to trigger generation (calls prop function) */} 
@@ -193,7 +260,6 @@ const MapView: React.FC<MapViewProps> = ({
         </>
       )}
       {!isInitialized && <div style={{ padding: '20px', color: 'black' }}>Initializing Map...</div>}
-      {/* Optionally display depth map overlay here using onnxDepthMap prop */}
     </div>
   );
 };

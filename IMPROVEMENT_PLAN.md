@@ -1,93 +1,127 @@
-# PoleCheck Desktop Application: Development Plan
+# PoleCheck Desktop - Improvement Plan (Phase 2+)
 
-**Project:** PoleCheck Desktop Application (Street View Measurement)
+This plan outlines features and optimizations beyond the initial core functionality.
 
-**Goal:** Create a cross-platform (Windows, macOS, Linux) desktop application using Electron that allows users to search for locations, view Google Street View, and perform measurements of real-world objects by clicking points on the Street View image, using ML-based metric depth estimation for improved accuracy.
+## Phase 1: Foundational Improvements & Core Performance
 
-**Technology Stack:**
-*   **Runtime:** Electron
-*   **Frontend:** React + TypeScript
-*   **Build Tool:** Vite
-*   **Mapping:** Google Maps JavaScript API (`@googlemaps/js-api-loader`)
-*   **ML Inference (Main):** ONNX Runtime (`onnxruntime-node`)
-*   **Image Processing (Main):** Sharp (`sharp`)
-*   **Styling:** CSS Modules
-*   **UI:** Standard HTML/CSS/React components
-*   **UUID Generation:** `uuid` library
-*   **HTTP Requests (Main):** `node-fetch` (for Static Street View API)
-*   **Decompression (Main/Renderer):** `pako` (No longer used for primary depth)
+*Goal: Stabilize core components, implement persistence, and gain initial performance wins.*
 
-**Key Technical Aspects:**
-*   API Key loaded via `.env` file and Vite environment variables.
-*   State management primarily via React Hooks (`useState`, `useCallback`, `useEffect`), with key state lifted to `App.tsx`.
-*   IPC (Inter-Process Communication) using `contextBridge` and `ipcRenderer.invoke` for secure communication (e.g., triggering inference, exporting CSV).
-*   **Metric Depth Estimation Pipeline:**
-    *   Frontend fetches Static Street View image based on camera parameters.
-    *   Frontend sends image data (Base64) to Main process via IPC (`infer-depth`).
-    *   Main process decodes image, preprocesses (resize, normalize) using `sharp`.
-    *   Main process runs inference using a metric depth ONNX model (Depth Anything V2 Metric Outdoor) via `onnxruntime-node`.
-    *   Main process sends resulting metric depth map (meters) back to Frontend.
-    *   Frontend measurement logic samples depth from the received map to estimate distance.
-*   Build configured to handle native Node modules (`onnxruntime-node`, `sharp`) via `external` in `vite.config.ts`.
+*   [x] **Refactor Model Path Handling:**
+    *   [x] Modify `electron/main.ts` to use `app.isPackaged` and `process.resourcesPath` to locate the ONNX model reliably in both development and packaged builds.
+    *   [ ] Update `electron-builder` configuration (`package.json` or `electron-builder.yml`) to explicitly include the `src/assets/models/` directory (or just the model file) in the packaged application (e.g., using `extraResources` or `files`). *(Manual step needed)*
+    *   [ ] Update `README.md` setup instructions if the model location for manual placement changes. *(Check needed)*
+*   [x] **Remove `getRawDepthData` Function:**
+    *   [x] Delete the `getRawDepthData` function and any related calls from `electron/main.ts` as it relies on unstable internal APIs.
+*   [x] **Implement Persistent Measurement Storage:**
+    *   [x] Add `electron-store` as a dependency (`npm install electron-store`).
+    *   [x] In `electron/main.ts`, initialize `electron-store`.
+    *   [x] Create new IPC handlers (`save-measurements`, `load-measurements`).
+    *   [x] Modify `src/App.tsx`:
+        *   [x] Call `load-measurements` on component mount (`useEffect`).
+        *   [x] Call `save-measurements` whenever the `measurements` state changes (potentially debounced).
+        *   [x] Update `handleMeasurementComplete`, `handleClearMeasurements`, `handleDeleteMeasurement`, `handleRenameMeasurement` to trigger the save.
+    *   [x] Update `electron/preload.ts` to expose the new IPC channels.
+*   [ ] **ONNX Model Quantization (Performance): (Paused)**
+    *   [ ] **(External Step)** Use ONNX Runtime tools (Python scripts, likely) to convert the `depth_anything_v2_metric_vkitti_vits.onnx` (FP32) model to an INT8 quantized version (`..._quant.onnx`).
+    *   [ ] Add the `_quant.onnx` model to the project (e.g., `src/assets/models/`).
+    *   [ ] Modify `electron/main.ts` to load the `_quant.onnx` model instead of the original FP32 version.
+    *   [ ] Update `electron-builder` config to include the new quantized model file.
+    *   [ ] Benchmark inference time difference (optional but recommended).
 
----
+## Phase 2: Enhanced Visualization & Basic Measurement
 
-## Plan Overview
+*Goal: Provide better visual feedback and extend core measurement capabilities.*
 
-1.  **Setup & Maps Integration (Complete):** Initialize project, set up Electron/Vite build, integrate Google Maps API, display Street View, implement location search.
-2.  **Core Measurement Logic (Complete):** Implement UI for placing points, calculate 3D direction vectors, estimate world points (basic geometry initially), calculate 3D distance.
-3.  **Depth Data Integration & Refinement (Complete):** 
-    *   ~~Integrate fetching, parsing, and utilizing Street View depth data.~~ (Replaced with ML approach)
-    *   Implement ML-based metric depth estimation using ONNX Runtime in the main process.
-    *   Establish IPC for triggering inference and receiving depth maps.
-    *   Integrate depth map sampling into measurement logic.
-    *   Debug and resolve build issues related to native modules (`onnxruntime-node`, `sharp`).
-    *   Resolve issues with model output interpretation (relative vs. metric depth).
-4.  **Accuracy Validation & UI Polish (Current Focus):** 
-    *   Thoroughly test measurement accuracy using the metric depth model.
-    *   Refine UI components (measurement list, controls, status indicators).
-    *   Implement persistence for measurements.
-    *   Implement CSV export.
-5.  **Build & Packaging:** Configure `electron-builder` for distributable packages.
+*   [x] **Depth Map Visualization:**
+    *   [x] In `src/components/MapView.tsx` (or a new component):
+        *   [x] Add a state variable for visibility toggle.
+        *   [x] When `onnxDepthMap` is available and visualization is enabled, render the depth map onto a canvas element overlaid on the Street View container.
+        *   [x] Normalize the depth values (min/max scaling from `onnxDepthMap.data`).
+        *   [x] Apply a color map (e.g., grayscale, viridis) to the normalized depth values to create the visualization.
+    *   [x] Add a UI toggle button (e.g., in `App.tsx` or `MeasurementTool.tsx`) to control the visualization state.
+*   [x] **3D Distance Measurement:**
+    *   [x] Create/Update geometry calculation service (`src/services/geometry.ts`?):
+        *   [x] Add a function `calculate3DDistance(point1: Point, point2: Point, depthMap: OnnxDepthMap, cameraParams: CameraParams): number`. *(Actually, added `unprojectPointWithOnnxDepth` and used existing `calculateDistance3D`)*
+        *   [x] This function will need to:
+            *   [x] Unproject the 2D screen coordinates (`point1`, `point2`) to 3D view space using camera intrinsics (derived from FOV) and the depth value at those points from `depthMap`.
+            *   [x] Calculate the Euclidean distance between the two 3D points.
+    *   [x] Modify `src/components/MeasurementTool.tsx`:
+        *   [x] Add a new measurement mode/type for "3D Distance".
+        *   [x] When this mode is active, allow clicking two points.
+        *   [x] Call the new `calculate3DDistance` function *(via unprojection)*.
+        *   [x] Update the `Measurement` type to potentially store start/end 3D coordinates or just the calculated 3D distance.
+    *   [x] Update `src/App.tsx` to handle and display this new measurement type.
 
----
+## Phase 3: Accuracy & Robustness
 
-## Current State (End of Session: 2025-04-09)
+*Goal: Improve measurement reliability and user control.*
 
-*   **Project Setup:** Complete (Electron, Vite, React, TS).
-*   **Maps Integration:** Complete (API load, Street View display, Search, Camera param tracking).
-*   **Measurement UI:**
-    *   `MeasurementTool` overlay canvas implemented.
-    *   User can place start/end points for height estimation.
-    *   Measurements displayed on canvas and in sidebar list.
-    *   Button exists to trigger depth map generation.
-    *   Status indicator shows depth map generation state.
-*   **Measurement Logic:**
-    *   Core geometric calculations (`calculateFov`, `calculateEstimatedHeight`) implemented.
-    *   `estimateDistanceToPoint` now samples the received ONNX depth map.
-*   **ML Depth Pipeline:**
-    *   State lifted to `App.tsx` (camera params, depth map state, generation logic).
-    *   Static Street View image fetch implemented in `App.tsx`.
-    *   IPC channel `infer-depth` established and working.
-    *   Main process handler decodes image, preprocesses with `sharp`, runs inference with `onnxruntime-node` using a configured metric model (`depth_anything_v2_metric_vkitti_vits.onnx`), and returns the depth map.
-    *   Vite build configured to handle native dependencies (`onnxruntime-node`, `sharp`).
-    *   Type definitions updated (`IElectronAPI`, `OnnxDepthMap`).
-*   **CSV Export:** Basic framework implemented via IPC.
+*   [x] **Confidence Indication (Proxy):**
+    *   [x] In the geometry service or `MeasurementTool.tsx`:
+        *   [x] When a measurement point is selected, analyze a small neighborhood (e.g., 3x3 or 5x5 pixels) around the point in the `onnxDepthMap.data`.
+        *   [x] Calculate the variance or standard deviation of depth values in this neighborhood.
+        *   [x] Define thresholds to classify confidence (e.g., Low, Medium, High) based on variance.
+    *   [x] In `src/components/MeasurementTool.tsx` or the measurement list:
+        *   [x] Display a visual indicator (e.g., colored dot, icon) next to measurement points or the final measurement based on the calculated confidence.
+*   [x] **Manual FOV Override:**
+    *   [x] Add a settings panel/modal component to the UI.
+    *   [x] Include an input field for FOV in the settings panel.
+    *   [x] Store the user-defined FOV (if any) in `App.tsx` state or persistent storage (`electron-store`). *(Stored in App state)*
+    *   [x] When calculating measurements (`geometry.ts`), prioritize the user-defined FOV over `cameraParams.fov` if it exists.
+    *   [x] Ensure the Static Image API call (`App.tsx handleGenerateDepthMap`) still uses the API-provided FOV (`cameraParams.fov`) for fetching, as this affects the underlying image projection, but use the override for *interpreting* the depth map.
 
-## Current Focus / Next Steps
+## Phase 4: Advanced Measurement & Export
 
-*   **Verify Metric Depth Accuracy:** 
-    *   Confirm the correct metric ONNX model (`depth_anything_v2_metric_vkitti_vits.onnx`) is downloaded, converted, and placed correctly.
-    *   Run tests: Generate depth map, perform measurements, check console logs for `[estimateDistanceToPoint] Sampled depth...` and final `Est Height`. Evaluate if the sampled depth and final height are reasonable.
-*   **Implement Persistence:** Save/load measurements using `electron-store` or similar.
-*   **Refine Measurement List:** Add delete/rename functionality (frontend logic exists, needs backend persistence integration).
-*   **UI/UX Polish:** Improve styling, add better loading/error states, potentially visualize the depth map on the overlay.
+*Goal: Add more complex measurement types and standard export formats.*
 
-## Future Implementation / Backlog
+*   [ ] **Measurement Point Snapping (Simple Edge Detection):**
+    *   [ ] Integrate a lightweight image processing step (can be done in the renderer if simple enough, or main process if more complex).
+    *   [ ] When generating the depth map or fetching the static image, also perform edge detection (e.g., Sobel filter) on the grayscale version of the image. Store the edge map.
+    *   [ ] In `MeasurementTool.tsx`, when the user hovers/clicks:
+        *   Check nearby pixels on the edge map.
+        *   If a strong edge is detected near the cursor, snap the click coordinates to the edge pixel.
+    *   [ ] Provide visual feedback for snapping.
+*   [ ] **Area/Polygon Measurement:**
+    *   [ ] Add a new measurement mode for "Area".
+    *   [ ] Allow the user to click 3+ points to define a polygon.
+    *   [ ] In `geometry.ts`, create `calculatePolygonArea(points: Point[], depthMap: OnnxDepthMap, cameraParams: CameraParams): number`.
+    *   [ ] Unproject each polygon vertex to 3D space (similar to 3D distance).
+    *   [ ] Calculate the area of the 3D polygon (e.g., using vector cross products - Shoelace formula adapted for 3D).
+    *   [ ] Update `Measurement` type and UI to handle polygon measurements.
+*   [ ] **GeoJSON/KML Export:**
+    *   [ ] Add new export buttons/options in `App.tsx`.
+    *   [ ] Create new functions (`exportToGeoJSON`, `exportToKML`) triggered by these buttons.
+    *   [ ] These functions will need to:
+        *   Iterate through `measurements`.
+        *   For each measurement, determine the world coordinates (Latitude, Longitude, Altitude) of the start/end points. This requires:
+            *   The panorama's origin coordinates (`cameraParams.lat`, `cameraParams.lng`).
+            *   The 3D points relative to the camera (from unprojection).
+            *   Transforming these relative 3D points into world coordinates based on camera heading/pitch and panorama location (requires spherical geometry calculations or using a library if available).
+        *   Format the data according to GeoJSON (Point, LineString features) or KML specifications.
+        *   Use the existing `export-to-csv` IPC mechanism (perhaps generalized to `export-file`) to save the generated GeoJSON/KML content.
 
-*   **Measurement Accuracy Validation:** More rigorous testing against known dimensions/locations.
-*   **Alternative Measurement Types:** Implement horizontal distance, area, etc.
-*   **Units:** Allow switching between metric/imperial.
-*   **Build/Packaging:** Finalize `electron-builder` configuration.
+## Phase 5: Performance & Workflow Refinements
+
+*Goal: Optimize remaining areas and improve user organization.*
+
+*   [ ] **Preprocessing Optimization (Benchmarking):**
+    *   [ ] In `electron/main.ts`'s `infer-depth` handler:
+        *   Use `console.time` / `console.timeEnd` to benchmark the `sharp(...)` chain.
+        *   Experiment with different `resize` options (interpolators like `nearest`).
+        *   Confirm if `.removeAlpha()` is strictly necessary (inspect `metadata.channels`).
+        *   Apply changes that yield speedups without significant quality degradation.
+*   [ ] **Caching Static Images:**
+    *   [ ] Add a simple caching mechanism (e.g., an in-memory `Map` keyed by `panoId` or `lat,lng,heading,pitch,fov`) in `App.tsx`.
+    *   [ ] Before calling `fetch` in `handleGenerateDepthMap`, check the cache.
+    *   [ ] If cached, use the stored `base64data` directly.
+    *   [ ] If not cached, fetch, store in cache, then proceed.
+    *   [ ] Consider cache size limits or eviction strategy if memory becomes a concern.
+*   [ ] **Measurement Grouping (Projects):**
+    *   [ ] Update the data structure (e.g., add a `projectId` to `Measurement`, maintain a list of `Projects` in `electron-store`).
+    *   [ ] Add UI elements (sidebar panel, dropdowns) in `App.tsx` to:
+        *   Create/rename/delete projects.
+        *   Assign measurements to projects.
+        *   Filter the displayed measurement list by the selected project.
+    *   [ ] Update saving/loading logic to handle projects.
 
 --- 
