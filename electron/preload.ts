@@ -18,7 +18,10 @@ try {
         'infer-depth', 
         'load-measurements',
         'save-measurements',
-        'export-file'
+        'export-file',
+        'load-scale-factor',
+        'save-scale-factor',
+        'clear-scale-factors'
       ];
       if (validInvokeChannels.includes(channel)) {
           try {

@@ -88,4 +88,89 @@
 /* Cursor style when snapping to an edge */
 .snapCursor {
   cursor: crosshair; /* Or a custom cursor */
+}
+
+/* --- Calibration Controls Styles --- */
+.calibrationControls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(50, 50, 60, 0.9);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #aaa;
+  display: flex;
+  flex-direction: column; 
+  gap: 12px;
+  align-items: center;
+  z-index: 110; /* Ensure above overlay */
+  pointer-events: auto !important; /* Explicitly allow interaction */
+  color: #eee;
+  min-width: 350px; 
+  box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+}
+
+.calibrationControls h4 {
+  margin: 0 0 10px 0;
+  color: #00bfff; /* Deep sky blue */
+  font-weight: bold;
+}
+
+.calibrationControls p {
+  margin: 0 0 10px 0;
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.inputGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+}
+
+.inputGroup label {
+  font-size: 0.9em;
+}
+
+.inputGroup input[type="number"] {
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid #777;
+  background-color: #fff;
+  color: #333;
+  width: 80px; /* Adjust width as needed */
+}
+
+.toolButton {
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  background-color: #6c757d; /* Secondary grey */
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  width: 80%; /* Make buttons wider */
+  text-align: center;
+}
+
+.toolButton:hover:not(:disabled) {
+  background-color: #5a6268;
+}
+
+.toolButton:disabled {
+  background-color: #444;
+  color: #888;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.dangerButton {
+  background-color: #dc3545; /* Red */
+}
+
+.dangerButton:hover:not(:disabled) {
+  background-color: #c82333;
 } 

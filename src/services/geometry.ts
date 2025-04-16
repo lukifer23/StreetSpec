@@ -1,4 +1,4 @@
-import { CameraParams, Point, Vector3, OnnxDepthMap, ConfidenceLevel } from '../types/common';
+import { CameraParams, Point, Vector3, OnnxDepthMap, ConfidenceLevel, SegmentationMask } from '../types/common';
 // Removed DecodedDepthData import as it's not used for ONNX
 // import { DecodedDepthData } from './depth'; 
 
@@ -238,27 +238,44 @@ export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
  *
  * @param screenPoint - The {x, y} pixel coordinates on the screen/viewport.
  * @param depthMap - The ONNX depth map data.
+ * @param segmentationMask - The segmentation mask data.
  * @param viewWidth - The width of the viewport/canvas in pixels.
  * @param viewHeight - The height of the viewport/canvas in pixels.
+ * @param validClassIds - The set of class IDs considered valid for measurement.
  * @returns The depth value in meters, or null if out of bounds or invalid.
  */
-function sampleOnnxDepth(screenPoint: Point, depthMap: OnnxDepthMap, viewWidth: number, viewHeight: number): number | null {
+function sampleOnnxDepth(
+    screenPoint: Point, 
+    depthMap: OnnxDepthMap, 
+    segmentationMask: SegmentationMask,
+    viewWidth: number, 
+    viewHeight: number,
+    validClassIds: Set<number> 
+): number | null {
     const mapWidth = depthMap.width;
     const mapHeight = depthMap.height;
 
-    // Calculate the corresponding coordinates in the depth map
-    // Assuming the depth map covers the same FOV as the viewport
+    // Calculate the corresponding coordinates in the depth map & seg mask
     const mapX = Math.floor((screenPoint.x / viewWidth) * mapWidth);
     const mapY = Math.floor((screenPoint.y / viewHeight) * mapHeight);
 
     // Check bounds
     if (mapX < 0 || mapX >= mapWidth || mapY < 0 || mapY >= mapHeight) {
-        console.warn(`[sampleOnnxDepth] Screen point (${screenPoint.x}, ${screenPoint.y}) maps outside depth map bounds (${mapX}, ${mapY})`);
+        console.warn(`[sampleOnnxDepth] Screen point (${screenPoint.x}, ${screenPoint.y}) maps outside map bounds (${mapX}, ${mapY})`);
         return null;
     }
 
-    // Calculate the index in the flattened depth map data array
+    // Calculate the index
     const index = mapY * mapWidth + mapX;
+
+    // --- Segmentation Check ---
+    const classId = segmentationMask.data[index];
+    if (!validClassIds.has(classId)) {
+        console.log(`[sampleOnnxDepth] Point (${screenPoint.x}, ${screenPoint.y}) -> Map (${mapX}, ${mapY}) blocked by segmentation. Class ID: ${classId}`);
+        return null; // Block depth sampling if class is not valid
+    }
+    // --- End Segmentation Check ---
+    
     const depth = depthMap.data[index];
 
     // Check for invalid depth values (e.g., zero, negative, or excessively large)
@@ -281,6 +298,7 @@ function sampleOnnxDepth(screenPoint: Point, depthMap: OnnxDepthMap, viewWidth: 
  * @param viewWidth - The width of the viewport/canvas in pixels.
  * @param viewHeight - The height of the viewport/canvas in pixels.
  * @param depthMap - The ONNX depth map data.
+ * @param segmentationMask - The segmentation mask data.
  * @param fovOverride - Optional override for the field of view (in degrees).
  * @returns The calculated 3D point relative to the camera, or null if depth is invalid.
  */
@@ -290,13 +308,33 @@ export function unprojectPointWithOnnxDepth(
     viewWidth: number, 
     viewHeight: number, 
     depthMap: OnnxDepthMap,
+    segmentationMask: SegmentationMask | null,
     fovOverride?: number | null
 ): Vector3 | null {
     console.log(`[unprojectPoint] Input: point=(${screenPoint.x.toFixed(1)}, ${screenPoint.y.toFixed(1)}), vp=(${viewWidth}x${viewHeight})`);
 
-    const depth = sampleOnnxDepth(screenPoint, depthMap, viewWidth, viewHeight);
+    // Define valid classes based on Cityscapes label IDs
+    // See: https://github.com/mcordts/cityscapesScripts/blob/master/cityscapesscripts/helpers/labels.py
+    // Example: road(0), sidewalk(1), building(2), wall(3), fence(4), pole(5), traffic light(6), 
+    // traffic sign(7), vegetation(8), terrain(9), sky(10), person(11), rider(12), 
+    // car(13), truck(14), bus(15), train(16), motorcycle(17), bicycle(18)
+    // Let's consider most non-sky, non-person/rider/dynamic classes as valid for depth
+    const VALID_CITYSCAPES_IDS = new Set([
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 
+        // 10 (sky) - Exclude
+        // 11 (person), 12 (rider) - Exclude?
+        13, 14, 15, 16, 17, 18
+    ]);
+
+    if (!segmentationMask) {
+        console.warn("[unprojectPoint] Segmentation mask not available, cannot validate depth sample.");
+        return null; // Or proceed without validation? For now, require it.
+    }
+
+    // Pass mask and valid IDs to sampleOnnxDepth
+    const depth = sampleOnnxDepth(screenPoint, depthMap, segmentationMask, viewWidth, viewHeight, VALID_CITYSCAPES_IDS);
     
-    console.log(`[unprojectPoint] Sampled depth for unprojection: ${depth?.toFixed(3)}`);
+    console.log(`[unprojectPoint] Sampled depth (post-segmentation check): ${depth?.toFixed(3)}`); // Log 1: Sampled Depth
 
     if (depth === null || depth <= 0) {
         console.warn("[unprojectPoint] Invalid or zero depth for unprojection.");
@@ -331,11 +369,13 @@ export function unprojectPointWithOnnxDepth(
     // Calculate view space coordinates (simplified perspective projection inversion)
     const aspectRatio = viewWidth / viewHeight;
     const tanHalfFov = Math.tan(fovRad / 2);
+    console.log(`[unprojectPoint] Intermediate: ndcX=${ndcX.toFixed(4)}, ndcY=${ndcY.toFixed(4)}, tanHalfFov=${tanHalfFov.toFixed(4)}, aspectRatio=${aspectRatio.toFixed(4)}`); // Log 2: NDC + TanFOV
     
     // Y is up/down in view space, affected by pitch and vertical position
     // X is left/right, affected by aspect ratio and horizontal position
     const viewY = -ndcY * tanHalfFov;
     const viewX = ndcX * aspectRatio * tanHalfFov;
+    console.log(`[unprojectPoint] View Space Coords (Before Z=1): viewX=${viewX.toFixed(4)}, viewY=${viewY.toFixed(4)}`); // Log 3: View Coords
 
     // Create initial direction vector in view space (Z forward)
     // Length doesn't matter yet, we normalize
@@ -355,6 +395,7 @@ export function unprojectPointWithOnnxDepth(
         y: normalizedDirView.y * depth,
         z: normalizedDirView.z * depth
     };
+    console.log(`[unprojectPoint] Point in View Space (Scaled by Depth): pointView=(${pointView.x.toFixed(3)}, ${pointView.y.toFixed(3)}, ${pointView.z.toFixed(3)})`); // Log 4: View Point (Scaled)
 
     // Rotate point based on camera pitch (around X-axis)
     const cosPitch = Math.cos(pitchRad);
@@ -364,6 +405,7 @@ export function unprojectPointWithOnnxDepth(
         y: pointView.y * cosPitch - pointView.z * sinPitch,
         z: pointView.y * sinPitch + pointView.z * cosPitch
     };
+    console.log(`[unprojectPoint] Point After Pitch Rotation: pointAfterPitch=(${pointAfterPitch.x.toFixed(3)}, ${pointAfterPitch.y.toFixed(3)}, ${pointAfterPitch.z.toFixed(3)})`); // Log 5: After Pitch
 
     // Rotate point based on camera heading (around Y-axis)
     const cosHeading = Math.cos(headingRad);
@@ -373,8 +415,7 @@ export function unprojectPointWithOnnxDepth(
         y: pointAfterPitch.y,
         z: -pointAfterPitch.x * sinHeading + pointAfterPitch.z * cosHeading
     };
-
-    console.log(`[unprojectPoint] Result: 3D point = (${pointWorld.x.toFixed(3)}, ${pointWorld.y.toFixed(3)}, ${pointWorld.z.toFixed(3)})`);
+    console.log(`[unprojectPoint] Final Point After Heading Rotation: pointWorld=(${pointWorld.x.toFixed(3)}, ${pointWorld.y.toFixed(3)}, ${pointWorld.z.toFixed(3)})`); // Log 6: Final World Point
 
     // Assuming camera is at (0,0,0) for this relative coordinate system
     return pointWorld; 
@@ -553,6 +594,7 @@ function calculatePolygonArea3D(vertices: Vector3[]): number {
  * @param viewWidth - Viewport width.
  * @param viewHeight - Viewport height.
  * @param depthMap - ONNX depth map data.
+ * @param segmentationMask - The segmentation mask data.
  * @param fovOverride - Optional FOV override.
  * @returns Calculated area in square meters, or null if any point fails unprojection.
  */
@@ -562,6 +604,7 @@ export function calculateAreaFromScreenPoints(
     viewWidth: number,
     viewHeight: number,
     depthMap: OnnxDepthMap,
+    segmentationMask: SegmentationMask | null,
     fovOverride?: number | null
 ): number | null {
     if (screenPoints.length < 3) {
@@ -576,6 +619,7 @@ export function calculateAreaFromScreenPoints(
             viewWidth,
             viewHeight,
             depthMap,
+            segmentationMask,
             fovOverride
         );
         if (point3D === null) {

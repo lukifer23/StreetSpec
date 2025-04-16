@@ -4,26 +4,28 @@ import { join, dirname } from 'node:path' // Use dirname instead of resolve for 
 import fetch from 'node-fetch'
 // Removed pako import as getRawDepthData was removed
 // Removed import.meta.url logic as we are compiling to CommonJS
-// import { fileURLToPath } from 'node:url' 
+import { fileURLToPath } from 'url'
 // Removed onnxruntime-node static import
 // import ort from 'onnxruntime-node'
 import sharp from 'sharp'
 // Removed require and type import for electron-store
 // import type { default as ElectronStoreType } from 'electron-store';
 // const ElectronStore = require('electron-store');
-
-// --- Type Imports (Use import type for type checking only) ---
-import type { default as ElectronStoreType } from 'electron-store';
+import * as path from 'path';
+// import type { default as ElectronStoreType } from 'electron-store'; // Temporarily remove type import
 import type * as ORTType from 'onnxruntime-node'; // Import ORT types
+import type { default as ElectronStoreType } from 'electron-store'; // Restore type import
+// Use require for CJS version of electron-store
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const ElectronStore = require('electron-store'); 
 
-// Define the structure of our persistent storage
+// Define a schema (optional but good practice)
 interface StorageSchema {
-  measurements: unknown[]; // Use unknown[] or import/define a shared Measurement type
-  // settings?: { preferredUnits: string; fovOverride: number | null };
+  measurements: unknown[]; // Define specific type if possible
+  calibrationFactors: number[]; // Store multiple factors
 }
 
-// Declare store and ort variables, initialize within whenReady
-let store: ElectronStoreType<StorageSchema> | null = null;
+let store: ElectronStoreType<StorageSchema>;
 let ort: typeof ORTType | null = null;
 
 // ESM equivalent for __dirname -> Removed, use standard __dirname
@@ -78,40 +80,217 @@ console.log(`[Main Process] Is app packaged? ${app.isPackaged}`);
 console.log(`[Main Process] VITE_DEV_SERVER_URL: ${devServerUrl}`);
 console.log(`[Main Process] index.html path: ${indexHtmlPath}`);
 
-// --- Global ONNX Session ---
+// --- Global ONNX Sessions ---
 let depthSession: ORTType.InferenceSession | null = null;
-// Match the preprocessor config size of 518x518
-const modelInputShape = [1, 3, 518, 518];
+let segmentationSession: ORTType.InferenceSession | null = null; // Add session for segmentation
 
-// Determine the correct path for the ONNX model
-const modelFilename = 'depth_anything.onnx';
-const modelPath = app.isPackaged
-  ? join(process.resourcesPath, 'assets', 'models', 'onnx_model', modelFilename) // Path in packaged app
-  : join(app.getAppPath(), 'src', 'assets', 'models', 'onnx_model', modelFilename); // Path relative to project root in dev
+// Input shape for Depth Anything model
+const depthModelInputShape = [1, 3, 518, 518]; // Keep original depth shape
+// Input shape for Segformer B0 - Typically 1024x1024, but verify based on specific model conversion
+// Let's assume 518x518 for now, same as depth, for simpler preprocessing
+// **IMPORTANT**: If segformer expects 1024x1024, preprocessing needs adjustment!
+const segmentationModelInputShape = [1, 3, 518, 518]; 
 
-// Updated to use dynamically imported ort
-async function loadModel() {
+// Paths for ONNX models
+const depthModelFilename = 'depth_anything.onnx';
+const segmentationModelFilename = 'segformer_b0_cityscapes_1024_corm.onnx'; // Use the correct filename
+
+const baseModelPath = app.isPackaged 
+  ? join(process.resourcesPath, 'assets', 'models', 'onnx_model') 
+  : join(app.getAppPath(), 'src', 'assets', 'models', 'onnx_model');
+
+const depthModelPath = join(baseModelPath, depthModelFilename);
+const segmentationModelPath = join(baseModelPath, 'segformer_onnx_model', segmentationModelFilename); // Correct subdirectory
+
+// Function to load both models
+async function loadModels() {
   if (!ort) {
-      console.error("[Main Process] ONNX Runtime not loaded. Cannot load model.");
-      return;
+    console.error("[Main Process] ONNX Runtime not loaded. Cannot load models.");
+    return;
   }
+
+  // Load Depth Model
   try {
-    console.log(`[Main Process] Loading ONNX model from: ${modelPath}`);
-    // Ensure GPU is preferred if available (optional, adjust provider as needed)
-    // const options: ort.InferenceSession.SessionOptions = { executionProviders: ['cuda', 'cpu'] };
-    depthSession = await ort.InferenceSession.create(modelPath); // Use dynamically loaded ort
+    console.log(`[Main Process] Loading Depth model from: ${depthModelPath}`);
+    depthSession = await ort.InferenceSession.create(depthModelPath); 
     console.log('[Main Process] ONNX Depth Model loaded successfully.');
-    // Log input/output names - useful for debugging
-    console.log('[Main Process] Model Input Names:', depthSession.inputNames);
-    console.log('[Main Process] Model Output Names:', depthSession.outputNames);
+    console.log('[Main Process] Depth Model Inputs:', depthSession.inputNames);
+    console.log('[Main Process] Depth Model Outputs:', depthSession.outputNames);
   } catch (error) {
-    console.error("[Main Process] Error loading ONNX model:", error);
+    console.error("[Main Process] Error loading Depth model:", error);
     depthSession = null;
-    // Optionally notify the renderer process of the failure
-    win?.webContents.send('model-load-error', error instanceof Error ? error.message : String(error));
+    win?.webContents.send('model-load-error', `Depth Model Load Error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  // Load Segmentation Model
+  try {
+    console.log(`[Main Process] Loading Segmentation model from: ${segmentationModelPath}`);
+    segmentationSession = await ort.InferenceSession.create(segmentationModelPath); 
+    console.log('[Main Process] ONNX Segmentation Model loaded successfully.');
+    console.log('[Main Process] Segmentation Model Inputs:', segmentationSession.inputNames);
+    console.log('[Main Process] Segmentation Model Outputs:', segmentationSession.outputNames);
+    // Verify input shape if possible/needed
+    // const segInputMetadata = segmentationSession.handler.getInputMeta(0);
+    // console.log('[Main Process] Segmentation Model Expected Input Shape:', segInputMetadata?.dims);
+  } catch (error) {
+    console.error("[Main Process] Error loading Segmentation model:", error);
+    segmentationSession = null;
+    win?.webContents.send('model-load-error', `Segmentation Model Load Error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 // --- End ONNX Setup ---
+
+// --- Helper function for ArgMax --- (To process segmentation output)
+function argMax2D(data: Float32Array, numClasses: number, height: number, width: number): Uint8Array {
+  const outputMap = new Uint8Array(height * width);
+  const pixels = height * width;
+  
+  for (let i = 0; i < pixels; i++) {
+    let maxVal = -Infinity;
+    let maxIndex = 0;
+    for (let j = 0; j < numClasses; j++) {
+      // Index calculation: pixel_index * num_classes + class_index
+      // OR class_index * pixels + pixel_index depending on layout (C, H, W)
+      // Assuming C, H, W layout: access data[j * pixels + i]
+      const val = data[j * pixels + i]; 
+      if (val > maxVal) {
+        maxVal = val;
+        maxIndex = j;
+      }
+    }
+    outputMap[i] = maxIndex;
+  }
+  return outputMap;
+}
+
+// --- Helper for resizing mask ---
+async function resizeSegmentationMask(maskData: Uint8Array, originalWidth: number, originalHeight: number, targetWidth: number, targetHeight: number): Promise<Uint8Array> {
+  console.log(`[Main Process] Resizing mask from ${originalWidth}x${originalHeight} to ${targetWidth}x${targetHeight}`);
+  // Sharp needs a buffer
+  const buffer = Buffer.from(maskData);
+  const resizedBuffer = await sharp(buffer, { 
+      raw: { width: originalWidth, height: originalHeight, channels: 1 }
+  })
+  .resize(targetWidth, targetHeight, { kernel: sharp.kernel.nearest }) // Use nearest neighbor for masks
+  .raw()
+  .toBuffer();
+  console.log(`[Main Process] Mask resize complete. Output buffer length: ${resizedBuffer.length}`);
+  return new Uint8Array(resizedBuffer); // Convert back to Uint8Array
+}
+
+// --- Updated IPC Handler for Dual Inference ---
+ipcMain.handle('infer-depth', async (event, imageDataUrl: string) => {
+  // Check if both models and ORT are loaded
+  if (!depthSession || !segmentationSession || !ort) { 
+    console.error('[Main Process] Depth or Segmentation model or ONNX runtime not loaded, cannot infer.');
+    return null;
+  }
+  console.log('[Main Process] Received request for combined depth and segmentation inference.');
+  try {
+    // 1. Decode Base64 Image Data URL (Same as before)
+    const base64Data = imageDataUrl.split(',')[1];
+    if (!base64Data) throw new Error('Invalid Image Data URL format');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    console.time('Sharp Preprocessing');
+
+    // 2. Preprocess Image using Sharp (Same as before - assumes both models take same input size for now)
+    const image = sharp(imageBuffer);
+    const metadata = await image.metadata();
+    // Assuming segmentation model also takes 518x518 input based on segmentationModelInputShape
+    const inputWidth = segmentationModelInputShape[3]; 
+    const inputHeight = segmentationModelInputShape[2];
+
+    let sharpPipeline = image;
+    if (metadata.hasAlpha) {
+        sharpPipeline = sharpPipeline.removeAlpha();
+    }
+
+    const resizedImageBuffer = await sharpPipeline
+        .resize(inputWidth, inputHeight, { fit: 'fill' })
+        .raw()
+        .toBuffer();
+
+    console.timeEnd('Sharp Preprocessing');
+
+    // 3. Normalize and Prepare Tensor (Same tensor used for both models)
+    const float32Data = new Float32Array(inputWidth * inputHeight * 3);
+    for (let i = 0; i < inputHeight * inputWidth; i++) {
+        float32Data[i] = resizedImageBuffer[i * 3] / 255.0;           // R
+        float32Data[i + inputHeight * inputWidth] = resizedImageBuffer[i * 3 + 1] / 255.0; // G
+        float32Data[i + 2 * inputHeight * inputWidth] = resizedImageBuffer[i * 3 + 2] / 255.0; // B
+    }
+
+    const inputTensor = new ort.Tensor('float32', float32Data, segmentationModelInputShape);
+
+    // 4. Run Inference (Run both models)
+    console.time('Depth Inference');
+    const depthResults = await depthSession.run({ [depthSession.inputNames[0]]: inputTensor });
+    console.timeEnd('Depth Inference');
+    
+    console.time('Segmentation Inference');
+    const segmentationResults = await segmentationSession.run({ [segmentationSession.inputNames[0]]: inputTensor });
+    console.timeEnd('Segmentation Inference');
+
+    // 5. Process Depth Output (Same as before)
+    const depthOutputTensor = depthResults[depthSession.outputNames[0]];
+    const [depthBatch, depthHeight, depthWidth] = depthOutputTensor.dims;
+    const depthData = depthOutputTensor.data as Float32Array;
+    console.log(`[Main Process] Depth Output dims: [${depthBatch}, ${depthHeight}, ${depthWidth}]`);
+    // ... (min/max/avg logging remains the same) ...
+    let minVal = Infinity, maxVal = -Infinity, sum = 0;
+    for(let i=0; i<depthData.length; i++) { /* ... */ }
+    const avgVal = depthData.length > 0 ? sum / depthData.length : 0;
+    console.log(`[Main Process] Depth map stats: Min=${minVal}, Max=${maxVal}, Avg=${avgVal}`);
+
+    // 6. Process Segmentation Output
+    const segmentationOutputTensor = segmentationResults[segmentationSession.outputNames[0]];
+    const segLogits = segmentationOutputTensor.data as Float32Array;
+    // Shape is likely [batch, num_classes, height/4, width/4]
+    const [segBatch, numClasses, segHeightSmall, segWidthSmall] = segmentationOutputTensor.dims;
+    console.log(`[Main Process] Segmentation Output dims: [${segBatch}, ${numClasses}, ${segHeightSmall}, ${segWidthSmall}]`);
+
+    // Perform ArgMax to get class IDs
+    console.time('Segmentation ArgMax');
+    const segmentationMaskSmall = argMax2D(segLogits, numClasses, segHeightSmall, segWidthSmall);
+    console.timeEnd('Segmentation ArgMax');
+    console.log(`[Main Process] Segmentation mask (small) created, length: ${segmentationMaskSmall.length}`);
+
+    // Resize mask to match depth map dimensions
+    console.time('Segmentation Resize');
+    const segmentationMaskFinal = await resizeSegmentationMask(segmentationMaskSmall, segWidthSmall, segHeightSmall, depthWidth, depthHeight);
+    console.timeEnd('Segmentation Resize');
+    console.log(`[Main Process] Segmentation mask resized to ${depthWidth}x${depthHeight}, length: ${segmentationMaskFinal.length}`);
+
+    // 7. Prepare Visualization PNG (Optional: Could also visualize segmentation)
+    // Using normalized depth for now
+    const normalizedDepth = new Uint8Array(depthWidth * depthHeight);
+    const range = maxVal - minVal;
+    if (range > 0) { /* ... */ }
+    else { normalizedDepth.fill(128); }
+    // ... (sharp PNG conversion remains the same) ...
+    const pngBuffer = await sharp(normalizedDepth, { raw: { width: depthWidth, height: depthHeight, channels: 1 } })
+        .toFormat('png')
+        .toBuffer();
+    const pngDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
+
+    console.log('[Main Process] Combined inference complete, returning depth, segmentation mask, and PNG.');
+    // 8. Return combined results
+    return {
+      pngDataUrl: pngDataUrl,
+      depthData: Array.from(depthData),
+      width: depthWidth,
+      height: depthHeight,
+      segmentationMask: Array.from(segmentationMaskFinal) // Send final resized mask
+    };
+
+  } catch (error) {
+      console.error('[Main Process] Error during combined inference:', error);
+      win?.webContents.send('inference-error', error instanceof Error ? error.message : String(error));
+      return null;
+  }
+});
+// --- End Updated Inference Handler ---
 
 async function createWindow() {
   // Define icon path based on packaging status
@@ -242,138 +421,61 @@ async function createWindow() {
   });
   // === End Export Handler ===
 
-  // --- NEW IPC Handler for Depth Inference ---
-  ipcMain.handle('infer-depth', async (event, imageDataUrl: string) => {
-    if (!depthSession || !ort) { // Also check if ort is loaded
-      console.error('[Main Process] Depth model or ONNX runtime not loaded, cannot infer.');
-      // Optionally notify renderer:
-      // event.sender.send('inference-error', 'Model or runtime not ready.');
-      return null;
-    }
-    console.log('[Main Process] Received request for depth inference.');
-    try {
-      // 1. Decode Base64 Image Data URL
-      const base64Data = imageDataUrl.split(',')[1];
-      if (!base64Data) throw new Error('Invalid Image Data URL format');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-
-      // --- Start Preprocessing Timer ---
-      console.time('Sharp Preprocessing');
-
-      // 2. Preprocess Image using Sharp
-      const image = sharp(imageBuffer);
-      const metadata = await image.metadata();
-      console.log(`[Main Process] Original image size: ${metadata.width}x${metadata.height}, Channels: ${metadata.channels}`); // Log channels
-
-      const inputWidth = modelInputShape[3];
-      const inputHeight = modelInputShape[2];
-
-      // Explicitly check if alpha channel needs removal
-      let sharpPipeline = image;
-      if (metadata.hasAlpha) {
-          console.log('[Main Process] Image has alpha channel, removing it.');
-          sharpPipeline = sharpPipeline.removeAlpha();
+  // === IPC Handlers for Scale Factor ===
+  ipcMain.handle('load-scale-factor', async () => {
+      if (!store) {
+          console.error("[Main Process] Store not initialized, cannot load scale factor.");
+          return { average: 1, count: 0 }; // Return default object
       }
-
-      // Resize, convert to RGB if necessary, extract raw pixel data
-      const resizedImageBuffer = await sharpPipeline
-          .resize(inputWidth, inputHeight, {
-              fit: 'fill', // Use 'fill' to match exact dimensions
-              // kernel: sharp.kernel.mitchell // Optional: specify kernel
-          })
-          .raw() // Get raw pixel buffer
-          .toBuffer();
-
-      // --- End Preprocessing Timer ---
-      console.timeEnd('Sharp Preprocessing');
-
-      // 3. Normalize and Prepare Tensor
-      const float32Data = new Float32Array(inputWidth * inputHeight * 3);
-      // Normalize RGB values (0-255) to Float32 (0-1) and arrange in C, H, W format
-      for (let i = 0; i < inputHeight * inputWidth; i++) {
-          float32Data[i] = resizedImageBuffer[i * 3] / 255.0;           // R channel
-          float32Data[i + inputHeight * inputWidth] = resizedImageBuffer[i * 3 + 1] / 255.0; // G channel
-          float32Data[i + 2 * inputHeight * inputWidth] = resizedImageBuffer[i * 3 + 2] / 255.0; // B channel
+      const factors = store.get('calibrationFactors', []); // Get array, default empty
+      const count = factors.length;
+      if (count === 0) {
+          console.log("[Main Process] No calibration factors found, returning default { average: 1, count: 0 }.");
+          return { average: 1, count: 0 };
       }
-
-      const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape); // Use dynamically loaded ort
-
-      // --- Start Inference Timer ---
-      console.time('ONNX Inference');
-
-      // 4. Run Inference
-      const results = await depthSession.run({ [depthSession.inputNames[0]]: inputTensor });
-
-      // --- End Inference Timer ---
-      console.timeEnd('ONNX Inference');
-
-      // 5. Process Output (adjust based on actual model output)
-      const outputTensor = results[depthSession.outputNames[0]];
-      console.log('[Main Process] Inference successful. Output tensor dims:', outputTensor.dims);
-      // Example: Assuming output is [1, 1, height, width] depth map
-      // Convert tensor data to a usable format (e.g., Array or Float32Array)
-      const depthData = outputTensor.data as Float32Array; // Adjust type if needed
-      // Correctly parse 3D output tensor [Batch, Height, Width]
-      const [batch, height, width] = outputTensor.dims;
-
-      // Find min/max for normalization visualization (optional but helpful)
-      let minVal = Infinity;
-      let maxVal = -Infinity;
-      for (let i = 0; i < depthData.length; i++) {
-          if (depthData[i] < minVal) minVal = depthData[i];
-          if (depthData[i] > maxVal) maxVal = depthData[i];
-      }
-      console.log(`[Main Process] Depth map range: ${minVal} to ${maxVal}`);
-
-      // Normalize depth data to 0-255 grayscale for visualization
-      const normalizedDepth = new Uint8Array(width * height);
-      const range = maxVal - minVal;
-      if (range > 0) { // Avoid division by zero if map is flat
-          for (let i = 0; i < depthData.length; i++) {
-              normalizedDepth[i] = ((depthData[i] - minVal) / range) * 255;
-          }
-      } else {
-          // Handle flat depth map (e.g., set all to mid-gray)
-          normalizedDepth.fill(128);
-      }
-
-      // --- Add Debugging Logs ---
-      console.log(`[Main Process] Normalized depth array length: ${normalizedDepth.length}`);
-      console.log(`[Main Process] Normalized depth sample (first 10): ${normalizedDepth.slice(0, 10)}`);
-      // Cast channels to the literal type expected by SharpOptions
-      const sharpOptions = { raw: { width: width, height: height, channels: 1 as 1 } }; 
-      console.log(`[Main Process] Raw options for sharp:`, sharpOptions);
-      // --- End Debugging Logs ---
-
-       // 6. Convert normalized depth map to PNG Data URL using Sharp
-       try {
-           const pngBuffer = await sharp(normalizedDepth, sharpOptions)
-               .toFormat('png')
-               .toBuffer();
-           const pngDataUrl = `data:image/png;base64,${pngBuffer.toString('base64')}`;
-           console.log('[Main Process] Depth inference complete, returning PNG data URL.');
-           // Return an object with both PNG and raw data
-           return {
-               pngDataUrl: pngDataUrl,
-               depthData: Array.from(depthData), // Convert Float32Array to plain array for IPC
-               width: width,
-               height: height
-           };
-       } catch (sharpError) {
-           console.error("[Main Process] Error during sharp PNG conversion:", sharpError);
-           // Add more detail about the input to sharp in case of error
-           console.error(`[Main Process] Sharp input details: length=${normalizedDepth.length}, width=${width}, height=${height}, channels=1`);
-           throw sharpError; // Re-throw to be caught by the outer try-catch
-       }
-
-    } catch (error) {
-      console.error('[Main Process] Error during depth inference:', error);
-      // Optionally notify the renderer process of the error
-      win?.webContents.send('inference-error', error instanceof Error ? error.message : String(error));
-      return null;
-    }
+      // Calculate average
+      const sum = factors.reduce((acc, val) => acc + val, 0);
+      const averageFactor = sum / count;
+      console.log(`[Main Process] Loading ${count} factors. Average: ${averageFactor}`);
+      return { average: averageFactor, count: count }; // Return object
   });
-  // --- End Depth Inference Handler ---
+
+  ipcMain.handle('save-scale-factor', async (event, newFactor: number) => {
+      if (!store) {
+          console.error("[Main Process] Store not initialized, cannot save scale factor.");
+          return false;
+      }
+      if (typeof newFactor !== 'number' || isNaN(newFactor) || newFactor <= 0) {
+          console.error(`[Main Process] Invalid scale factor provided: ${newFactor}. Must be positive number.`);
+          return false; // Indicate failure
+      }
+      try {
+          const currentFactors = store.get('calibrationFactors', []);
+          currentFactors.push(newFactor);
+          store.set('calibrationFactors', currentFactors);
+          console.log(`[Main Process] Appended scale factor: ${newFactor}. Total factors: ${currentFactors.length}`);
+          return true; // Indicate success
+      } catch (error) {
+          console.error(`[Main Process] Error saving scale factor:`, error);
+          return false;
+      }
+  });
+
+  ipcMain.handle('clear-scale-factors', async () => {
+      if (!store) {
+          console.error("[Main Process] Store not initialized, cannot clear scale factors.");
+          return false;
+      }
+      try {
+          store.set('calibrationFactors', []); // Reset to empty array
+          console.log("[Main Process] Cleared all scale factors.");
+          return true;
+      } catch (error) {
+          console.error(`[Main Process] Error clearing scale factors:`, error);
+          return false;
+      }
+  });
+  // === End Scale Factor Handlers ===
 
   win.on('closed', () => {
     win = null
@@ -382,16 +484,20 @@ async function createWindow() {
 
 async function initializeApp() {
   try {
-    console.log('[Main Process] Dynamically importing electron-store...');
-    // Use eval to prevent TS from potentially converting dynamic import to require()
-    const ElectronStoreModule = await eval('import("electron-store")'); 
-    const ElectronStore = ElectronStoreModule.default as typeof ElectronStoreType; // Cast to imported type
-    store = new ElectronStore<StorageSchema>({
+    console.log('[Main Process] Initializing electron-store...');
+    // Use require for CJS version
+    // const { default: ElectronStore } = await import('electron-store'); // Removed dynamic import
+    // Cast the required module to the expected constructor type
+    const StoreConstructor = ElectronStore as { new(options?: ElectronStoreType.Options<StorageSchema>): ElectronStoreType<StorageSchema> };
+    store = new StoreConstructor({
         // Define schema or defaults if needed
         // schema: { measurements: { type: 'array', default: [] } },
-        defaults: { measurements: [] } // Provide default empty array
+        defaults: { 
+          measurements: [],
+          calibrationFactors: [] // Default empty array
+        } 
     });
-    console.log('[Main Process] electron-store initialized successfully.');
+    console.log('[Main Process] electron-store initialized successfully. Initial factors:', store.get('calibrationFactors'));
   } catch (error) {
       console.error('[Main Process] Failed to initialize electron-store:', error);
       // Handle error appropriately, maybe quit or show dialog
@@ -402,12 +508,13 @@ async function initializeApp() {
       console.log('[Main Process] Dynamically importing onnxruntime-node...');
       ort = await import('onnxruntime-node');
       console.log('[Main Process] onnxruntime-node imported successfully.');
-      await loadModel(); // Load model after ORT is ready
+      await loadModels(); // Load BOTH models
   } catch (error) {
       console.error('[Main Process] Failed to dynamically import or load ONNX runtime/model:', error);
       dialog.showErrorBox('Initialization Error', 'Failed to load the depth inference engine. Depth features will be unavailable.');
       ort = null; // Ensure ort is null if import failed
       depthSession = null;
+      segmentationSession = null;
   }
 
   // Create the main window *after* essential modules are loaded

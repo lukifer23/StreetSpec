@@ -10,6 +10,15 @@ import SettingsPanel from './components/SettingsPanel';
 
 // Initial load flag to prevent saving empty array on first render
 let hasLoadedMeasurements = false;
+// Initial load flag for scale factor
+let hasLoadedScaleFactor = false;
+
+// Add type for Segmentation Mask
+export interface SegmentationMask {
+    data: number[]; // Array of class IDs
+    width: number;
+    height: number;
+}
 
 function App() {
   // State to hold the target coordinates for the map
@@ -22,6 +31,7 @@ function App() {
   // --- State Lifted from MapView ---
   const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
   const [onnxDepthMap, setOnnxDepthMap] = useState<OnnxDepthMap | null>(null);
+  const [segmentationMask, setSegmentationMask] = useState<SegmentationMask | null>(null); // Add state for segmentation mask
   const [depthMapOverlayUrl, setDepthMapOverlayUrl] = useState<string | null>(null);
   const [isGeneratingMap, setIsGeneratingMap] = useState<boolean>(false);
   const [mapGenerationError, setMapGenerationError] = useState<string | null>(null);
@@ -32,6 +42,12 @@ function App() {
   const [fovOverride, setFovOverride] = useState<number | null>(null); // State for FOV override
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false); // State for settings panel visibility
   const [baseImageData, setBaseImageData] = useState<ImageBitmap | null>(null); // Store fetched image for processing
+
+  // --- Calibration State ---
+  const [avgScaleFactor, setAvgScaleFactor] = useState<number>(1);
+  const [numCalibrationFactors, setNumCalibrationFactors] = useState<number>(0);
+  const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
+  // --- End Calibration State ---
 
   // --- Lifted Measurement State ---
   const [measurementPhase, setMeasurementPhase] = useState<MeasurementPhase>('idle');
@@ -91,6 +107,38 @@ function App() {
     load();
   }, []); // Empty dependency array ensures this runs only once on mount
 
+  // Function to load/refresh scale factor state
+  const refreshScaleFactor = useCallback(async () => {
+    if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
+      try {
+        console.log("[App] Requesting to load/refresh scale factor data...");
+        // Expect object { average: number, count: number }
+        const result = await window.electronAPI.invoke('load-scale-factor'); 
+        if (result && typeof result.average === 'number' && result.average > 0 && typeof result.count === 'number') {
+          setAvgScaleFactor(result.average);
+          setNumCalibrationFactors(result.count);
+          console.log(`[App] Loaded scale factor data: Average=${result.average.toFixed(4)}, Count=${result.count}`);
+        } else {
+          console.warn(`[App] Received invalid scale factor data: ${JSON.stringify(result)}, using defaults.`);
+          setAvgScaleFactor(1);
+          setNumCalibrationFactors(0);
+        }
+      } catch (error) {
+        console.error("[App] Error invoking load-scale-factor:", error);
+        setAvgScaleFactor(1); // Default on error
+        setNumCalibrationFactors(0);
+      }
+    } else {
+      console.warn("[App] Electron API not available, cannot load scale factor.");
+    }
+    hasLoadedScaleFactor = true; // Ensure flag is set
+  }, []); // useCallback ensures function identity is stable if needed elsewhere
+
+  // Load Scale Factor on Mount
+  useEffect(() => {
+    refreshScaleFactor(); // Call the refresh function on mount
+  }, [refreshScaleFactor]); // Depend on the stable refresh function
+
   // Save Measurements on Change (after initial load)
   useEffect(() => {
     const save = async () => {
@@ -146,6 +194,7 @@ function App() {
     setIsGeneratingMap(true);
     setMapGenerationError(null);
     setOnnxDepthMap(null); // Clear previous map
+    setSegmentationMask(null); // Clear previous mask
     setDepthMapOverlayUrl(null);
     setBaseImageData(null); // Clear previous image data
 
@@ -190,30 +239,46 @@ function App() {
             if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
                 console.log("[App] Sending image data to main process for inference...");
                 try {
-                    // Expect the new object structure
-                    const result: { pngDataUrl: string; depthData: number[]; width: number; height: number } | null = await window.electronAPI.invoke('infer-depth', base64data);
+                    // Expect the new object structure including segmentation mask
+                    const result: { 
+                        pngDataUrl: string; 
+                        depthData: number[]; 
+                        width: number; 
+                        height: number;
+                        segmentationMask: number[]; // Expect the mask array
+                    } | null = await window.electronAPI.invoke('infer-depth', base64data);
                     
-                    if (result && result.pngDataUrl && result.depthData && result.width && result.height) {
+                    if (result && result.pngDataUrl && result.depthData && result.width && result.height && result.segmentationMask) {
                         // Create the OnnxDepthMap object for calculations
                         const depthMapForState: OnnxDepthMap = {
                              data: result.depthData,
                              width: result.width,
                              height: result.height
                         };
+                        // Create the SegmentationMask object
+                        const segMaskForState: SegmentationMask = {
+                            data: result.segmentationMask,
+                            width: result.width, // Assume same dims as depth map after resize
+                            height: result.height
+                        };
                         console.log(`[App] Received ONNX depth map: ${result.width}x${result.height}, data length: ${result.depthData.length}`);
+                        console.log(`[App] Received Segmentation mask: ${segMaskForState.width}x${segMaskForState.height}, data length: ${segMaskForState.data.length}`);
                         setOnnxDepthMap(depthMapForState); // Set numerical data state
+                        setSegmentationMask(segMaskForState); // Set segmentation mask state
                         setDepthMapOverlayUrl(result.pngDataUrl); // Set overlay image URL state
                     } else {
-                        // Clear both states if data is invalid
+                        // Clear all states if data is invalid
                         setOnnxDepthMap(null);
+                        setSegmentationMask(null);
                         setDepthMapOverlayUrl(null);
-                        throw new Error('Main process failed to return valid depth map data.');
+                        throw new Error('Main process failed to return valid depth map and segmentation data.');
                     }
                 } catch (ipcError) {
                    console.error("[App] Error during IPC invoke('infer-depth'):", ipcError);
-                   setMapGenerationError('IPC Error: Failed to get depth map from main process.');
+                   setMapGenerationError('IPC Error: Failed to get inference results from main process.');
                    setBaseImageData(null); // Clear image if inference fails
                    setOnnxDepthMap(null); // Clear depth map state on error
+                   setSegmentationMask(null); // Clear segmentation mask state on error
                    setDepthMapOverlayUrl(null); // Clear overlay URL state on error
                 }
             } else {
@@ -380,6 +445,34 @@ function App() {
   
   // --- End Export Handlers ---
 
+  // --- Calibration Handlers (Add Clear) ---
+  const handleClearCalibration = async () => {
+    const confirmClear = confirm(
+      'Are you sure you want to clear all stored calibration data? This will reset the scale factor to 1.'
+    );
+    if (confirmClear) {
+      if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
+        try {
+          const success = await window.electronAPI.invoke('clear-scale-factors');
+          if (success) {
+            setAvgScaleFactor(1); // Reset average factor state
+            setNumCalibrationFactors(0); // Reset count state
+            console.log("[App] Successfully cleared calibration factors.");
+            alert("Calibration data cleared.");
+          } else {
+            console.error("[App] Main process failed to clear scale factors.");
+            alert("Failed to clear calibration data.");
+          }
+        } catch (error) {
+          console.error("[App] Error invoking clear-scale-factors:", error);
+          alert("Error clearing calibration data.");
+        }
+      } else {
+        console.error("[App] Electron API not available for clear-scale-factors.");
+      }
+    }
+  };
+
   // Display error state
   if (error) {
     return <div className={styles.loadingPlaceholder}>{error}</div>;
@@ -396,13 +489,30 @@ function App() {
         ) : (
           <div className={styles.loadingPlaceholder} style={{height: 'auto', width: '400px'}}>Loading Search...</div>
         )}
-        <button 
-          onClick={() => setIsSettingsOpen(true)}
-          className={styles.settingsButton}
-          title="Open Settings"
-        >
-          ⚙️ Settings
-        </button>
+        <div className={styles.settingsButtonGroup}>
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className={styles.settingsButton}
+            title="Open Settings"
+          >
+            ⚙️ Settings
+          </button>
+          <button 
+            onClick={() => setIsCalibrating(prev => !prev)} // Toggle calibration mode
+            className={`${styles.settingsButton} ${isCalibrating ? styles.activeButton : ''}`}
+            title={isCalibrating ? "Exit Calibration Mode" : "Enter Scale Calibration Mode"}
+          >
+            📏 Calibrate Scale
+          </button>
+          <button 
+            onClick={handleClearCalibration}
+            className={`${styles.settingsButton} ${styles.dangerButton}`}
+            title="Clear all stored calibration factors and reset scale to 1"
+            disabled={numCalibrationFactors === 0} // Disable if no factors exist
+          >
+            Clear Calibration
+          </button>
+        </div>
       </div>
 
       {isSettingsOpen && (
@@ -474,6 +584,8 @@ function App() {
           
           <div className={styles.sidebarFooter}>
             {measurements.length} measurement{measurements.length !== 1 ? 's' : ''}
+            <br />
+            Scale Factor: {avgScaleFactor.toFixed(4)} {numCalibrationFactors > 0 ? `(Avg. of ${numCalibrationFactors})` : '(Default)'}
           </div>
         </div>
         
@@ -502,18 +614,26 @@ function App() {
                 mapGenerationError={mapGenerationError}
                 onnxDepthMap={onnxDepthMap}
                 onGenerateDepthMap={handleGenerateDepthMap}
-                isMeasurementActive={measurementIsActive}
+                isMeasurementActive={measurementIsActive || isCalibrating} // Map clicks disabled during measurement OR calibration
               />
               <MeasurementTool 
+                cameraParams={currentCameraParams} 
+                onnxDepthMap={onnxDepthMap}
+                segmentationMask={segmentationMask} // Pass segmentation mask down
+                onMeasurementComplete={handleMeasurementComplete}
+                measurements={measurements}
+                fovOverride={fovOverride}
+                baseImageData={baseImageData}
+                // Measurement Phase Props
                 measurementPhase={measurementPhase}
                 setMeasurementPhase={setMeasurementPhase}
                 measurementIsActive={measurementIsActive}
-                onnxDepthMap={onnxDepthMap}
-                baseImageData={baseImageData}
-                onMeasurementComplete={handleMeasurementComplete}
-                cameraParams={currentCameraParams}
-                fovOverride={fovOverride}
-                measurements={measurements}
+                // Calibration Props
+                scaleFactor={avgScaleFactor} // Pass the average factor
+                setScaleFactor={setAvgScaleFactor} // Setter updates the average state
+                isCalibrating={isCalibrating}
+                setIsCalibrating={setIsCalibrating} // Pass setter to exit mode after calibration
+                onCalibrationApplied={refreshScaleFactor} // Pass refresh function as callback
               />
             </>
           ) : (
