@@ -16,17 +16,15 @@ function parseDepthMapData(decompressedBytes: Uint8Array): DecodedDepthData | nu
     try {
         const headerSize = decompressedBytes[0];
         if (headerSize !== 8) {
-            console.warn("Unexpected depth map header size:", headerSize);
+            return null;
         }
         const numberOfPlanes = readUInt16LE(decompressedBytes, 1);
         const width = readUInt16LE(decompressedBytes, 3);
         const height = readUInt16LE(decompressedBytes, 5);
         const planeDataOffset = readUInt16LE(decompressedBytes, 7);
 
-        console.log("Parsed Header:", { headerSize, numberOfPlanes, width, height, planeDataOffset });
-
         if (width !== 512 || height !== 256) {
-            console.warn(`Unexpected depth map dimensions: ${width}x${height}`);
+            return null;
         }
 
         const indicesStart = headerSize;
@@ -43,8 +41,6 @@ function parseDepthMapData(decompressedBytes: Uint8Array): DecodedDepthData | nu
             planes.push({ nx, ny, nz, d });
         }
 
-        console.log(`Parsed ${planes.length} planes.`);
-
         return {
             planes,
             indices,
@@ -52,36 +48,27 @@ function parseDepthMapData(decompressedBytes: Uint8Array): DecodedDepthData | nu
             height
         };
     } catch (error) {
-        console.error("Error parsing depth map binary data:", error);
         return null;
     }
 }
 
 export async function getParsedDepthData(panoId: string): Promise<DecodedDepthData | null> {
-    console.log(`Requesting depth data for panoId: ${panoId} via IPC.`);
-    
     try {
-        const rawData: Uint8Array | null = await window.electronAPI.fetchDepthData(panoId);
+        const rawData: Uint8Array | null = await window.electronAPI.invoke('fetch-depth-data', panoId);
 
         if (!rawData) {
-            console.error("Received null data from main process for depth map.");
             return null;
         }
-
-        console.log(`Received ${rawData.length} raw bytes from main process.`);
 
         const parsedData = parseDepthMapData(rawData);
 
         if (!parsedData) {
-            console.error("Failed to parse depth map data.");
             return null;
         }
         
-        console.log("Successfully parsed depth data.");
         return parsedData;
 
     } catch (error) {
-        console.error("Error getting/parsing depth data:", error);
         return null;
     }
 }

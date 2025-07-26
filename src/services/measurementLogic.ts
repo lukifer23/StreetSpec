@@ -21,13 +21,10 @@ export function estimateDistanceToPoint(
     depthMap: OnnxDepthMap | null
 ): number | null {
     if (!depthMap || !depthMap.data || !depthMap.width || !depthMap.height) {
-        console.warn("[estimateDistanceToPoint] Depth map data is missing or invalid.");
         return null;
     }
     if (!cameraParams) {
-        console.warn("[estimateDistanceToPoint] Missing camera parameters for context.");
-        // Decide if you want to proceed without cameraParams or return null
-        // return null;
+        return null;
     }
 
     // Scale viewport coordinates to depth map coordinates
@@ -43,7 +40,6 @@ export function estimateDistanceToPoint(
     const index = clampedY * depthMap.width + clampedX;
 
     if (index < 0 || index >= depthMap.data.length) {
-        console.error(`[estimateDistanceToPoint] Calculated index ${index} is out of bounds for depth map data (length ${depthMap.data.length}). Coords: (${pixelX}, ${pixelY}) -> (${mapX}, ${mapY}) -> (${clampedX}, ${clampedY})`);
         return null;
     }
 
@@ -51,12 +47,9 @@ export function estimateDistanceToPoint(
     const distance = depthMap.data[index];
 
     if (distance === undefined || distance === null || distance <= 0) {
-        console.warn(`[estimateDistanceToPoint] Invalid depth value (${distance}) found at index ${index} for coords (${clampedX}, ${clampedY}).`);
-        // Return null or a default value? Returning null for now.
         return null;
     }
 
-    console.log(`[estimateDistanceToPoint] Sampled depth at (${clampedX}, ${clampedY}) [from pixel (${pixelX.toFixed(0)}, ${pixelY.toFixed(0)})]: ${distance.toFixed(2)}m`);
     return distance; // Return the depth value from the map
 }
 
@@ -78,7 +71,6 @@ export function calculateEstimatedHeight(
     distanceToBase: number | null
 ): number | null {
     if (!cameraParams?.fov || !cameraParams?.pitch || distanceToBase === null) {
-        console.warn("[calculateEstimatedHeight] Missing inputs for calculation.");
         return null;
     }
 
@@ -100,8 +92,6 @@ export function calculateEstimatedHeight(
 
     // Estimated height is the difference
     const estimatedHeight = Math.abs(heightAtBase - heightAtTop);
-
-    console.log(`[calculateEstimatedHeight] BaseY: ${basePixelY}, TopY: ${topPixelY}, Dist: ${distanceToBase.toFixed(1)}, Pitch: ${cameraParams.pitch.toFixed(1)}, FOV: ${cameraParams.fov.toFixed(1)} -> Est Height: ${estimatedHeight.toFixed(2)}m`);
 
     return estimatedHeight;
 } 

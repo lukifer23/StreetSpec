@@ -5,33 +5,52 @@ import electron from 'vite-plugin-electron'
 import path from 'node:path'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode, command }) => {
+export default defineConfig(({ mode }) => {
   process.env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
-
-  // Define the electron plugin configuration
-  const electronPlugin = electron([
-    {
-      // Main process configuration
-      entry: path.resolve(__dirname, 'electron/main.ts'),
-      vite: {
-        build: {
-          rollupOptions: {
-            external: ['onnxruntime-node', 'sharp'], // Treat sharp as external too
-          },
-        },
-      },
-    },
-    {
-      // Preload script configuration
-      entry: path.resolve(__dirname, 'electron/preload.ts'),
-    }
-  ]);
 
   return {
     plugins: [
       react(),
-      // Apply electron plugin configuration
-      electronPlugin,
+      electron([
+        {
+          // Main process entry
+          entry: 'electron/main.ts',
+          onstart(options) {
+            options.startup();
+          },
+          vite: {
+            build: {
+              outDir: 'dist-electron',
+              minify: false,
+              sourcemap: 'inline',
+              rollupOptions: {
+                external: ['electron', 'onnxruntime-node', 'sharp', 'node-fetch', 'pako'],
+              },
+            },
+          },
+        },
+        {
+          // Preload script entry
+          entry: 'electron/preload.ts',
+          onstart(options) {
+            options.reload();
+          },
+          vite: {
+            build: {
+              outDir: 'dist-electron',
+              minify: false,
+              sourcemap: 'inline',
+              lib: {
+                entry: 'electron/preload.ts',
+                formats: ['cjs'],
+              },
+              rollupOptions: {
+                external: ['electron'],
+              },
+            },
+          },
+        },
+      ]),
     ],
     define: {
       // Pass API key to the renderer build
@@ -40,8 +59,18 @@ export default defineConfig(({ mode, command }) => {
     // Ensure relative paths work correctly
     base: './',
     build: {
-      // Output directory for the React/renderer build
-      outDir: 'dist'
-    }
+      outDir: 'dist',
+      emptyOutDir: true,
+      sourcemap: true,
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, 'src'),
+      },
+    },
+    server: {
+      host: '127.0.0.1',
+      port: 5173,
+    },
   }
 })

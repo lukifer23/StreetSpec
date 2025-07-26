@@ -1,5 +1,5 @@
 import { CameraParams, Point, Vector3 } from '../types/common';
-import { DecodedDepthData } from './depth'; // Import depth data type
+import { DecodedDepthData } from './depth';
 
 // Helper function to calculate the dot product of two vectors
 const dotProduct = (v1: Vector3, v2: Vector3): number => {
@@ -55,7 +55,6 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // NDC range from -1 to 1, with (0,0) at the center.
     const ndcX = (screenPoint.x / viewWidth) * 2 - 1;
     const ndcY = 1 - (screenPoint.y / viewHeight) * 2; // Invert Y because screen Y is down
-    console.log(`  screenToWorld Input: screenY=${screenPoint.y}, viewHeight=${viewHeight}, ndcY=${ndcY.toFixed(4)}`);
 
     // 2. Account for FOV and aspect ratio
     // Calculate the distance from the camera to the projection plane based on FOV
@@ -74,21 +73,17 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
         y: ndcY, 
         z: zDistance,
     };
-    console.log(`  screenToWorld Initial Vector: y=${vector.y.toFixed(4)}, z=${vector.z.toFixed(4)}, fov=${fov.toFixed(2)}`);
 
     // 4. Apply rotations based on camera heading and pitch
     // Convert heading and pitch to radians
     const headingRad = degreesToRadians(heading);
-    const pitchRad = degreesToRadians(pitch); // REVERT: Use original pitch 
+    const pitchRad = degreesToRadians(pitch);
 
     // Pitch rotation (around X-axis)
-    // REVERT: Use -pitchRad again in rotation formulas
     const cosPitch = Math.cos(-pitchRad); 
     const sinPitch = Math.sin(-pitchRad); 
     let rotatedY = vector.y * cosPitch - vector.z * sinPitch; 
     let rotatedZ = vector.y * sinPitch + vector.z * cosPitch; 
-    // REVERT: Log message
-    console.log(`  screenToWorld After Pitch (${pitch.toFixed(2)}deg): rotatedY=${rotatedY.toFixed(4)}, vector.y=${vector.y.toFixed(4)}, vector.z=${vector.z.toFixed(4)}, sinPitch=${sinPitch.toFixed(4)}`);
     vector = { x: vector.x, y: rotatedY, z: rotatedZ };
 
     // Heading rotation (around Y-axis)
@@ -104,7 +99,6 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // Conventionally, in Street View context: +Y is up, +X is right, +Z is forward.
     // Our calculation results in +Z forward, +Y up, +X right relative to camera view. Let's keep this.
     const normalized = normalizeVector(vector);
-    console.log(`  screenToWorld Final Normalized: y=${normalized.y.toFixed(4)}`);
     return normalized;
 }
 
@@ -126,7 +120,6 @@ export function estimateGroundPlaneIntersection(
     // Check if the vector points downwards (negative y component) and is not too close to horizontal
     if (directionVector.y >= 0 || Math.abs(directionVector.y) < HORIZON_THRESHOLD) {
         // Vector points upwards or is too close to horizontal, won't intersect reliably.
-        console.warn(`Direction vector does not point sufficiently towards the ground plane (y=${directionVector.y.toFixed(4)}).`, directionVector);
         return null; 
     }
 
@@ -198,10 +191,8 @@ export function screenToWorldWithDepth(
             y: directionVector.y * minDistance,
             z: directionVector.z * minDistance,
         };
-        console.log(`  screenToWorldWithDepth: Found intersection at distance ${minDistance.toFixed(2)}m`, worldPoint);
         return worldPoint;
     } else {
-        console.warn("screenToWorldWithDepth: No valid intersection found with depth planes for point:", screenPoint);
         return null; // No valid intersection found
     }
 }
@@ -218,10 +209,4 @@ export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
     const dy = point2.y - point1.y;
     const dz = point2.z - point1.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-// TODO:
-// - [DONE] Implement screenToWorldWithDepth
-// - Use screenToWorldWithDepth in measurement.ts
-// - Consider alternative world point estimation methods (e.g., ground plane) as fallback for screenToWorldWithDepth
-// - Refine camera height assumption or make it configurable 
+} 

@@ -7,12 +7,13 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "clean": "rm -rf dist dist-electron",
+    "clean": "if exist dist rmdir /s /q dist && if exist dist-electron rmdir /s /q dist-electron",
     "dev:vite": "vite",
     "dev": "npm run clean && vite",
     "build:vite": "vite build",
     "build:electron": "npm run build:vite && electron-builder",
     "build": "npm run build:electron",
+    "build:win": "npm run build:electron -- --win --x64",
     "typecheck": "tsc --noEmit -p tsconfig.json --composite false",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
@@ -26,23 +27,25 @@
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.8",
+    "electron-store": "^10.1.0",
     "node-fetch": "^3.3.2",
+    "onnxruntime-node": "^1.18.0",
     "pako": "^2.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.34.1",
-    "onnxruntime-node": "^1.18.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/google.maps": "^3.58.1",
     "@types/node": "^18.19.86",
+    "@types/node-fetch": "^2.6.12",
     "@types/pako": "^2.0.3",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@types/uuid": "^10.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.17.0",
-    "@typescript-eslint/parser": "^7.17.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
@@ -57,5 +60,38 @@
     "vite": "^5.3.5",
     "vite-plugin-electron": "^0.29.0",
     "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.polecheck.desktop",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.onnx"
+    ],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/assets/models/",
+        "to": "assets/models",
+        "filter": [
+          "*.onnx"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "PoleCheck-Setup-${version}.${ext}"
+    }
   }
 }

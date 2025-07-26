@@ -3,17 +3,65 @@ import { Loader } from '@googlemaps/js-api-loader';
 import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
-import { Coordinates, CameraParams, Measurement, OnnxDepthMap } from './types/common';
+import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings } from './types/common';
 import styles from './App.module.css';
 import './App.css';
+
+// Add rate limiting configuration at the top of the file
+const RATE_LIMIT = {
+  maxRetries: 3,
+  retryDelay: 1000,
+  maxConcurrent: 1
+};
+
+let requestQueue: Array<() => Promise<unknown>> = [];
+let isProcessingQueue = false;
+
+// Queue processor function (unused but kept for future rate limiting implementation)
+// async function processQueue() {
+//   if (isProcessingQueue || requestQueue.length === 0) return;
+//   
+//   isProcessingQueue = true;
+//   while (requestQueue.length > 0) {
+//     const request = requestQueue.shift();
+//     if (request) {
+//       try {
+//         await request();
+//         // Add delay between requests
+//         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.retryDelay));
+//       } catch (error) {
+//         // Silent error handling for production
+//       }
+//     }
+//   }
+//   isProcessingQueue = false;
+// }
+
+// Add rate-limited fetch function
+async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response> {
+  try {
+    const response = await fetch(url);
+    if (response.status === 429 && retryCount < RATE_LIMIT.maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.retryDelay));
+      return rateLimitedFetch(url, retryCount + 1);
+    }
+    return response;
+  } catch (error) {
+    if (retryCount < RATE_LIMIT.maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.retryDelay));
+      return rateLimitedFetch(url, retryCount + 1);
+    }
+    throw error;
+  }
+}
 
 function App() {
   // State to hold the target coordinates for the map
   const [targetCoords, setTargetCoords] = useState<Coordinates | null>(null);
   // State to hold the API key (ensure it's loaded safely)
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-  const [isApiLoaded, setIsApiLoaded] = useState(false); // State for API load status
-  const [error, setError] = useState<string | null>(null); // State for errors
+  const [isApiLoaded, setIsApiLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // --- State Lifted from MapView ---
   const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
@@ -22,16 +70,66 @@ function App() {
   const [mapGenerationError, setMapGenerationError] = useState<string | null>(null);
   // --- End Lifted State ---
 
-  const [measurements, setMeasurements] = useState<Measurement[]>([]); // State for measurements
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
+  const [settings, setSettings] = useState<AppSettings>({
+    defaultUnit: 'metric',
+    autoSave: true,
+    theme: 'light',
+    language: 'en',
+    measurementHistoryLimit: 1000
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load settings and measurements on app start
+  useEffect(() => {
+    const loadPersistedData = async () => {
+      try {
+        if (window.electronAPI?.invoke) {
+          const [savedSettings, savedMeasurements] = await Promise.all([
+            window.electronAPI.invoke('get-settings'),
+            window.electronAPI.invoke('get-measurements')
+          ]);
+          
+          if (savedSettings) {
+            setSettings(savedSettings);
+          }
+          
+          if (savedMeasurements && Array.isArray(savedMeasurements)) {
+            setMeasurements(savedMeasurements);
+          }
+        }
+      } catch (error) {
+        // Silent error handling for production
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPersistedData();
+  }, []);
+
+  // Auto-save measurements when they change
+  useEffect(() => {
+    if (!isLoading && settings.autoSave && window.electronAPI?.invoke) {
+      const saveMeasurements = async () => {
+        try {
+          await window.electronAPI.invoke('save-measurements', measurements);
+        } catch (error) {
+          // Silent error handling for production
+        }
+      };
+      
+      saveMeasurements();
+    }
+  }, [measurements, settings.autoSave, isLoading]);
 
   // Load Google Maps API
   useEffect(() => {
     if (!apiKey) {
-      console.error("API Key is missing!");
       setError("Error: Google Maps API Key is missing. Please check your .env file.");
       return;
     }
-    setError(null); // Clear previous errors
+    setError(null);
     const loader = new Loader({
       apiKey: apiKey,
       version: "quarterly",
@@ -39,19 +137,14 @@ function App() {
     });
 
     loader.load().then(() => {
-      console.log("Google Maps API loaded successfully");
       setIsApiLoaded(true);
-    }).catch(e => {
-      console.error("Error loading Google Maps API:", e);
+    }).catch(() => {
       setError("Failed to load Google Maps. Please check the console and API Key.");
     });
-
-    // No cleanup needed for the loader itself
-  }, [apiKey]); // Re-run if API key changes (though it shouldn't)
+  }, [apiKey]);
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
-    // console.log('App received camera params:', params);
     setCurrentCameraParams(params);
   }, []);
 
@@ -62,33 +155,26 @@ function App() {
         lat: place.geometry.location.lat(),
         lng: place.geometry.location.lng(),
       };
-      console.log("Setting new map coordinates from Place:", newCoords);
       setTargetCoords(newCoords);
-    } else {
-      console.error("Selected place has no geometry:", place);
     }
   };
 
   // Callback for when raw coordinates are entered
   const handleCoordsEntered = (coords: Coordinates) => {
-    console.log("Setting new map coordinates from Input:", coords);
     setTargetCoords(coords);
   };
 
   // --- Depth Map Generation Logic (Lifted from MapView) ---
   const handleGenerateDepthMap = useCallback(async () => {
     if (!currentCameraParams || !apiKey || isGeneratingMap) {
-      console.warn("[App] Cannot generate depth map: Params/API Key missing or already generating.");
       return;
     }
 
     setIsGeneratingMap(true);
     setMapGenerationError(null);
-    setOnnxDepthMap(null); // Clear previous map
+    setOnnxDepthMap(null);
 
-    console.log("[App] Generating depth map with params:", currentCameraParams);
-
-    const imgWidth = 640; 
+    const imgWidth = 640;
     const imgHeight = 640;
 
     const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
@@ -100,107 +186,160 @@ function App() {
                    `key=${apiKey}`;
 
     try {
-      console.log("[App] Fetching static image from:", apiUrl);
-      const response = await fetch(apiUrl);
+      const response = await rateLimitedFetch(apiUrl);
+      
       if (!response.ok) {
         throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
       }
+
       const imageBlob = await response.blob();
-      
       const reader = new FileReader();
+      
       reader.readAsDataURL(imageBlob);
       reader.onloadend = async () => {
-          const base64data = reader.result as string;
-          if (!base64data) {
-              throw new Error('Failed to convert image blob to Data URL');
-          }
-          console.log("[App] Converted static image to Data URL (length:", base64data.length, ")");
-          
-          if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
-              console.log("[App] Sending image data to main process for inference...");
-              const result: OnnxDepthMap | null = await window.electronAPI.invoke('infer-depth', base64data);
-              if (result && result.data && result.width && result.height) {
-                  console.log(`[App] Received ONNX depth map: ${result.width}x${result.height}, data length: ${result.data.length}`);
-                  setOnnxDepthMap(result);
-              } else {
-                  throw new Error('Main process failed to return valid depth map data.');
-              }
-          } else {
-               throw new Error('IPC invoke function not available.');
-          }
-      };
-      reader.onerror = () => {
-          throw new Error('FileReader error reading image blob');
+        const base64data = reader.result as string;
+        if (!base64data) {
+          throw new Error('Failed to convert image blob to Data URL');
+        }
+        
+        if (!window.electronAPI?.invoke) {
+          throw new Error('IPC invoke function not available. Please restart the application.');
+        }
+
+        const result: OnnxDepthMap | null = await window.electronAPI.invoke('infer-depth', base64data);
+        
+        if (!result?.data || !result?.width || !result?.height) {
+          throw new Error('Main process failed to return valid depth map data.');
+        }
+
+        setOnnxDepthMap(result);
       };
 
-    } catch (error: any) {
-      console.error("[App] Error generating depth map:", error);
-      setMapGenerationError(error.message || 'Failed to generate depth map');
+      reader.onerror = () => {
+        throw new Error('FileReader error reading image blob');
+      };
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate depth map';
+      setMapGenerationError(errorMessage);
     } finally {
       setIsGeneratingMap(false);
     }
-
   }, [currentCameraParams, apiKey, isGeneratingMap]);
   // --- End Depth Map Generation Logic ---
 
   // Add a new measurement to the list
   const handleMeasurementComplete = useCallback((newMeasurement: Measurement) => {
-      console.log("App received completed measurement:", newMeasurement);
-      setMeasurements(prev => [...prev, newMeasurement]);
-      // TODO: Save to persistent storage (Phase 3)
-  }, []);
+    setMeasurements(prev => {
+      const updated = [...prev, newMeasurement];
+      
+      // Enforce measurement history limit
+      if (updated.length > settings.measurementHistoryLimit) {
+        return updated.slice(-settings.measurementHistoryLimit);
+      }
+      
+      return updated;
+    });
+  }, [settings.measurementHistoryLimit]);
 
-  const handleClearMeasurements = useCallback(() => {
-      setMeasurements([]);
-      // TODO: Clear from persistent storage
+  const handleClearMeasurements = useCallback(async () => {
+    setMeasurements([]);
+    if (window.electronAPI?.invoke) {
+      try {
+        await window.electronAPI.invoke('clear-data');
+      } catch (error) {
+        // Silent error handling for production
+      }
+    }
   }, []);
 
   const handleDeleteMeasurement = useCallback((idToDelete: string) => {
-      setMeasurements(prev => prev.filter(m => m.id !== idToDelete));
-      // TODO: Delete from persistent storage
+    setMeasurements(prev => prev.filter(m => m.id !== idToDelete));
   }, []);
 
   const handleRenameMeasurement = useCallback((idToRename: string, newName: string) => {
-      setMeasurements(prev => 
-          prev.map(m => m.id === idToRename ? { ...m, name: newName } : m)
-      );
-       // TODO: Update in persistent storage
+    setMeasurements(prev => 
+      prev.map(m => m.id === idToRename ? { ...m, name: newName } : m)
+    );
   }, []);
 
-  const handleExportCSV = async () => {
-      if (measurements.length === 0) {
-          alert("No measurements to export.");
-          return;
-      }
-      // Basic CSV formatting (can be improved)
-      const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y";
-      const rows = measurements.map(m => 
-          `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y}`
-      );
-      const csvContent = `${header}\n${rows.join('\n')}`;
+  // Unit toggle handler
+  const handleUnitToggle = useCallback(() => {
+    const newUnit: 'metric' | 'imperial' = settings.defaultUnit === 'metric' ? 'imperial' : 'metric';
+    const newSettings: AppSettings = { ...settings, defaultUnit: newUnit };
+    setSettings(newSettings);
+    
+    // Save settings
+    if (window.electronAPI?.invoke) {
+      window.electronAPI.invoke('save-settings', newSettings).catch(() => {
+        // Silent error handling for production
+      });
+    }
+  }, [settings]);
 
-      try {
-          if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
-              const filePath = await window.electronAPI.invoke('export-to-csv', csvContent);
-              if (filePath) {
-                  alert(`Measurements exported successfully to: ${filePath}`);
-              } else {
-                  // Handle cancellation or error in main process (e.g., user cancelled save dialog)
-                  console.log("CSV export cancelled or failed in main process.");
-              }
-          } else {
-              console.error("Export failed: IPC channel not available.");
-              alert("Export failed: Cannot communicate with the main process.");
-          }
-      } catch (error) {
-          console.error("Error during CSV export invocation:", error);
-          alert(`Export failed: ${error}`);
+  // Keyboard shortcuts handler
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Export data with Ctrl+E
+      if (event.ctrlKey && event.key === 'e') {
+        event.preventDefault();
+        handleExportCSV();
+        return;
       }
+
+      // Clear all with Ctrl+Shift+Delete
+      if (event.ctrlKey && event.shiftKey && event.key === 'Delete') {
+        event.preventDefault();
+        handleClearMeasurements();
+        return;
+      }
+
+      // Toggle unit with 'u' key
+      if (event.key === 'u') {
+        event.preventDefault();
+        handleUnitToggle();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUnitToggle]);
+
+  const handleExportCSV = async () => {
+    if (measurements.length === 0) {
+      alert("No measurements to export.");
+      return;
+    }
+    
+    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y";
+    const rows = measurements.map(m => 
+      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y}`
+    );
+    const csvContent = `${header}\n${rows.join('\n')}`;
+
+    try {
+      if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
+        const filePath = await window.electronAPI.invoke('csv-export', csvContent);
+        if (filePath) {
+          alert(`Measurements exported successfully to: ${filePath}`);
+        }
+      } else {
+        alert("Export failed: Cannot communicate with the main process.");
+      }
+    } catch (error) {
+      alert(`Export failed: ${error}`);
+    }
   };
 
   // Display error state
   if (error) {
     return <div className={styles.loadingPlaceholder}>{error}</div>;
+  }
+
+  // Display loading state
+  if (isLoading) {
+    return <div className={styles.loadingPlaceholder}>Loading application...</div>;
   }
 
   return (
@@ -220,12 +359,21 @@ function App() {
         <div className={styles.sidebar}>
           <div className={styles.sidebarHeader}>
             <h4>Measurements</h4>
-            {measurements.length > 0 && (
-              <>
-                 <button onClick={handleExportCSV} className={styles.sidebarButton} title="Export as CSV">Export</button>
-                 <button onClick={handleClearMeasurements} className={`${styles.sidebarButton} ${styles.dangerButton}`} title="Clear All Measurements">Clear All</button>
-              </>
-            )}
+            <div className={styles.sidebarControls}>
+              <button 
+                onClick={handleUnitToggle} 
+                className={styles.unitToggle}
+                title={`Toggle units (${settings.defaultUnit === 'metric' ? 'Imperial' : 'Metric'})`}
+              >
+                {settings.defaultUnit === 'metric' ? 'm/ft' : 'ft/m'}
+              </button>
+              {measurements.length > 0 && (
+                <>
+                   <button onClick={handleExportCSV} className={styles.sidebarButton} title="Export as CSV (Ctrl+E)">Export</button>
+                   <button onClick={handleClearMeasurements} className={`${styles.sidebarButton} ${styles.dangerButton}`} title="Clear All Measurements (Ctrl+Shift+Delete)">Clear All</button>
+                </>
+              )}
+            </div>
           </div>
 
           {measurements.length === 0 ? (
@@ -257,7 +405,12 @@ function App() {
              </ul>
           )}
           <div className={styles.sidebarFooter}>
-            PoleCheck Desktop v0.0.1
+            <div>PoleCheck Desktop v0.0.1</div>
+            <div className={styles.shortcuts}>
+              <span>M: Measure</span>
+              <span>U: Toggle Units</span>
+              <span>Ctrl+E: Export</span>
+            </div>
           </div>
         </div>
         
@@ -278,6 +431,8 @@ function App() {
                 onMeasurementComplete={handleMeasurementComplete}
                 measurements={measurements}
                 onnxDepthMap={onnxDepthMap}
+                currentUnit={settings.defaultUnit}
+                onUnitToggle={handleUnitToggle}
               />
             </>
           ) : (

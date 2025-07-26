@@ -6,7 +6,7 @@ import {
     screenToWorldWithDepth
 } from './geometry'; 
 import { v4 as uuidv4 } from 'uuid'; // Assuming uuid is installed
-import { DecodedDepthData } from './depth'; // Add import
+import { DecodedDepthData } from '../types/common'; // Import from common types
 
 /**
  * Creates a new measurement object.
@@ -31,7 +31,6 @@ export function createMeasurement(
   depthData: DecodedDepthData | null,
   unit: 'metric' | 'imperial' = 'metric'
 ): Measurement {
-  console.log("Creating measurement with:", { startPoint, endPoint, cameraParams, viewWidth, viewHeight, hasDepthData: !!depthData, unit });
   let errorMessage: string | undefined = undefined; // To store potential errors/warnings
 
   if (!cameraParams || cameraParams.fov === undefined) {
@@ -43,7 +42,6 @@ export function createMeasurement(
   let worldPoint2: Vector3 | null = null;
 
   if (depthData) {
-    console.log("Attempting world point estimation using depth data...");
     worldPoint1 = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
     worldPoint2 = screenToWorldWithDepth(endPoint, cameraParams, viewWidth, viewHeight, depthData);
 
@@ -51,27 +49,23 @@ export function createMeasurement(
     if (!worldPoint2) errorMessage = (errorMessage || "") + "Depth intersection failed for end point.";
 
   } else {
-    console.log("No depth data available, attempting ground plane intersection...");
     errorMessage = "No depth data; used ground plane estimate. ";
   }
 
   // Fallback to Ground Plane Intersection if depth data failed or wasn't available
   if (!worldPoint1) {
-      console.warn("Falling back to ground plane intersection for start point.");
       const directionVec1 = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
       worldPoint1 = estimateGroundPlaneIntersection(directionVec1);
       if (!worldPoint1) errorMessage = (errorMessage || "") + "Ground plane intersection failed for start point. ";
   }
   if (!worldPoint2) {
-      console.warn("Falling back to ground plane intersection for end point.");
       const directionVec2 = screenToWorld(endPoint, cameraParams, viewWidth, viewHeight);
       worldPoint2 = estimateGroundPlaneIntersection(directionVec2);
-      if (!worldPoint2) errorMessage = (errorMessage || "") + "Ground plane intersection failed for end point.";
+      if (!worldPoint2) errorMessage = (errorMessage || "") + "Ground plane intersection failed for end point. ";
   }
 
   // LAST RESORT: If either point is still null, we cannot calculate distance.
   if (!worldPoint1 || !worldPoint2) {
-    console.error("Failed to estimate world coordinates for one or both points.", { worldPoint1, worldPoint2 });
     // Return a measurement object indicating failure
     return {
       id: uuidv4(),
@@ -86,8 +80,6 @@ export function createMeasurement(
       error: errorMessage || "Failed to determine 3D coordinates for measurement."
     };
   }
-
-  console.log("Final World Points for distance calc:", { worldPoint1, worldPoint2 });
 
   // 2. Calculate 3D distance between world points
   const distanceMeters = calculateDistance3D(worldPoint1, worldPoint2);
@@ -106,6 +98,5 @@ export function createMeasurement(
     error: errorMessage // Include any error/warning messages
   };
 
-  console.log("Measurement created:", measurement);
   return measurement;
 } 

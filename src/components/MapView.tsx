@@ -44,16 +44,11 @@ const MapView: React.FC<MapViewProps> = ({
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
 
-  // API Key access (ensure it's available)
-  // const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''; // No longer needed here
-
   // Initialization Effect
   useEffect(() => {
     if (isInitialized || !mapContainerRef.current || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') {
-      console.log("[MapView] Initialization check failed or already initialized.");
       return;
     }
-    console.log("MapView: Attempting StreetViewPanorama initialization...");
     try {
       const initialPosition = { lat: lat ?? DEFAULT_LAT, lng: lng ?? DEFAULT_LNG };
       const panorama = new google.maps.StreetViewPanorama(
@@ -71,9 +66,8 @@ const MapView: React.FC<MapViewProps> = ({
       );
       streetViewRef.current = panorama;
       setIsInitialized(true);
-      console.log("MapView: StreetViewPanorama instance created successfully.");
     } catch (error) {
-      console.error("MapView: Error during StreetViewPanorama initialization:", error);
+      // Silent error handling for production
     }
   }, [isInitialized, lat, lng]);
 
@@ -82,7 +76,6 @@ const MapView: React.FC<MapViewProps> = ({
     if (streetViewRef.current && lat !== undefined && lng !== undefined) {
       const currentPosition = streetViewRef.current.getPosition();
       if (currentPosition?.lat() !== lat || currentPosition?.lng() !== lng) {
-        console.log(`MapView: Updating position via props to ${lat}, ${lng}`);
         streetViewRef.current.setPosition({ lat, lng });
       }
     }
@@ -114,7 +107,7 @@ const MapView: React.FC<MapViewProps> = ({
       // Store locally to enable/disable button
       setCurrentCameraParams(newParams); 
       // Propagate up to App
-      onCameraParamsChange(newParams); // Use the required prop callback
+      onCameraParamsChange(newParams);
     };
 
     const debouncedUpdateParams = debounce(updateLogic, 250); 
@@ -126,19 +119,19 @@ const MapView: React.FC<MapViewProps> = ({
     return () => {
       listeners.forEach(listener => listener.remove());
     };
-  }, [isInitialized, onCameraParamsChange]); // Depend on the prop callback
+  }, [isInitialized, onCameraParamsChange]);
 
   // --- UI Indicator for Depth Map Generation (Uses props now) ---
   const GenStatusIndicator = () => {
       let text = 'ML Depth: ';
       let color = '#eee';
-      if (isGeneratingMap) { // Use prop
+      if (isGeneratingMap) {
         text += 'Generating...';
         color = 'orange';
-      } else if (mapGenerationError) { // Use prop
+      } else if (mapGenerationError) {
         text += `Error (${mapGenerationError})`;
         color = 'red';
-      } else if (onnxDepthMap) { // Use prop
+      } else if (onnxDepthMap) {
         text += `Ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
         color = 'lime';
       } else {
@@ -156,13 +149,12 @@ const MapView: React.FC<MapViewProps> = ({
           padding: '4px 8px',
           borderRadius: '4px',
           fontSize: '0.8em',
-          zIndex: 100 // Ensure it's above map elements
+          zIndex: 100
         }}>
           {text}
         </div>
       );
     };
-    // --- End UI Indicator ---
 
   return (
     <div 
@@ -172,10 +164,9 @@ const MapView: React.FC<MapViewProps> = ({
     >
       {isInitialized && (
         <>
-          {/* Button to trigger generation (calls prop function) */} 
           <button 
-            onClick={onGenerateDepthMap} // Call prop function
-            disabled={isGeneratingMap || !currentCameraParams} // Disable based on prop and local params
+            onClick={onGenerateDepthMap}
+            disabled={isGeneratingMap || !currentCameraParams}
             style={{
               position: 'absolute', 
               top: '10px',
@@ -188,12 +179,10 @@ const MapView: React.FC<MapViewProps> = ({
             {isGeneratingMap ? 'Generating...' : 'Generate Depth Map'}
           </button>
 
-          {/* Status Indicator */} 
           <GenStatusIndicator />
         </>
       )}
       {!isInitialized && <div style={{ padding: '20px', color: 'black' }}>Initializing Map...</div>}
-      {/* Optionally display depth map overlay here using onnxDepthMap prop */}
     </div>
   );
 };

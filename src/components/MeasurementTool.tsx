@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Point, CameraParams, Measurement, OnnxDepthMap } from '../types/common';
+import { Point, CameraParams, Measurement, OnnxDepthMap, UNIT_CONVERSIONS, DEFAULT_SHORTCUTS } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { v4 as uuidv4 } from 'uuid';
 import styles from './MeasurementTool.module.css';
@@ -9,11 +9,20 @@ interface MeasurementToolProps {
   onnxDepthMap: OnnxDepthMap | null;
   onMeasurementComplete: (measurement: Measurement) => void;
   measurements: Measurement[];
+  currentUnit?: 'metric' | 'imperial';
+  onUnitToggle?: () => void;
 }
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDepthMap, onMeasurementComplete, measurements }) => {
+const MeasurementTool: React.FC<MeasurementToolProps> = ({ 
+  cameraParams, 
+  onnxDepthMap, 
+  onMeasurementComplete, 
+  measurements,
+  currentUnit = 'metric',
+  onUnitToggle
+}) => {
   const [phase, setPhase] = useState<MeasurementPhase>('idle');
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [endPoint, setEndPoint] = useState<Point | null>(null);
@@ -34,7 +43,6 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
 
   const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!cameraParams || !isActive) {
-      if (!cameraParams) console.warn("Cannot place point: Camera parameters not available yet.");
       return;
     }
 
@@ -42,13 +50,11 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
     if (!coords) return;
 
     if (phase === 'placingStart') {
-      console.log("Base Point Placed:", coords);
       setStartPoint(coords);
       setPhase('placingEnd');
       setCurrentMousePos(coords);
       setEndPoint(null);
     } else if (phase === 'placingEnd') {
-      console.log("Top Point Placed:", coords);
       setEndPoint(coords);
       setPhase('idle');
       setCurrentMousePos(null);
@@ -58,7 +64,6 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
         const viewWidth = overlayRef.current?.offsetWidth;
         
         if (!viewHeight || !viewWidth) {
-          console.error("Cannot measure: Overlay dimensions not available.");
           setStartPoint(null);
           setEndPoint(null);
           return;
@@ -74,7 +79,6 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
         );
 
         if (distanceToBase === null) {
-          console.error("Could not estimate distance to base point. Check depth map.");
           setStartPoint(null);
           setEndPoint(null);
           return;
@@ -89,19 +93,21 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
         );
 
         if (estimatedHeight !== null) {
+          // Convert to imperial if needed
+          const finalDistance = currentUnit === 'imperial' 
+            ? UNIT_CONVERSIONS.metersToFeet(estimatedHeight)
+            : estimatedHeight;
+
           const newMeasurement: Measurement = {
             id: uuidv4(),
             label: 'Est. Height',
-            distance: estimatedHeight,
+            distance: finalDistance,
             startPoint: startPoint,
             endPoint: coords,
-            unit: 'metric',
+            unit: currentUnit,
             timestamp: Date.now(),
           };
-          console.log("Created Estimated Measurement:", newMeasurement);
           onMeasurementComplete(newMeasurement);
-        } else {
-           console.error("Failed to calculate estimated height.");
         }
 
       }
@@ -157,7 +163,9 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
       context.fillStyle = 'white';
       context.shadowColor = 'black';
       context.shadowBlur = 4;
-      context.fillText(`${m.label}: ${m.distance.toFixed(2)}${m.unit}`, midX + 10, midY);
+      
+      const unitLabel = m.unit === 'metric' ? 'm' : 'ft';
+      context.fillText(`${m.label}: ${m.distance.toFixed(2)}${unitLabel}`, midX + 10, midY);
       context.shadowBlur = 0;
       context.fillStyle = '#ff00ff';
 
@@ -194,7 +202,6 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
       alert("Camera parameters not yet available. Please wait a moment.");
       return;
     }
-    console.log("Starting height estimation...");
     setPhase('placingStart');
     setStartPoint(null);
     setEndPoint(null);
@@ -203,17 +210,34 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isActive) {
-        console.log("Measurement cancelled by Escape key.");
+      // Start measurement with 'm' key
+      if (event.key === DEFAULT_SHORTCUTS.startMeasurement && !isActive) {
+        event.preventDefault();
+        startMeasurement();
+        return;
+      }
+
+      // Cancel measurement with Escape
+      if (event.key === DEFAULT_SHORTCUTS.cancelMeasurement && isActive) {
+        event.preventDefault();
         setPhase('idle');
         setStartPoint(null);
         setEndPoint(null);
         setCurrentMousePos(null);
+        return;
+      }
+
+      // Toggle unit with 'u' key
+      if (event.key === DEFAULT_SHORTCUTS.toggleUnit && onUnitToggle) {
+        event.preventDefault();
+        onUnitToggle();
+        return;
       }
     };
+    
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive]);
+  }, [isActive, onUnitToggle]);
 
   return (
     <div 
@@ -221,12 +245,15 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
       className={`${styles.overlay} ${isActive ? styles.overlayActive : ''}`}
       onClick={handleOverlayClick}
       onMouseMove={handleMouseMove}
+      role="button"
+      tabIndex={0}
+      aria-label="Measurement overlay - click to place measurement points"
     >
         {!isActive && (
             <button 
                 onClick={(e) => { e.stopPropagation(); startMeasurement(); }} 
                 disabled={!cameraParams || !onnxDepthMap}
-                title={!cameraParams ? "Waiting for camera parameters..." : !onnxDepthMap ? "Generate Depth Map first!" : "Start Height Estimation"}
+                title={!cameraParams ? "Waiting for camera parameters..." : !onnxDepthMap ? "Generate Depth Map first!" : "Start Height Estimation (M)"}
                 style={{ 
                     position: 'absolute', 
                     bottom: '20px', 
@@ -238,7 +265,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
                     pointerEvents: 'auto'
                 }}
             >
-                {!cameraParams ? 'Waiting for Camera...' : !onnxDepthMap ? 'Depth Map Needed' : 'Estimate Height'}
+                {!cameraParams ? 'Waiting for Camera...' : !onnxDepthMap ? 'Depth Map Needed' : 'Estimate Height (M)'}
             </button>
         )}
         {isActive && (
@@ -252,7 +279,10 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({ cameraParams, onnxDep
                 borderRadius: '4px',
                 fontSize: '0.9em',
                 pointerEvents: 'none'
-             }}>
+             }}
+             role="status"
+             aria-live="polite"
+            >
                 {phase === 'placingStart' ? 'Click object BASE' : 'Click object TOP'} (Esc to cancel)
             </div>
         )}

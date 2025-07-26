@@ -31,7 +31,6 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
     if (inputRef.current && window.google && window.google.maps && window.google.maps.places) {
       // Initialize Autocomplete only once
       if (!autocompleteRef.current) {
-        console.log("SearchBox: Initializing Autocomplete");
         const options = {
           fields: ['geometry', 'name', 'formatted_address'] 
         };
@@ -46,31 +45,15 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
               // Check if input *might* be coordinates before logging error
               const potentialCoords = parseCoordinates(inputValue.trim());
               if (!potentialCoords) {
-                console.warn("No details available for input: '" + inputValue + "' (and not valid coordinates)");
+                return; // Don't proceed if no geometry or valid coords
               }
               return; // Don't proceed if no geometry or valid coords
             }
-            console.log("Place selected:", place);
             onPlaceSelected(place);
           }
         });
       }
-    } else {
-      // Log if API isn't ready when effect runs
-      console.warn("SearchBox: Google Maps API not ready or input ref missing.");
     }
-
-    // Cleanup: Autocomplete might add listeners to the document,
-    // Although docs aren't explicit, it *might* be safer to remove listeners
-    // or somehow disconnect the instance if the component unmounts,
-    // but for now, we assume it handles its own lifecycle tied to the input element.
-    // return () => {
-    //   if (autocompleteRef.current) {
-    //     // How to properly clean up Autocomplete? google.maps.event.clearInstanceListeners?
-    //     console.log("SearchBox: Cleaning up Autocomplete instance (Placeholder)");
-    //   }
-    // };
-
   }, [onPlaceSelected, inputValue]); // Added inputValue dependency to check coords if Autocomplete fails
 
   // Function to parse both Decimal and DMS coordinates
@@ -118,17 +101,11 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
       const coords = parseCoordinates(trimmedValue);
 
       if (coords) {
-        console.log("Coordinate input detected:", coords);
         onCoordsEntered(coords);
         // Prevent Autocomplete from trying to fetch details for raw coords
         event.preventDefault(); 
         // Optionally clear input or update it to decimal format?
         // setInputValue(`${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`); 
-      } else {
-        console.log(`No details available for input: '${trimmedValue}'`);
-        // If not coords, let Autocomplete handle it (if user picked a suggestion)
-        // Or if they just hit enter on random text, Autocomplete listener 
-        // should handle the lack of geometry.
       }
     }
   };

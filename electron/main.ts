@@ -1,17 +1,65 @@
-import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
-import { release } from 'node:os'
-import { join, dirname } from 'node:path' // Use dirname instead of resolve for this pattern
-import fetch from 'node-fetch'
-import pako from 'pako'
-import { fileURLToPath } from 'node:url' // Import necessary modules for ESM __dirname equivalent
-import ort from 'onnxruntime-node'
-import sharp from 'sharp'
+import { app, BrowserWindow, shell, ipcMain, dialog, IpcMainInvokeEvent, Event } from 'electron';
+import { release } from 'node:os';
+import { join, dirname } from 'node:path';
+import fetch from 'node-fetch';
+import pako from 'pako';
+import * as ort from 'onnxruntime-node';
+import sharp from 'sharp';
+import { existsSync } from 'node:fs';
+import path from 'path';
+import * as fs from 'fs';
+import Store from 'electron-store';
 
-// ESM equivalent for __dirname
+// --- Add ESM __dirname equivalent --- 
+import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+// --- End ESM __dirname equivalent ---
 
-console.log(`[Main Process] ESM __dirname equivalent: ${__dirname}`); // Log calculated path
+// Initialize electron-store for persistence
+const store = new Store({
+  defaults: {
+    measurements: [],
+    settings: {
+      defaultUnit: 'metric',
+      autoSave: true,
+      theme: 'light',
+      language: 'en',
+      measurementHistoryLimit: 1000
+    }
+  },
+  schema: {
+    measurements: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          label: { type: 'string' },
+          name: { type: 'string' },
+          startPoint: { type: 'object' },
+          endPoint: { type: 'object' },
+          distance: { type: 'number' },
+          unit: { type: 'string', enum: ['metric', 'imperial'] },
+          timestamp: { type: 'number' },
+          panoId: { type: 'string' },
+          cameraParams: { type: 'object' },
+          error: { type: 'string' }
+        }
+      }
+    },
+    settings: {
+      type: 'object',
+      properties: {
+        defaultUnit: { type: 'string', enum: ['metric', 'imperial'] },
+        autoSave: { type: 'boolean' },
+        theme: { type: 'string', enum: ['light', 'dark', 'system'] },
+        language: { type: 'string' },
+        measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 }
+      }
+    }
+  }
+});
 
 // The built directory structure
 //
@@ -38,66 +86,99 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0)
 }
 
+// Add rate limiting configuration
+const RATE_LIMIT = {
+  maxRetries: 5,
+  delayMs: 1000,
+  tooManyRequestsCode: 429
+};
+
 // === Helper Function for Depth Data ===
 async function getRawDepthData(panoId: string): Promise<Uint8Array | null> {
-    const url = `https://maps.google.com/cbk?output=json&cb_client=maps_sv&v=4&dm=1&pm=1&ph=1&hl=en&panoid=${panoId}`;
-    console.log(`[Main Process] Fetching depth data from: ${url}`);
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            console.error(`[Main Process] Failed to fetch depth data: ${response.status} ${response.statusText}`);
-            try {
-              const errorBody = await response.text(); // Try to get error body
-              console.error(`[Main Process] Error body: ${errorBody}`);
-            } catch { /* Ignore if reading body fails */ }
-            return null;
-        }
-        
-        // Log the raw text first to inspect structure
-        const responseText = await response.text();
-        console.log(`[Main Process] Received response text for ${panoId}:`, responseText.substring(0, 500) + '...'); // Log first 500 chars
+    const apiUrl = `https://maps.google.com/cbk?output=json&cb_client=maps_sv&v=4&dm=1&pm=1&ph=1&hl=en&panoid=${panoId}`;
+    let retryCount = 0;
 
-        // Try parsing JSON *after* logging text
-        let jsonData: any;
+    while (retryCount < RATE_LIMIT.maxRetries) {
         try {
-            jsonData = JSON.parse(responseText);
-        } catch (parseError) {
-             console.error(`[Main Process] Failed to parse JSON for ${panoId}:`, parseError);
-             console.error(`[Main Process] Raw text was:`, responseText);
-             return null;
+            const response = await fetch(apiUrl);
+
+            if (response.status === RATE_LIMIT.tooManyRequestsCode) {
+                const delay = RATE_LIMIT.delayMs * Math.pow(2, retryCount);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                retryCount++;
+                continue;
+            } else if (response.status >= 500) {
+                const delay = RATE_LIMIT.delayMs * Math.pow(2, retryCount);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                retryCount++;
+                continue;
+            }
+
+            if (response.status >= 400 && response.status < 500 && response.status !== RATE_LIMIT.tooManyRequestsCode) {
+                try {
+                    const errorBody = await response.text();
+                } catch (e) {
+                    // Ignore error body read failures
+                }
+                return null;
+            }
+
+            if (retryCount >= RATE_LIMIT.maxRetries) {
+                return null;
+            }
+
+            if (!response.ok) {
+                try {
+                    const errorBody = await response.text();
+                } catch (e) {
+                    // Ignore error body read failures
+                }
+                return null;
+            }
+
+            const responseText = await response.text();
+            let jsonData: any;
+            
+            try {
+                jsonData = JSON.parse(responseText);
+            } catch (parseError) {
+                return null;
+            }
+
+            const base64Data = jsonData?.model?.depth_map;
+            if (!base64Data || typeof base64Data !== 'string' || base64Data.trim() === '') {
+                return null;
+            }
+
+            const base64Standard = base64Data.replace(/-/g, '+').replace(/_/g, '/');
+            const compressedBytes = Buffer.from(base64Standard, 'base64');
+
+            try {
+                const decompressedBytes = pako.inflate(compressedBytes);
+                return decompressedBytes;
+            } catch (decompressionError) {
+                return null;
+            }
+
+        } catch (error: any) {
+            retryCount++;
+            if (retryCount < RATE_LIMIT.maxRetries) {
+                const delay = RATE_LIMIT.delayMs * Math.pow(2, retryCount - 1);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                return null;
+            }
         }
-
-        // Check the expected path again
-        const base64Data = jsonData?.model?.depth_map;
-
-        if (!base64Data || typeof base64Data !== 'string') {
-            console.error(`[Main Process] Depth map data (string) not found in expected location (model.depth_map) for ${panoId}. Full JSON:`, JSON.stringify(jsonData, null, 2).substring(0, 1000) + '...'); // Log structure
-            // *** Attempt alternative path if needed based on logs ***
-            // const alternativeData = jsonData?.some?.other?.path;
-            // if (alternativeData) { ... }
-            return null;
-        }
-
-        console.log(`[Main Process] Found base64 depth map string (length: ${base64Data.length}) for ${panoId}.`);
-
-        // Decode Base64 (URL-safe variant) & Decompress
-        const base64Standard = base64Data.replace(/-/g, '+').replace(/_/g, '/');
-        const compressedBytes = Buffer.from(base64Standard, 'base64');
-        console.log(`[Main Process] Decoded base64 (compressed size: ${compressedBytes.length} bytes) for ${panoId}.`);
-        const decompressedBytes = pako.inflate(compressedBytes);
-        console.log(`[Main Process] Decompressed depth data (size: ${decompressedBytes.length} bytes) for ${panoId}`);
-        return decompressedBytes;
-    } catch (error) {
-        console.error(`[Main Process] Error fetching/processing depth data for ${panoId}:`, error);
-        return null;
     }
+
+    return null;
 }
 // === End Helper Function ===
 
-let win: BrowserWindow | null = null
-// Calculate the path to the compiled preload script (now .js)
-const preloadScriptPath = join(__dirname, 'preload.js'); // <--- Changed to preload.js
-console.log(`[Main Process] Preload script path for webPreferences: ${preloadScriptPath}`); // Log calculated path
+let win: BrowserWindow | null = null;
+
+// Calculate the preload script path
+const preloadScriptPath = join(__dirname, 'preload.js');
 
 // Determine the correct path for index.html
 // In dev, vite-plugin-electron sets VITE_DEV_SERVER_URL.
@@ -105,223 +186,268 @@ console.log(`[Main Process] Preload script path for webPreferences: ${preloadScr
 const devServerUrl = process.env.VITE_DEV_SERVER_URL; // Get the potential URL from vite-plugin-electron
 const indexHtmlPath = join(__dirname, '../dist/index.html'); // Path to index.html relative to main.cjs
 
-console.log(`[Main Process] Is app packaged? ${app.isPackaged}`);
-console.log(`[Main Process] VITE_DEV_SERVER_URL: ${devServerUrl}`);
-console.log(`[Main Process] index.html path: ${indexHtmlPath}`);
+// --- Model selection logic ---
+const envModelFilename = process.env.DEPTH_MODEL_FILENAME; // optional override
+const defaultModelFilename = 'depth_anything_v2_vit_tiny_metric_outdoor.onnx'; // tiny checkpoint (~33 MB)
+const fallbackModelFilename = 'depth_anything_v2_vits_dynamic.onnx'; // full VITS (~97 MB)
 
-// --- Global ONNX Session --- 
+const selectedModelFilename = envModelFilename ?? (existsSync(join(__dirname, '..', 'src', 'assets', 'models', defaultModelFilename))
+  ? defaultModelFilename
+  : fallbackModelFilename);
+
+const isTinyModel = selectedModelFilename.includes('vit_tiny');
+
+let modelInputShape: [number, number, number, number] = isTinyModel ? [1, 3, 384, 384] : [1, 3, 518, 518];
+
+// Global ONNX session holder
 let depthSession: ort.InferenceSession | null = null;
-const modelInputShape = [1, 3, 518, 518]; // Input shape likely remains the same
-// *** IMPORTANT: Use the filename for your downloaded METRIC outdoor model ***
-const modelPath = join(__dirname, '..', 'src', 'assets', 'models', 'depth_anything_v2_metric_vkitti_vits.onnx'); // Use VKITTI outdoor small model 
+
+const appPath = app.getAppPath(); // Use app.getAppPath() for a reliable base
+const modelRelativePath = join('src', 'assets', 'models', selectedModelFilename);
+
+const modelPath = app.isPackaged
+  ? join(appPath, '..', 'app.asar.unpacked', modelRelativePath) // Path when packaged (assuming asarUnpack)
+  : join(__dirname, '..', modelRelativePath); // Dev path relative to dist-electron
+
+const modelExists = existsSync(modelPath);
 
 async function loadModel() {
+  if (!modelExists) {
+    if (win) {
+      win.webContents.send('main-process-message', { type: 'error', message: 'ONNX model file not found.' });
+    }
+    return;
+  }
   try {
-    console.log(`[Main Process] Loading ONNX model from: ${modelPath}`);
-    // Ensure GPU is preferred if available (optional, adjust provider as needed)
-    // const options: ort.InferenceSession.SessionOptions = { executionProviders: ['cuda', 'cpu'] }; 
-    depthSession = await ort.InferenceSession.create(modelPath);
-    console.log('[Main Process] ONNX Depth Model loaded successfully.');
-    // Log input/output names - useful for debugging
-    console.log('[Main Process] Model Input Names:', depthSession.inputNames);
-    console.log('[Main Process] Model Output Names:', depthSession.outputNames);
+    const options: ort.InferenceSession.SessionOptions = { executionProviders: ['cpu'] };
+    depthSession = await ort.InferenceSession.create(modelPath, options);
+
+    if (win) {
+      win.webContents.send('main-process-message', { type: 'model-status', status: 'loaded' });
+    }
+
   } catch (error) {
-    console.error("[Main Process] Error loading ONNX model:", error);
     depthSession = null;
-    // Optionally notify the renderer process of the failure
+    if (win) {
+      win.webContents.send('main-process-message', { type: 'error', message: `Failed to load ONNX model: ${error}` });
+    }
   }
 }
 // --- End ONNX Setup ---
 
 async function createWindow() {
-  // Define icon path based on packaging status
-  const iconPath = app.isPackaged
-    ? join(process.resourcesPath, 'public/vite.svg') // Assuming icon is copied to public in resources
-    : join(__dirname, '../public/vite.svg'); // Path relative to __dirname (dist-electron) in dev
-
-  console.log(`[Main Process] Using icon path: ${iconPath}`);
+  if (!existsSync(preloadScriptPath)) {
+    throw new Error('Preload script not found');
+  }
 
   win = new BrowserWindow({
     title: 'PoleCheck Desktop',
-    icon: iconPath,
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: preloadScriptPath, // Use the calculated variable
-      nodeIntegration: false, // Keep false for security
-      contextIsolation: true, // Keep true for security
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      preload: preloadScriptPath,
     },
-  })
+  });
+
+  win.webContents.on('did-fail-load', (event: Event, errorCode: number, errorDescription: string, validatedURL: string) => {
+    if (validatedURL === devServerUrl) {
+      dialog.showErrorBox('Development Load Error', `Could not connect to the Vite development server at:\n${devServerUrl}\n\nPlease ensure 'npm run dev' is running.`);
+    } else if (validatedURL.startsWith('file://') && validatedURL.endsWith(indexHtmlPath)) {
+      if (!existsSync(indexHtmlPath)) {
+        dialog.showErrorBox('Application Error', `Failed to load essential components. index.html not found at:\n${indexHtmlPath}`);
+        app.quit();
+        return;
+      }
+      dialog.showErrorBox('Production Load Error', `Could not load the application file:\n${indexHtmlPath}`);
+    }
+  });
 
   if (devServerUrl && !app.isPackaged) {
-    // Development mode: Load from Vite Dev Server
-    console.log(`[Main Process] Loading DEV URL: ${devServerUrl}`);
-    await win.loadURL(devServerUrl);
-    // Open dev tools automatically in development
+    await win.loadURL(devServerUrl).catch((err: Error) => {
+      dialog.showErrorBox('Development Load Error', `Could not connect to the Vite development server at:\n${devServerUrl}\n\nPlease ensure 'npm run dev' is running.`);
+    });
     win.webContents.openDevTools();
   } else {
-    // Production mode: Load the built index.html file
-    console.log(`[Main Process] Loading FILE: ${indexHtmlPath}`);
-    try {
-      await win.loadFile(indexHtmlPath);
-    } catch (error) {
-       console.error(`[Main Process] Failed to load file '${indexHtmlPath}':`, error);
-       // Optionally provide more feedback to the user or quit
+    if (!existsSync(indexHtmlPath)) {
+      dialog.showErrorBox('Application Error', `Failed to load essential components. index.html not found at:\n${indexHtmlPath}`);
+      app.quit();
+      return;
     }
-    // Optional: Open DevTools in prod build ONLY if needed for debugging
-    // if (!app.isPackaged) { win.webContents.openDevTools(); }
+    await win.loadFile(indexHtmlPath).catch((err: Error) => {
+      dialog.showErrorBox('Production Load Error', `Could not load the application file:\n${indexHtmlPath}`);
+    });
   }
 
-  // Test actively push message to the Electron-Renderer
-  win.webContents.on('did-finish-load', () => {
-    console.log('[Main Process] WebContents did-finish-load event triggered.'); // Added log
-    win?.webContents.send('main-process-message', new Date().toLocaleString())
-  })
-
-  // Make all links open with the browser, not with the application
-  win.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
-    if (targetUrl.startsWith('https:')) shell.openExternal(targetUrl)
-    return { action: 'deny' }
-  })
-
-  // === NEW IPC Handler for CSV Export ===
-  ipcMain.handle('export-to-csv', async (event, csvContent: string) => {
-      console.log("[Main Process] Received request to export CSV data.");
-      if (!win) {
-          console.error("[Main Process] Cannot export CSV: BrowserWindow not available.");
-          return null; // Indicate failure
-      }
-      try {
-          const { canceled, filePath } = await dialog.showSaveDialog(win, {
-              title: 'Export Measurements as CSV',
-              defaultPath: `polecheck-measurements-${Date.now()}.csv`,
-              filters: [
-                  { name: 'CSV Files', extensions: ['csv'] },
-                  { name: 'All Files', extensions: ['*'] }
-              ]
-          });
-
-          if (canceled || !filePath) {
-              console.log("[Main Process] CSV export save dialog cancelled.");
-              return null; // Indicate cancellation
-          }
-
-          // Use Node.js fs module to write the file
-          const fs = require('node:fs');
-          await fs.promises.writeFile(filePath, csvContent, 'utf8');
-          console.log(`[Main Process] Successfully wrote CSV to: ${filePath}`);
-          return filePath; // Return the path on success
-
-      } catch (error) {
-          console.error("[Main Process] Error exporting CSV:", error);
-          dialog.showErrorBox("Export Error", `Failed to save CSV file: ${error}`);
-          return null; // Indicate failure
-      }
+  win.webContents.on('dom-ready', () => {
+    win?.webContents.send('main-process-message', { type: 'status', message: 'Main process ready, window loaded.' });
   });
-  // === End IPC Handler ===
 
-  // --- NEW IPC Handler for Depth Inference ---
-  ipcMain.handle('infer-depth', async (event, imageDataUrl: string) => {
+  // Set up IPC handlers
+  // Depth inference handler
+  ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, imageDataUrl: string) => {
     if (!depthSession) {
-      console.error('[Main Process] Depth model not loaded, cannot infer.');
+      event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not loaded or failed to load.'});
       return null;
     }
-    console.log('[Main Process] Received request for depth inference.');
-    try {
-      // 1. Decode Base64 Image Data URL
-      const base64Data = imageDataUrl.split(',')[1];
-      if (!base64Data) throw new Error('Invalid Image Data URL format');
-      const imageBuffer = Buffer.from(base64Data, 'base64');
 
-      // 2. Preprocess Image using Sharp
+    try {
+      // Process image data and run inference
+      const base64Data = imageDataUrl.split(',')[1];
+      if (!base64Data) throw new Error('Invalid image data');
+      
+      const imageBuffer = Buffer.from(base64Data, 'base64');
       const image = sharp(imageBuffer);
       const metadata = await image.metadata();
-      console.log(`[Main Process] Original image size: ${metadata.width}x${metadata.height}`);
-
-      const inputWidth = modelInputShape[3];
-      const inputHeight = modelInputShape[2];
-
+      
       const resizedBuffer = await image
-        .resize(inputWidth, inputHeight, { fit: 'fill' }) // Ensure exact size
-        .removeAlpha() // Ensure 3 channels
+        .resize(modelInputShape[3], modelInputShape[2], { fit: 'fill' })
+        .removeAlpha()
         .raw()
         .toBuffer();
 
-      // Normalize image data using ImageNet mean and std
-      const mean = [0.485, 0.456, 0.406];
-      const std = [0.229, 0.224, 0.225];
-      const float32Data = new Float32Array(inputWidth * inputHeight * 3);
-      for (let i = 0; i < resizedBuffer.length; i += 3) {
-          // Normalize each channel (R, G, B)
-          float32Data[i]     = (resizedBuffer[i] / 255.0 - mean[0]) / std[0]; // R
-          float32Data[i + 1] = (resizedBuffer[i + 1] / 255.0 - mean[1]) / std[1]; // G
-          float32Data[i + 2] = (resizedBuffer[i + 2] / 255.0 - mean[2]) / std[2]; // B
-      }
-
-       // Permute from HWC to CHW 
-       const inputTensorData = new Float32Array(inputWidth * inputHeight * 3);
-       const channelSize = inputHeight * inputWidth;
-       for (let h = 0; h < inputHeight; h++) {
-           for (let w = 0; w < inputWidth; w++) {
-               const baseIdx = (h * inputWidth + w) * 3;
-               inputTensorData[h * inputWidth + w]                 = float32Data[baseIdx];     // R -> C1
-               inputTensorData[channelSize + h * inputWidth + w]   = float32Data[baseIdx + 1]; // G -> C2
-               inputTensorData[channelSize * 2 + h * inputWidth + w] = float32Data[baseIdx + 2]; // B -> C3
-           }
+      const float32Data = new Float32Array(modelInputShape[1] * modelInputShape[2] * modelInputShape[3]);
+      for (let i = 0; i < modelInputShape[2] * modelInputShape[3]; i++) {
+         float32Data[i] = resizedBuffer[i * 3] / 255.0;         // R channel
+         float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
+         float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
        }
 
-      const inputTensor = new ort.Tensor('float32', inputTensorData, modelInputShape);
-      console.log(`[Main Process] Prepared input tensor shape: ${inputTensor.dims}`);
-
-      // 3. Run Inference
+      // Create tensor from the processed float data
+      const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape);
       const feeds: Record<string, ort.Tensor> = {};
-      feeds[depthSession.inputNames[0]] = inputTensor; // Use the actual input name
+      feeds[depthSession!.inputNames[0]] = inputTensor;
       
-      console.log('[Main Process] Running model inference...');
-      const results = await depthSession.run(feeds);
-      console.log('[Main Process] Inference complete.');
+      const startTime = Date.now();
+      const results = await depthSession!.run(feeds);
+      const endTime = Date.now();
 
-      // 4. Process Output (METRIC MODEL)
-      const outputTensor = results[depthSession.outputNames[0]]; 
-      const depthMapData = outputTensor.data as Float32Array; 
-      const outputShape = outputTensor.dims;
-      console.log(`[Main Process] Raw METRIC depth map output shape: ${outputShape}, data length: ${depthMapData.length}`);
-      // Log a sample of the raw metric output
-      console.log(`[Main Process] Raw METRIC depth data sample:`, depthMapData.slice(0, 10)); 
+      const outputTensor = results[depthSession!.outputNames[0]];
+      
+      const [n, c, h, w] = outputTensor.dims; // dims should be [1,1,H,W]
 
-      // Output shape is [Batch, Height, Width]
-      const mapHeight = outputShape[1]; 
-      const mapWidth = outputShape[2];  
-
-      // REMOVED: Incorrect min/max normalization and scaling for relative depth
-      // The output from the metric model should ideally be in meters already, 
-      // or require model-specific scaling if documented.
-
-      // --- Return data to renderer --- 
-      const returnData = {
-          data: Array.from(depthMapData), // Return the raw (metric) data
-          width: mapWidth,
-          height: mapHeight
+      return {
+        data: Array.from(outputTensor.data as Float32Array),
+        width: w,
+        height: h
       };
-      // console.log(`[Main Process] Returning data - Type: ${typeof returnData}, Width: ${returnData.width}, Height: ${returnData.height}, Data Sample:`, returnData.data.slice(0, 10)); 
-      return returnData;
-
     } catch (error) {
-      console.error("[Main Process] Error during depth inference:", error);
+      event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });
       return null;
     }
   });
-  // --- End Depth Inference Handler ---
 
-  win.on('closed', () => {
-    win = null
-  })
+  // CSV export handler
+  ipcMain.handle('csv-export', async (event: IpcMainInvokeEvent, csvContent: string) => {
+    if (!win) return null;
+
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: 'Export Measurements as CSV',
+        defaultPath: `polecheck-measurements-${Date.now()}.csv`,
+        filters: [
+          { name: 'CSV Files', extensions: ['csv'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+
+      if (canceled || !filePath) return null;
+
+      await fs.promises.writeFile(filePath, csvContent, 'utf8');
+      return filePath;
+    } catch (error) {
+      return null;
+    }
+  });
+
+  // Depth data fetch handler
+  ipcMain.handle('fetch-depth-data', async (event: IpcMainInvokeEvent, panoId: string) => {
+    try {
+      return await getRawDepthData(panoId);
+    } catch (error) {
+      return null;
+    }
+  });
+
+  // Persistence handlers
+  ipcMain.handle('get-measurements', async () => {
+    try {
+      return store.get('measurements', []);
+    } catch (error) {
+      return [];
+    }
+  });
+
+  ipcMain.handle('save-measurements', async (event: IpcMainInvokeEvent, measurements: any[]) => {
+    try {
+      store.set('measurements', measurements);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  });
+
+  ipcMain.handle('get-settings', async () => {
+    try {
+      return store.get('settings', {
+        defaultUnit: 'metric',
+        autoSave: true,
+        theme: 'light',
+        language: 'en',
+        measurementHistoryLimit: 1000
+      });
+    } catch (error) {
+      return {
+        defaultUnit: 'metric',
+        autoSave: true,
+        theme: 'light',
+        language: 'en',
+        measurementHistoryLimit: 1000
+      };
+    }
+  });
+
+  ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: any) => {
+    try {
+      store.set('settings', settings);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  });
+
+  ipcMain.handle('clear-data', async () => {
+    try {
+      store.delete('measurements');
+      return true;
+    } catch (error) {
+      return false;
+    }
+  });
 }
 
-// Load the ONNX model when the app is ready
-app.whenReady().then(() => {
-  console.log('[Main Process] App is ready, loading ONNX model...');
-  loadModel(); // Load the model before creating the window
+// Modify app.whenReady() to ensure proper initialization
+app.whenReady().then(async () => {
+  try {
+    await loadModel();
+  } catch (error) {
+    // Continue anyway, as we want the app to at least start
+  }
+
+  try {
+    await createWindow();
+  } catch (error) {
+    app.quit();
+    return;
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
@@ -336,11 +462,16 @@ app.on('second-instance', () => {
   }
 })
 
-app.on('activate', () => {
-  const allWindows = BrowserWindow.getAllWindows()
-  if (allWindows.length) {
-    allWindows[0].focus()
-  } else {
-    createWindow()
+// Handle any uncaught exceptions
+process.on('uncaughtException', (error) => {
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  if (win) {
+    const wc = win.webContents;
+    if (!wc.isDestroyed()) {
+        wc.send('main-process-message', { type: 'error', message: `Unhandled Rejection: ${reason}` });
+    }
   }
-}) 
+}); 

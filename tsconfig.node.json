@@ -2,8 +2,8 @@
   "compilerOptions": {
     // "composite": true, // Often not needed without project references, remove if causing issues
     "skipLibCheck": true,
-    "module": "ESNext",
-    "moduleResolution": "node",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "target": "ES2022",
@@ -12,7 +12,7 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "isolatedModules": false // Keep false if needed for commonjs output
+    "isolatedModules": false
   },
   "include": [
     "electron/**/*.ts"

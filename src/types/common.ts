@@ -50,3 +50,71 @@ export interface OnnxDepthMap {
   width: number;
   height: number;
 }
+
+// Depth plane representation for Street View depth data
+export interface DepthPlane {
+  nx: number; // Normal vector X component
+  ny: number; // Normal vector Y component
+  nz: number; // Normal vector Z component
+  d: number;  // Distance from origin to plane
+}
+
+// Parsed depth data structure
+export interface DecodedDepthData {
+  planes: DepthPlane[];     // Array of depth planes
+  indices: Uint8Array;      // Index array for depth map
+  width: number;            // Width of the depth map
+  height: number;           // Height of the depth map
+}
+
+// Application settings interface
+export interface AppSettings {
+  defaultUnit: 'metric' | 'imperial';
+  autoSave: boolean;
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+  measurementHistoryLimit: number;
+}
+
+// Error types for better error handling
+export interface AppError {
+  code: string;
+  message: string;
+  details?: unknown;
+  timestamp: number;
+  userFriendly?: string;
+}
+
+// Measurement validation result
+export interface ValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  confidence?: number;
+}
+
+// Unit conversion utilities
+export const UNIT_CONVERSIONS = {
+  metersToFeet: (meters: number): number => meters * 3.28084,
+  feetToMeters: (feet: number): number => feet * 0.3048,
+  metersToInches: (meters: number): number => meters * 39.3701,
+  inchesToMeters: (inches: number): number => inches * 0.0254
+} as const;
+
+// Keyboard shortcuts configuration
+export interface KeyboardShortcuts {
+  startMeasurement: string;
+  cancelMeasurement: string;
+  exportData: string;
+  clearAll: string;
+  toggleUnit: string;
+}
+
+// Default keyboard shortcuts
+export const DEFAULT_SHORTCUTS: KeyboardShortcuts = {
+  startMeasurement: 'm',
+  cancelMeasurement: 'Escape',
+  exportData: 'Ctrl+E',
+  clearAll: 'Ctrl+Shift+Delete',
+  toggleUnit: 'u'
+} as const;
