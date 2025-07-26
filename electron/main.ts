@@ -25,7 +25,8 @@ const store = new Store({
       autoSave: true,
       theme: 'light',
       language: 'en',
-      measurementHistoryLimit: 1000
+      measurementHistoryLimit: 1000,
+      useGPU: false
     }
   },
   schema: {
@@ -55,7 +56,8 @@ const store = new Store({
         autoSave: { type: 'boolean' },
         theme: { type: 'string', enum: ['light', 'dark', 'system'] },
         language: { type: 'string' },
-        measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 }
+        measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 },
+        useGPU: { type: 'boolean' }
       }
     }
   }
@@ -396,7 +398,8 @@ async function createWindow() {
         autoSave: true,
         theme: 'light',
         language: 'en',
-        measurementHistoryLimit: 1000
+        measurementHistoryLimit: 1000,
+        useGPU: false
       });
     } catch (error) {
       return {
@@ -404,7 +407,8 @@ async function createWindow() {
         autoSave: true,
         theme: 'light',
         language: 'en',
-        measurementHistoryLimit: 1000
+        measurementHistoryLimit: 1000,
+        useGPU: false
       };
     }
   });

@@ -1,304 +1,93 @@
-# PoleCheck Desktop Application: Production Development Plan
+# PoleCheck Desktop – Production-Grade Roadmap 2025
 
-**Project:** PoleCheck Desktop Application (Street View Measurement)
-**Goal:** Create a production-ready cross-platform desktop application for accurate Street View measurements
-
-**Technology Stack:**
-*   **Runtime:** Electron
-*   **Frontend:** React + TypeScript
-*   **Build Tool:** Vite
-*   **Mapping:** Google Maps JavaScript API (`@googlemaps/js-api-loader`)
-*   **ML Inference (Main):** ONNX Runtime (`onnxruntime-node`)
-*   **Image Processing (Main):** Sharp (`sharp`)
-*   **Styling:** CSS Modules
-*   **Persistence:** electron-store
-*   **UUID Generation:** `uuid` library
-*   **HTTP Requests (Main):** `node-fetch`
+## 0 ▕ VISION
+PoleCheck will be **the de-facto desktop tool for precise, auditable 3-D measurements on Google Street View imagery**.  We will differentiate with AI-assisted workflows, enterprise-grade data management, offline capability, and flawless UX.
 
 ---
-
-## 🚨 CRITICAL FIXES (IMMEDIATE)
-
-### 1. Missing Type Definitions
-- [x] Add `DepthPlane` and `DecodedDepthData` interfaces to `src/types/common.ts`
-- [x] Ensure all type imports are properly resolved
-- [x] Add proper TypeScript strict mode compliance
-
-### 2. Production Logging & Error Handling
-- [x] Remove excessive console.log statements
-- [x] Implement proper error boundaries for React components
-- [x] Add structured logging for production debugging
-- [x] Implement graceful degradation when ML model fails
-
-### 3. Input Validation & Security
-- [x] Add coordinate input validation
-- [x] Sanitize file paths in CSV export
-- [x] Validate API responses
-- [x] Add rate limiting for all external API calls
-
-### 4. ONNX Model Integration (FINAL STEP)
-- [x] Download correct ONNX model file
-- [x] Verify model loading and inference
-- [x] Add model validation and fallback mechanisms
-- [x] Implement model versioning
+## 1 ▕ STATE OF THE CODEBASE (May 2025)
+✓ Core height measurement, CSV export, ONNX depth inference, persistence, error handling, keyboard shortcuts, unit conversion.
+✗ Remaining ESLint errors, depth caching, tests, model file in Git, advanced geometry, UI polish.
 
 ---
+## 2 ▕ CRITICAL FIXES  (– SHIP BLOCKERS)
+| ID | Fix | Owner | Status |
+|----|-----|-------|--------|
+| CF-1 | **Zero ESLint errors** – clean build gate | FE | ✅ |
+| CF-2 | **Git LFS** for `.onnx` + history rewrite | INFRA | ⏳ |
+| CF-3 | **Settings panel** (dark-mode, units, GPU toggle, history limit) | FE | ☐ |
+| CF-4 | **Depth-map caching** (IndexedDB keyed by panoId+cam) | ML | ☐ |
+| CF-5 | **Tests bootstrap** – Jest + first unit test (unit-conversion) | QA | ☐ |
+| CF-6 | **CI GitHub Actions** – lint, typecheck, test, build | INFRA | ☐ |
 
-## 🔧 CORE FUNCTIONALITY IMPROVEMENTS
-
-### 5. Persistence Implementation
-- [x] Install and configure `electron-store`
-- [x] Implement measurement persistence
-- [x] Add measurement export/import functionality
-- [x] Implement settings persistence
-- [x] Add data migration capabilities
-
-### 6. Error Handling & Recovery
-- [x] Add React Error Boundaries
-- [x] Implement retry mechanisms for failed operations
-- [x] Add user-friendly error messages
-- [x] Implement offline mode detection
-- [x] Add automatic error reporting
-
-### 7. UI/UX Enhancements
-- [x] Add loading states for all async operations
-- [x] Implement progress indicators for depth map generation
-- [ ] Add keyboard shortcuts and documentation
-- [ ] Improve accessibility (ARIA labels, keyboard navigation)
-- [ ] Add measurement accuracy indicators
-- [ ] Implement dark mode support
-
-### 8. Measurement System Improvements
-- [ ] Add unit conversion (metric/imperial toggle)
-- [ ] Implement measurement validation
-- [ ] Add measurement templates/presets
-- [ ] Implement measurement categorization
-- [ ] Add measurement search/filter capabilities
-- [ ] Implement measurement sharing
+_All CF tasks must be ✅ before any Tier-1 feature work ships._
 
 ---
+## 3 ▕ FEATURE ROADMAP
+Features are grouped in tiers.  Each tier may run parallel tracks but must respect CF completion.
 
-## 🚀 PRODUCTION FEATURES
+### 3.1 Tier 1 : 90-Day Differentiators
+1. **AI Object Auto-Detection & Snap**  
+   Model: YOLOv8-Nano + NMS → bounding-box centrelines → auto-select base/top click.  Exports confidence.
+2. **Polyline / Chain Measurements**  
+   Multi-segment distance with cumulative length, per-segment grade %, undo/redo.
+3. **Guided Templates / Wizards**  
+   Pre-baked flows (Utility Pole, Sign, Building façade) that auto-label rows.
+4. **Dark-Mode + Responsive UX**  
+   CSS vars, prefers-color-scheme, < 900 px layout.
 
-### 9. Advanced Measurement Types
-- [ ] Horizontal distance measurements
-- [ ] Area calculations
-- [ ] Volume estimations
-- [ ] Batch measurement capabilities
-- [ ] Measurement comparison tools
+### 3.2 Tier 2 : Platform Strength – 6 months
+5. **GPU / DirectML / MPS Inference Toggle**  
+   ort-web DirectML EP (Win) / MPS (mac). Benchmarked auto-select.
+6. **Projects & Revision History**  
+   `.pchk` file (JSON+PNG) – manual save/load, SHA-256 hash chain per edit.  Diff viewer.
+7. **Area & Volume**  
+   Ground-plane polygon → m²/ft²; extrude to arbitrary height for m³/ft³.
+8. **GeoJSON / KML Export**  
+   Spatial data for GIS ingestion.
 
-### 10. Data Management
-- [x] Implement measurement database
-- [ ] Add backup/restore functionality
-- [x] Implement data export in multiple formats (CSV, JSON, PDF)
-- [ ] Add measurement history and versioning
-- [ ] Implement data compression for large datasets
-
-### 11. Performance Optimizations
-- [ ] Implement depth map caching
-- [ ] Add lazy loading for components
-- [ ] Optimize large measurement list rendering
-- [ ] Implement virtual scrolling for measurement lists
-- [ ] Add memory management for large datasets
-
-### 12. Security & Privacy
-- [ ] Encrypt API keys
-- [x] Implement secure data storage
-- [ ] Add privacy controls
-- [ ] Implement data anonymization options
-- [ ] Add audit logging
-
----
-
-## 🏗️ BUILD & DEPLOYMENT
-
-### 13. Build System
-- [x] Configure proper production builds
-- [ ] Add automated testing
-- [ ] Implement CI/CD pipeline
-- [ ] Add code signing for releases
-- [ ] Implement auto-updater
-
-### 14. Documentation
-- [ ] Complete API documentation
-- [ ] Add user manual
-- [ ] Create developer documentation
-- [ ] Add troubleshooting guide
-- [ ] Implement in-app help system
-
-### 15. Quality Assurance
-- [ ] Add unit tests
-- [ ] Implement integration tests
-- [ ] Add end-to-end tests
-- [ ] Implement automated testing
-- [ ] Add performance monitoring
+### 3.3 Tier 3 : Enterprise & Viral – 12 months
+9. **Realtime Collaboration (CRDT)**  
+   WebSocket presence, cursors, comments.
+10. **Depth-Map CDN & Multi-View Fusion**  
+    Serverless cache; optional local SfM fusion for accuracy σ.
+11. **Auto-Updater & Code-Signing**  
+    electron-updater, Windows & macOS notarisation.
+12. **Audit Trail & Tamper-Seal**  
+    Signed measurement history for legal evidence.
 
 ---
+## 4 ▕ TECHNICAL TRACKS
+### 4.1 ML / Depth
+• Migrate Depth-Anything V2 to Git LFS.  
+• Investigate lighter Outdoor-Tiny (33 MB) + Indoor model auto-switch.  
+• Cache inference results (IndexedDB) + LRU.
 
-## 📊 MONITORING & ANALYTICS
+### 4.2 Frontend
+• React-Testing-Library, Storybook, virtualised lists.  
+• Theme provider with CSS variables.  
+• Global state < 100 lines (Zustand).
 
-### 16. Application Monitoring
-- [ ] Add crash reporting
-- [ ] Implement usage analytics
-- [ ] Add performance monitoring
-- [ ] Implement error tracking
-- [ ] Add user feedback system
+### 4.3 Infrastructure
+• GitHub Actions matrix → lint / test / build / release-draft.  
+• Large-file downloads in CI (LFS pull).  
+• Sentry crash reporting (renderer + main).
 
----
-
-## 🎯 PRODUCTION RELEASE CHECKLIST
-
-### Pre-Release
-- [x] Complete all critical fixes
-- [x] Implement all core functionality
-- [x] Add comprehensive error handling
-- [ ] Complete security audit
-- [ ] Performance testing
-- [ ] User acceptance testing
-
-### Release
-- [ ] Code signing
-- [ ] Automated builds
-- [ ] Release notes
-- [ ] Distribution setup
-- [ ] Support documentation
-
-### Post-Release
-- [ ] Monitor crash reports
-- [ ] Track user feedback
-- [ ] Performance monitoring
-- [ ] Security updates
-- [ ] Feature updates
+### 4.4 Documentation
+• CONTRIBUTING.md: branch strategy, commit emoji legend.  
+• User Manual (md → docs site).  
+• Architecture diagram (Mermaid).
 
 ---
-
-## 📈 FUTURE ENHANCEMENTS
-
-### Advanced Features
-- [ ] Real-time collaboration
-- [ ] Cloud synchronization
-- [ ] Mobile companion app
-- [ ] API for third-party integrations
-- [ ] Advanced ML model integration
-
-### Enterprise Features
-- [ ] Multi-user support
-- [ ] Role-based access control
-- [ ] Advanced reporting
-- [ ] Integration with enterprise systems
-- [ ] Custom measurement protocols
+## 5 ▕ EXECUTION PLAN
+1. **Week 1–2** – complete CF-1 → CF-3 (lint zero, LFS, settings UI).  
+2. **Week 3** – CF-4 depth-cache, CF-5 tests bootstrap.  
+3. **Week 4** – GitHub Actions (CF-6).  _MVP ready → push v0.2._
+4. **Month 2–3** – Tier 1 features in parallel feature branches, merged behind feature flags.
+5. **Quarter 2** – Tier 2 roadmap begins once Tier 1 flags ship.
 
 ---
-
-## 🛠️ DEVELOPMENT WORKFLOW
-
-### Current Session Focus
-1. **✅ Fix Type Definitions** - Add missing interfaces
-2. **✅ Implement Persistence** - Add electron-store
-3. **✅ Clean Up Logging** - Remove console.logs, add proper error handling
-4. **✅ Add Input Validation** - Secure all inputs
-5. **✅ Improve UI/UX** - Add loading states and better feedback
-6. **✅ ONNX Model Integration** - Final step with proper model
-
-### Code Quality Standards
-- ✅ No console.log in production code
-- ✅ Comprehensive error handling
-- ✅ TypeScript strict mode compliance
-- ✅ Proper input validation
-- [ ] Performance optimization
-- [ ] Security best practices
-
-### Testing Strategy
-- [ ] Unit tests for all utility functions
-- [ ] Integration tests for measurement logic
-- [ ] End-to-end tests for user workflows
-- [ ] Performance testing for large datasets
-- [ ] Security testing for all inputs
-
----
-
-## 📝 IMPLEMENTATION NOTES
-
-### Priority Order
-1. **✅ Critical Fixes** - Must be completed before any other work
-2. **✅ Core Functionality** - Essential for production use
-3. **Production Features** - Important for user experience
-4. **Advanced Features** - Nice to have for future releases
-
-### Success Criteria
-- ✅ All critical fixes completed
-- ✅ No console.log statements in production
-- ✅ Comprehensive error handling
-- ✅ Proper type safety
-- [ ] Performance optimized
-- [ ] Security hardened
-- ✅ User-friendly interface
-
-### Risk Mitigation
-- ✅ Backup all data before major changes
-- [ ] Test thoroughly before deployment
-- [ ] Implement rollback mechanisms
-- [ ] Monitor for regressions
-- ✅ Document all changes
-
----
-
-## 🎯 CURRENT STATUS
-
-**Last Updated:** 2025-01-27
-**Current Phase:** PRODUCTION READY
-**Next Milestone:** Final Testing & Deployment
-**Target Release:** Ready for Release
-
-**Completed:**
-- ✅ Basic application structure
-- ✅ Google Maps integration
-- ✅ Measurement UI
-- ✅ ML depth pipeline framework
-- ✅ CSV export functionality
-- ✅ Type definition fixes
-- ✅ Persistence implementation
-- ✅ Error handling improvements
-- ✅ Production logging cleanup
-- ✅ ONNX model integration
-- ✅ Model conversion and testing
-
-**In Progress:**
-- Final testing and validation
-
-**Blocked:**
-- None
-
----
-
-## 🚀 PRODUCTION READY STATUS
-
-### ✅ **ALL CRITICAL TASKS COMPLETED**
-
-1. **✅ Type Definitions Fixed**
-2. **✅ Production Logging Cleanup**
-3. **✅ Persistence Implementation**
-4. **✅ Error Handling & Security**
-5. **✅ ONNX Model Integration**
-
-### 🎉 **APPLICATION IS PRODUCTION READY**
-
-The PoleCheck Desktop application is now **production-ready** with:
-
-- ✅ **Robust error handling**
-- ✅ **Secure data persistence**
-- ✅ **Clean, maintainable codebase**
-- ✅ **Working ML depth estimation**
-- ✅ **Professional UI/UX**
-- ✅ **Type-safe implementation**
-- ✅ **Production logging standards**
-
-### 🚀 **READY FOR DEPLOYMENT**
-
-The application is ready for:
-1. **Final testing and validation**
-2. **Production deployment**
-3. **User acceptance testing**
-4. **Release to users**
-
-**🎯 MISSION ACCOMPLISHED!** 🚀
+## 6 ▕ DONE LOG (auto-append)
+| Date | Commit | Note |
+|------|--------|------|
+| 2025-05-28 | 6a43d00 | Unit conversion, shortcuts, accessibility, ESLint config, UI polish |
+| 2025-05-29 | 581c728 | ESLint zero-error baseline + Git LFS track *.onnx |

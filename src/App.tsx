@@ -3,6 +3,7 @@ import { Loader } from '@googlemaps/js-api-loader';
 import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
+import SettingsPanel from './components/SettingsPanel';
 import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings } from './types/common';
 import styles from './App.module.css';
 import './App.css';
@@ -79,6 +80,7 @@ function App() {
     measurementHistoryLimit: 1000
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Load settings and measurements on app start
   useEffect(() => {
@@ -277,6 +279,18 @@ function App() {
     }
   }, [settings]);
 
+  const handleSaveSettingsPanel = async (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    if (window.electronAPI?.invoke) {
+      try {
+        await window.electronAPI.invoke('save-settings', newSettings);
+      } catch {
+        // silent
+      }
+    }
+    setIsSettingsOpen(false);
+  };
+
   // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -345,6 +359,11 @@ function App() {
   return (
     <div className={styles.appContainer}>
       <div className={styles.header}>
+        <button
+          style={{ marginRight: 10 }}
+          onClick={() => setIsSettingsOpen(true)}
+          title="Settings"
+        >⚙️</button>
         {isApiLoaded ? (
           <SearchBox 
             onPlaceSelected={handlePlaceSelected} 
@@ -354,6 +373,14 @@ function App() {
           <div className={styles.loadingPlaceholder} style={{height: 'auto', width: '400px'}}>Loading Search...</div>
         )}
       </div>
+
+      {isSettingsOpen && (
+        <SettingsPanel
+          initial={settings}
+          onSave={handleSaveSettingsPanel}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      )}
 
       <div className={styles.mainContent}>
         <div className={styles.sidebar}>

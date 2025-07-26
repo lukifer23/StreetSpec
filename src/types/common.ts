@@ -74,6 +74,7 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   language: string;
   measurementHistoryLimit: number;
+  useGPU?: boolean;
 }
 
 // Error types for better error handling
