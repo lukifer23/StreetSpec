@@ -361,6 +361,12 @@ function App() {
     }
   };
 
+  useEffect(()=>{
+    const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&calibrateMode){setCalibrateMode(false);}}
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[calibrateMode]);
+
   // Display error state
   if (error) {
     return <div className={styles.loadingPlaceholder}>{error}</div>;
@@ -379,7 +385,8 @@ function App() {
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >⚙️</button>
-        <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams}>Calibrate Horizon</button>
+        <button style={{marginRight:10}} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}> {isGeneratingMap? 'Generating...' : 'Generate Depth Map'} </button>
+        <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>Calibrate Horizon</button>
         {isApiLoaded ? (
           <SearchBox 
             onPlaceSelected={handlePlaceSelected} 

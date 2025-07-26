@@ -164,6 +164,11 @@ const MapView: React.FC<MapViewProps> = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       {calibrateMode && (
+        <div style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',background:'rgba(0,0,0,0.6)',color:'#fff',padding:'4px 8px',borderRadius:4,zIndex:21,fontSize:12}}>
+          Click a point on the true horizon (Esc to cancel)
+        </div>
+      )}
+      {calibrateMode && (
         <div
           style={{position:'absolute',top:0,left:0,right:0,bottom:0,cursor:'crosshair',zIndex:20}}
           onClick={e=>{
