@@ -189,13 +189,20 @@ const devServerUrl = process.env.VITE_DEV_SERVER_URL; // Get the potential URL f
 const indexHtmlPath = join(__dirname, '../dist/index.html'); // Path to index.html relative to main.cjs
 
 // --- Model selection logic ---
-const envModelFilename = process.env.DEPTH_MODEL_FILENAME; // optional override
-const defaultModelFilename = 'depth_anything_v2_vit_tiny_metric_outdoor.onnx'; // tiny checkpoint (~33 MB)
-const fallbackModelFilename = 'depth_anything_v2_vits_dynamic.onnx'; // full VITS (~97 MB)
+const envModelFilename = process.env.DEPTH_MODEL_FILENAME; // optional override via .env
 
-const selectedModelFilename = envModelFilename ?? (existsSync(join(__dirname, '..', 'src', 'assets', 'models', defaultModelFilename))
-  ? defaultModelFilename
-  : fallbackModelFilename);
+// Primary model we ship with the repo (≈94 MB, outdoor metric)
+const primaryModelFilename = 'depth_anything_v2_metric_vkitti_vits.onnx';
+// Fallback to tiny (33 MB) if user supplies it manually
+const tinyModelFilename = 'depth_anything_v2_vit_tiny_metric_outdoor.onnx';
+
+let selectedModelFilename = primaryModelFilename;
+
+if (envModelFilename) {
+  selectedModelFilename = envModelFilename;
+} else if (!existsSync(join(__dirname, '..', 'src', 'assets', 'models', primaryModelFilename)) && existsSync(join(__dirname, '..', 'src', 'assets', 'models', tinyModelFilename))) {
+  selectedModelFilename = tinyModelFilename;
+}
 
 const isTinyModel = selectedModelFilename.includes('vit_tiny');
 
