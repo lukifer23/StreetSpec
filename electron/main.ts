@@ -338,8 +338,18 @@ async function createWindow() {
 
       const outputTensor = results[depthSession!.outputNames[0]];
       console.log('[infer-depth] output dims', outputTensor.dims, 'dataLen', (outputTensor.data as Float32Array).length);
-      
-      const [n, c, h, w] = outputTensor.dims; // dims should be [1,1,H,W]
+
+      let h: number | undefined;
+      let w: number | undefined;
+      if (outputTensor.dims.length === 4) {
+        // Expected [1,1,H,W]
+        h = outputTensor.dims[2];
+        w = outputTensor.dims[3];
+      } else if (outputTensor.dims.length === 3) {
+        // Some exporters drop the channel dim: [1,H,W]
+        h = outputTensor.dims[1];
+        w = outputTensor.dims[2];
+      }
 
       if (!w || !h || !(outputTensor.data instanceof Float32Array) || (outputTensor.data as Float32Array).length === 0) {
         throw new Error('ONNX output tensor invalid');
