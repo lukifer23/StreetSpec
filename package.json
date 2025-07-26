@@ -28,6 +28,7 @@
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.8",
     "electron-store": "^10.1.0",
+    "idb-keyval": "^6.2.2",
     "node-fetch": "^3.3.2",
     "onnxruntime-node": "^1.18.0",
     "pako": "^2.1.0",

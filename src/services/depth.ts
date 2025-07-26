@@ -1,4 +1,7 @@
 import { DepthPlane, DecodedDepthData } from '../types/common';
+import { get, set } from 'idb-keyval';
+
+const CACHE_PREFIX = 'depth-raw-';
 
 // --- Helper functions for parsing binary data ---
 function readUInt16LE(buffer: Uint8Array, offset: number): number {
@@ -53,6 +56,18 @@ function parseDepthMapData(decompressedBytes: Uint8Array): DecodedDepthData | nu
 }
 
 export async function getParsedDepthData(panoId: string): Promise<DecodedDepthData | null> {
+    const cacheKey = `${CACHE_PREFIX}${panoId}`;
+    try {
+        // Try cache first
+        const cached: Uint8Array | undefined = await get(cacheKey);
+        if (cached && cached.length > 0) {
+            const parsed = parseDepthMapData(cached);
+            if (parsed) return parsed;
+        }
+    } catch {
+        // ignore cache errors
+    }
+
     try {
         const rawData: Uint8Array | null = await window.electronAPI.invoke('fetch-depth-data', panoId);
 
@@ -62,10 +77,10 @@ export async function getParsedDepthData(panoId: string): Promise<DecodedDepthDa
 
         const parsedData = parseDepthMapData(rawData);
 
-        if (!parsedData) {
-            return null;
+        if (parsedData) {
+            // store to cache (fire and forget)
+            set(cacheKey, rawData).catch(() => {/* ignore */});
         }
-        
         return parsedData;
 
     } catch (error) {
