@@ -1,5 +1,42 @@
 import { CameraParams, OnnxDepthMap } from '../types/common';
 
+// Size of square kernel (odd number)
+const KERNEL_SIZE = 5; // 5×5 neighborhood
+
+// Gather a neighbourhood of depth values around (x,y) and return a robust estimate (median)
+function getRobustDepthSample(
+  mapX: number,
+  mapY: number,
+  depthMap: OnnxDepthMap,
+  debug = false,
+): number | null {
+  const half = Math.floor(KERNEL_SIZE / 2);
+  const vals: number[] = [];
+
+  for (let dy = -half; dy <= half; dy++) {
+    const yy = mapY + dy;
+    if (yy < 0 || yy >= depthMap.height) continue;
+    for (let dx = -half; dx <= half; dx++) {
+      const xx = mapX + dx;
+      if (xx < 0 || xx >= depthMap.width) continue;
+      const idx = yy * depthMap.width + xx;
+      const v = depthMap.data[idx];
+      if (v && v > 0 && Number.isFinite(v)) vals.push(v);
+    }
+  }
+
+  if (vals.length === 0) return null;
+  // median
+  vals.sort((a, b) => a - b);
+  const mid = Math.floor(vals.length / 2);
+  const depth = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+  if (debug) {
+    // eslint-disable-next-line no-console
+    console.log('[depth] samples', vals.length, 'median', depth);
+  }
+  return depth;
+}
+
 /**
  * Estimates the distance from the camera to a point corresponding to a pixel click
  * using the provided ONNX depth map.
@@ -36,21 +73,8 @@ export function estimateDistanceToPoint(
     const clampedX = Math.max(0, Math.min(depthMap.width - 1, mapX));
     const clampedY = Math.max(0, Math.min(depthMap.height - 1, mapY));
 
-    // Calculate the index in the flattened depth array
-    const index = clampedY * depthMap.width + clampedX;
-
-    if (index < 0 || index >= depthMap.data.length) {
-        return null;
-    }
-
-    // Retrieve the depth value
-    const distance = depthMap.data[index];
-
-    if (distance === undefined || distance === null || distance <= 0) {
-        return null;
-    }
-
-    return distance; // Return the depth value from the map
+    const distance = getRobustDepthSample(clampedX, clampedY, depthMap, true);
+    return distance;
 }
 
 /**
