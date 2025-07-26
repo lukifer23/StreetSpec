@@ -26,7 +26,8 @@ const store = new Store({
       theme: 'light',
       language: 'en',
       measurementHistoryLimit: 1000,
-      useGPU: false
+      useGPU: false,
+      calibrationPitchOffsetDeg: 0
     }
   },
   schema: {
@@ -57,7 +58,8 @@ const store = new Store({
         theme: { type: 'string', enum: ['light', 'dark', 'system'] },
         language: { type: 'string' },
         measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 },
-        useGPU: { type: 'boolean' }
+        useGPU: { type: 'boolean' },
+        calibrationPitchOffsetDeg: { type: 'number' }
       }
     }
   }
@@ -425,7 +427,8 @@ async function createWindow() {
         theme: 'light',
         language: 'en',
         measurementHistoryLimit: 1000,
-        useGPU: false
+        useGPU: false,
+        calibrationPitchOffsetDeg: 0
       });
     } catch (error) {
       return {
@@ -434,7 +437,8 @@ async function createWindow() {
         theme: 'light',
         language: 'en',
         measurementHistoryLimit: 1000,
-        useGPU: false
+        useGPU: false,
+        calibrationPitchOffsetDeg: 0
       };
     }
   });

@@ -12,6 +12,8 @@ interface MapViewProps {
   mapGenerationError: string | null;
   onnxDepthMap: OnnxDepthMap | null;
   onGenerateDepthMap: () => void;
+  calibrateMode?: boolean;
+  onCalibrateClick?: (pixelY:number, viewportH:number)=>void;
 }
 
 // Default coords
@@ -37,7 +39,9 @@ const MapView: React.FC<MapViewProps> = ({
   isGeneratingMap,
   mapGenerationError,
   onnxDepthMap,
-  onGenerateDepthMap
+  onGenerateDepthMap,
+  calibrateMode=false,
+  onCalibrateClick
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
@@ -157,32 +161,20 @@ const MapView: React.FC<MapViewProps> = ({
     };
 
   return (
-    <div 
-      ref={mapContainerRef} 
-      id="map-container" 
-      style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#eee' }}
-    >
-      {isInitialized && (
-        <>
-          <button 
-            onClick={onGenerateDepthMap}
-            disabled={isGeneratingMap || !currentCameraParams}
-            style={{
-              position: 'absolute', 
-              top: '10px',
-              left: '10px', 
-              zIndex: 100, 
-              padding: '5px 10px',
-              cursor: (isGeneratingMap || !currentCameraParams) ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isGeneratingMap ? 'Generating...' : 'Generate Depth Map'}
-          </button>
-
-          <GenStatusIndicator />
-        </>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+      {calibrateMode && (
+        <div
+          style={{position:'absolute',top:0,left:0,right:0,bottom:0,cursor:'crosshair',zIndex:20}}
+          onClick={e=>{
+            const rect=(e.currentTarget as HTMLDivElement).getBoundingClientRect();
+            const y=e.clientY-rect.top;
+            onCalibrateClick?.(y,rect.height);
+          }}
+        />
       )}
-      {!isInitialized && <div style={{ padding: '20px', color: 'black' }}>Initializing Map...</div>}
+      {/* Status indicator etc */}
+      <GenStatusIndicator />
     </div>
   );
 };

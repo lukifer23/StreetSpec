@@ -81,6 +81,7 @@ function App() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [calibrateMode,setCalibrateMode]=useState(false);
 
   // Load settings and measurements on app start
   useEffect(() => {
@@ -147,8 +148,22 @@ function App() {
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
-    setCurrentCameraParams(params);
-  }, []);
+    const merged = { ...params, calibrationPitchOffsetDeg: settings.calibrationPitchOffsetDeg ?? 0 };
+    setCurrentCameraParams(merged);
+  }, [settings.calibrationPitchOffsetDeg]);
+
+  const handleCalibrateClick = useCallback((pixelY:number, viewH:number)=>{
+     if(!currentCameraParams||!currentCameraParams.fov||currentCameraParams.pitch===undefined) {setCalibrateMode(false);return;}
+     const verticalFov=currentCameraParams.fov;
+     const center=viewH/2;
+     const angle=((pixelY-center)/viewH)*verticalFov; // degrees
+     const offset = -(currentCameraParams.pitch + angle);
+     const newSettings={...settings, calibrationPitchOffsetDeg:offset};
+     setSettings(newSettings);
+     window.electronAPI?.invoke('save-settings',newSettings).catch(()=>{});
+     setCalibrateMode(false);
+     alert(`Calibration saved ΔPitch ${offset.toFixed(2)}°`);
+  },[currentCameraParams,settings]);
 
   // Callback for when a place is selected in the SearchBox
   const handlePlaceSelected = (place: google.maps.places.PlaceResult) => {
@@ -364,6 +379,7 @@ function App() {
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >⚙️</button>
+        <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams}>Calibrate Horizon</button>
         {isApiLoaded ? (
           <SearchBox 
             onPlaceSelected={handlePlaceSelected} 
@@ -452,6 +468,8 @@ function App() {
                 mapGenerationError={mapGenerationError}
                 onnxDepthMap={onnxDepthMap}
                 onGenerateDepthMap={handleGenerateDepthMap}
+                calibrateMode={calibrateMode}
+                onCalibrateClick={handleCalibrateClick}
               />
               <MeasurementTool 
                 cameraParams={currentCameraParams}

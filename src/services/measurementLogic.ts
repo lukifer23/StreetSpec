@@ -94,7 +94,7 @@ export function calculateEstimatedHeight(
     cameraParams: CameraParams | null,
     distanceToBase: number | null
 ): number | null {
-    if (!cameraParams?.fov || !cameraParams?.pitch || distanceToBase === null) {
+    if (!cameraParams?.fov || cameraParams.pitch === undefined || distanceToBase === null) {
         return null;
     }
 
@@ -103,7 +103,8 @@ export function calculateEstimatedHeight(
     
     // Calculate angle for each pixel relative to the center (pitch angle)
     const centerPixelY = viewportHeight / 2;
-    const pitchRadians = (cameraParams.pitch * Math.PI) / 180;
+    const effectivePitch = (cameraParams.pitch - (cameraParams.calibrationPitchOffsetDeg ?? 0));
+    const pitchRadians = (effectivePitch * Math.PI) / 180;
 
     // Angle relative to horizon for base and top points
     // Note: Positive angle is downwards from horizon in this calculation

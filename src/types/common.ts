@@ -26,6 +26,7 @@ export interface CameraParams {
   zoom?: number;         // Street View zoom level (0 is widest)
   fov?: number;          // Calculated Field of View (degrees)
   pano?: string;         // Optional: The current panorama ID
+  calibrationPitchOffsetDeg?: number; // applied offset for horizon calibration
   // Potentially add: altitude, exact camera position vector later
 }
 
@@ -75,6 +76,7 @@ export interface AppSettings {
   language: string;
   measurementHistoryLimit: number;
   useGPU?: boolean;
+  calibrationPitchOffsetDeg?: number;
 }
 
 // Error types for better error handling
