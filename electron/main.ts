@@ -297,19 +297,21 @@ async function createWindow() {
   // Set up IPC handlers
   // Depth inference handler
   ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, imageDataUrl: string) => {
+    console.log('[infer-depth] request received');
     if (!depthSession) {
       event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not loaded or failed to load.'});
       return null;
     }
 
     try {
+      console.time('[infer-depth] preprocess');
       // Process image data and run inference
       const base64Data = imageDataUrl.split(',')[1];
       if (!base64Data) throw new Error('Invalid image data');
       
       const imageBuffer = Buffer.from(base64Data, 'base64');
       const image = sharp(imageBuffer);
-      const metadata = await image.metadata();
+      const metadata = await image.metadata(); // keep for potential future debug
       
       const resizedBuffer = await image
         .resize(modelInputShape[3], modelInputShape[2], { fit: 'fill' })
@@ -323,19 +325,25 @@ async function createWindow() {
          float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
          float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
        }
+      console.timeEnd('[infer-depth] preprocess');
 
       // Create tensor from the processed float data
       const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape);
       const feeds: Record<string, ort.Tensor> = {};
       feeds[depthSession!.inputNames[0]] = inputTensor;
       
-      const startTime = Date.now();
+      console.time('[infer-depth] inference');
       const results = await depthSession!.run(feeds);
-      const endTime = Date.now();
+      console.timeEnd('[infer-depth] inference');
 
       const outputTensor = results[depthSession!.outputNames[0]];
+      console.log('[infer-depth] output dims', outputTensor.dims, 'dataLen', (outputTensor.data as Float32Array).length);
       
       const [n, c, h, w] = outputTensor.dims; // dims should be [1,1,H,W]
+
+      if (!w || !h || !(outputTensor.data instanceof Float32Array) || (outputTensor.data as Float32Array).length === 0) {
+        throw new Error('ONNX output tensor invalid');
+      }
 
       return {
         data: Array.from(outputTensor.data as Float32Array),
@@ -343,6 +351,7 @@ async function createWindow() {
         height: h
       };
     } catch (error) {
+      console.error('[infer-depth] failed', error);
       event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });
       return null;
     }
