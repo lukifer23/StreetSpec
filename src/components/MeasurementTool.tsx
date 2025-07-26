@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Point, CameraParams, Measurement, OnnxDepthMap, UNIT_CONVERSIONS, DEFAULT_SHORTCUTS } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
+import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
 import { v4 as uuidv4 } from 'uuid';
 import styles from './MeasurementTool.module.css';
 
@@ -69,7 +70,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
           return;
         }
 
-        const distanceToBase = estimateDistanceToPoint(
+        let distanceToBase = estimateDistanceToPoint(
           startPoint.x,
           startPoint.y,
           viewWidth,
@@ -77,6 +78,22 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
           cameraParams,
           onnxDepthMap
         );
+
+        if (distanceToBase === null) {
+          // fallback to ground plane
+          const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
+          const wp = estimateGroundPlaneIntersection(dir);
+          if (wp) {
+            distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
+            // eslint-disable-next-line no-console
+            console.log('[measure] fallback ground-plane distance', distanceToBase);
+          } else {
+            console.warn('[measure] unable to get ground-plane fallback');
+          }
+        } else {
+          // eslint-disable-next-line no-console
+          console.log('[measure] kernel depth distance', distanceToBase);
+        }
 
         if (distanceToBase === null) {
           setStartPoint(null);
