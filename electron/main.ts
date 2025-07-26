@@ -180,7 +180,7 @@ async function getRawDepthData(panoId: string): Promise<Uint8Array | null> {
 let win: BrowserWindow | null = null;
 
 // Calculate the preload script path
-const preloadScriptPath = join(__dirname, 'preload.js');
+const preloadScriptPath = join(__dirname, 'preload.cjs');
 
 // Determine the correct path for index.html
 // In dev, vite-plugin-electron sets VITE_DEV_SERVER_URL.
