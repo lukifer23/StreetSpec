@@ -31,6 +31,8 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
 *   **Measurement List:** View, name, delete, and export measurements.
 *   **CSV Export:** Export measurements to a CSV file via main process file dialog.
 *   **Cross-Platform:** Built with Electron for compatibility.
+*   **Settings Panel:** In-app modal for default unit, theme (light/dark/system), GPU toggle and history limit.
+*   **Depth-Map Caching:** IndexedDB cache dramatically reduces repeat latency and Google quota usage.
 
 ## Setup and Running
 
