@@ -41,6 +41,29 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
 ## Setup and Running
 
 ### Quick Start (For Collaborators)
+
+#### Option 1: Automated Setup (Recommended)
+**Windows Users:**
+1. Clone the repository: `git clone https://github.com/lukifer23/PoleCheck-Desktop.git`
+2. Navigate to the folder: `cd PoleCheck-Desktop`
+3. **Double-click `setup.bat`** - This will automatically:
+   - Check prerequisites (Node.js, npm, Git, Git LFS)
+   - Install dependencies
+   - Download model files
+   - Create .env file (prompts for API key)
+   - Run quality checks
+   - Launch the application
+
+**macOS/Linux Users:**
+1. Clone the repository: `git clone https://github.com/lukifer23/PoleCheck-Desktop.git`
+2. Navigate to the folder: `cd PoleCheck-Desktop`
+3. **Run the setup script:**
+   ```bash
+   chmod +x setup.sh  # Make executable (first time only)
+   ./setup.sh         # Run the setup script
+   ```
+
+#### Option 2: Manual Setup
 ```bash
 git clone https://github.com/lukifer23/PoleCheck-Desktop.git
 cd PoleCheck-Desktop
@@ -151,6 +174,9 @@ Access settings via the gear icon (⚙️) in the header:
 *   `dist/`: Output directory for the Vite frontend build.
 *   `dist-electron/`: Output directory for the Electron main/preload script builds.
 *   `release/`: Output directory for packaged application builds.
+*   `setup.bat`: Windows automated setup script.
+*   `setup.sh`: Cross-platform automated setup script.
+*   `build-windows.bat`: Windows build automation script.
 
 ## Development
 
