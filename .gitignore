@@ -103,10 +103,10 @@ jspm_packages/
 out/
 app/
 
-# ONNX model files (large files)
-*.onnx
-*.pth
-*.pkl
+# ONNX model files are tracked with Git LFS
+# *.onnx
+# *.pth  
+# *.pkl
 
 # Temporary files
 *.tmp
