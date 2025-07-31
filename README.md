@@ -29,7 +29,7 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
 *   **Street View Integration:** Interactive Street View display with camera parameter tracking.
 *   **Metric Depth Estimation:** Uses an ONNX model running in the main Electron process to estimate depth in meters.
 *   **Height Measurement Tool:** Click base and top points on an object to estimate its height using camera parameters and ML depth data.
-*   **Horizon Calibration:** Calibrate the horizon offset for accurate measurements by clicking on the true horizon line.
+*   **Horizon Calibration:** Calibrate the horizon offset for accurate measurements by clicking on the flat horizontal line where sky meets ground.
 *   **Measurement List:** View, name, delete, and export measurements with persistent storage.
 *   **CSV Export:** Export measurements to a CSV file via main process file dialog.
 *   **Cross-Platform:** Built with Electron for compatibility across Windows, macOS, and Linux.

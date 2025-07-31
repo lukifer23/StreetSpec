@@ -161,7 +161,7 @@ const MapView: React.FC<MapViewProps> = ({
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       {calibrateMode && (
         <div style={{position:'absolute',top:10,left:'50%',transform:'translateX(-50%)',background:'rgba(0,0,0,0.6)',color:'#fff',padding:'4px 8px',borderRadius:4,zIndex:21,fontSize:12}}>
-          Click a point on the true horizon (Esc to cancel)
+          Click on the flat horizontal line where sky meets ground (Esc to cancel)
         </div>
       )}
       {calibrateMode && (
