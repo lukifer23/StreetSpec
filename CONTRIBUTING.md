@@ -46,10 +46,13 @@ Thank you for your interest in contributing to PoleCheck Desktop! This document 
    VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
    ```
 
-3. **Download the ONNX model**:
-   - Download from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small/resolve/main/depth%5Fanything%5Fv2%5Fmetric%5Fvkitti%5Fvits.pth?download=true)
-   - Convert to ONNX format
-   - Place in `src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx`
+3. **Download model files**:
+   ```bash
+   git lfs pull  # Downloads the model files automatically
+   ```
+   The models will be placed in:
+   - `src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx` (ONNX format for the app)
+   - `models_temp/depth_anything_v2_metric_vkitti_vits.pth` (PyTorch format for reference)
 
 4. **Start development server**:
    ```bash

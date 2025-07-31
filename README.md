@@ -40,14 +40,26 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
 
 ## Setup and Running
 
+### Quick Start (For Collaborators)
+```bash
+git clone https://github.com/lukifer23/PoleCheck-Desktop.git
+cd PoleCheck-Desktop
+git lfs pull  # Downloads the model files
+npm install
+# Create .env file with your Google Maps API key
+npm run dev
+```
+
+### Detailed Setup
+
 1.  **Prerequisites:**
     *   Node.js (v18 or later recommended)
     *   npm or yarn
 
 2.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
-    cd polecheck-desktop
+    git clone https://github.com/lukifer23/PoleCheck-Desktop.git
+    cd PoleCheck-Desktop
     ```
 
 3.  **Install dependencies:**
@@ -64,13 +76,18 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
         VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
         ```
 
-5.  **Download and Place ONNX Model:**
-    *   Download the **Depth Anything V2 Metric Depth VKITTI (Outdoor) Small** model.
-        *   Get the `.pth` file from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small/resolve/main/depth%5Fanything%5Fv2%5Fmetric%5Fvkitti%5Fvits.pth?download=true).
-    *   **Convert** the downloaded `.pth` file to the ONNX format.
-        *   You may need to use Python and scripts provided by Depth Anything or ONNX conversion tools.
-    *   Place the converted `.onnx` file in the `src/assets/models/` directory.
-    *   Ensure the filename exactly matches the one specified in `electron/main.ts` (currently `depth_anything_v2_metric_vkitti_vits.onnx`).
+5.  **Model Files (Included with Git LFS):**
+    *   The required model files are included in the repository and tracked with Git LFS.
+    *   When you clone the repository, run `git lfs pull` to download the model files:
+        ```bash
+        git clone https://github.com/lukifer23/PoleCheck-Desktop.git
+        cd PoleCheck-Desktop
+        git lfs pull  # Downloads the model files automatically
+        ```
+    *   The models will be placed in:
+        *   `src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx` (ONNX format for the app)
+        *   `models_temp/depth_anything_v2_metric_vkitti_vits.pth` (PyTorch format for reference)
+    *   If you need to download the models manually, get them from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small).
 
 6.  **Run in Development Mode:**
     ```bash
