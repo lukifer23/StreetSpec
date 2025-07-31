@@ -1,12 +1,10 @@
-import { app, BrowserWindow, shell, ipcMain, dialog, IpcMainInvokeEvent, Event } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, IpcMainInvokeEvent, Event } from 'electron';
 import { release } from 'node:os';
 import { join, dirname } from 'node:path';
 import fetch from 'node-fetch';
-import pako from 'pako';
 import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
 import { existsSync } from 'node:fs';
-import path from 'path';
 import * as fs from 'fs';
 import Store from 'electron-store';
 
@@ -90,6 +88,9 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0)
 }
 
+// Global variables for model session
+let depthSession: ort.InferenceSession | null = null;
+
 // Add rate limiting configuration
 const RATE_LIMIT = {
   maxRetries: 5,
@@ -99,85 +100,32 @@ const RATE_LIMIT = {
 
 // === Helper Function for Depth Data ===
 async function getRawDepthData(panoId: string): Promise<Uint8Array | null> {
-    const apiUrl = `https://maps.google.com/cbk?output=json&cb_client=maps_sv&v=4&dm=1&pm=1&ph=1&hl=en&panoid=${panoId}`;
-    let retryCount = 0;
-
-    while (retryCount < RATE_LIMIT.maxRetries) {
-        try {
-            const response = await fetch(apiUrl);
-
-            if (response.status === RATE_LIMIT.tooManyRequestsCode) {
-                const delay = RATE_LIMIT.delayMs * Math.pow(2, retryCount);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                retryCount++;
-                continue;
-            } else if (response.status >= 500) {
-                const delay = RATE_LIMIT.delayMs * Math.pow(2, retryCount);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                retryCount++;
-                continue;
-            }
-
-            if (response.status >= 400 && response.status < 500 && response.status !== RATE_LIMIT.tooManyRequestsCode) {
-                try {
-                    const errorBody = await response.text();
-                } catch (e) {
-                    // Ignore error body read failures
-                }
-                return null;
-            }
-
-            if (retryCount >= RATE_LIMIT.maxRetries) {
-                return null;
-            }
-
-            if (!response.ok) {
-                try {
-                    const errorBody = await response.text();
-                } catch (e) {
-                    // Ignore error body read failures
-                }
-                return null;
-            }
-
-            const responseText = await response.text();
-            let jsonData: any;
-            
-            try {
-                jsonData = JSON.parse(responseText);
-            } catch (parseError) {
-                return null;
-            }
-
-            const base64Data = jsonData?.model?.depth_map;
-            if (!base64Data || typeof base64Data !== 'string' || base64Data.trim() === '') {
-                return null;
-            }
-
-            const base64Standard = base64Data.replace(/-/g, '+').replace(/_/g, '/');
-            const compressedBytes = Buffer.from(base64Standard, 'base64');
-
-            try {
-                const decompressedBytes = pako.inflate(compressedBytes);
-                return decompressedBytes;
-            } catch (decompressionError) {
-                return null;
-            }
-
-        } catch (error: any) {
-            retryCount++;
-            if (retryCount < RATE_LIMIT.maxRetries) {
-                const delay = RATE_LIMIT.delayMs * Math.pow(2, retryCount - 1);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-                return null;
-            }
-        }
+  const apiUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?pano=${panoId}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
+  
+  try {
+    const response = await fetch(apiUrl);
+    if (!response.ok) {
+      if (response.status === RATE_LIMIT.tooManyRequestsCode) {
+        console.warn('[depth] Rate limited, retrying...');
+        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.delayMs));
+        return getRawDepthData(panoId);
+      }
+      return null;
     }
-
+    
+    const data = await response.json() as any;
+    if (data.status !== 'OK') {
+      return null;
+    }
+    
+    // This is a placeholder - actual depth data would need to be fetched from Google's depth API
+    // For now, we'll return null as the depth API is not publicly available
     return null;
+  } catch (error) {
+    console.error('[depth] Error fetching depth data:', error);
+    return null;
+  }
 }
-// === End Helper Function ===
 
 let win: BrowserWindow | null = null;
 
@@ -210,9 +158,6 @@ const isTinyModel = selectedModelFilename.includes('vit_tiny');
 
 let modelInputShape: [number, number, number, number] = isTinyModel ? [1, 3, 384, 384] : [1, 3, 518, 518];
 
-// Global ONNX session holder
-let depthSession: ort.InferenceSession | null = null;
-
 const appPath = app.getAppPath(); // Use app.getAppPath() for a reliable base
 const modelRelativePath = join('src', 'assets', 'models', selectedModelFilename);
 
@@ -223,22 +168,38 @@ const modelPath = app.isPackaged
 const modelExists = existsSync(modelPath);
 
 async function loadModel() {
+  console.log('[model] Model path:', modelPath);
+  console.log('[model] Model exists:', modelExists);
+  console.log('[model] __dirname:', __dirname);
+  console.log('[model] app.getAppPath():', app.getAppPath());
+  console.log('[model] app.isPackaged:', app.isPackaged);
+  
   if (!modelExists) {
+    console.error('[model] Model file not found at:', modelPath);
     if (win) {
       win.webContents.send('main-process-message', { type: 'error', message: 'ONNX model file not found.' });
     }
     return;
   }
+  
   try {
-    const options: ort.InferenceSession.SessionOptions = { executionProviders: ['cpu'] };
-    depthSession = await ort.InferenceSession.create(modelPath, options);
-
+    console.log('[model] Loading ONNX model...');
+    
+    // Try with minimal session options first
+    depthSession = await ort.InferenceSession.create(modelPath);
+    
+    console.log('[model] Model loaded successfully');
+    console.log('[model] Input names:', depthSession.inputNames);
+    console.log('[model] Output names:', depthSession.outputNames);
+    
     if (win) {
       win.webContents.send('main-process-message', { type: 'model-status', status: 'loaded' });
     }
 
   } catch (error) {
     depthSession = null;
+    console.error('[model] Failed to load model:', error);
+    
     if (win) {
       win.webContents.send('main-process-message', { type: 'error', message: `Failed to load ONNX model: ${error}` });
     }
@@ -277,7 +238,7 @@ async function createWindow() {
   });
 
   if (devServerUrl && !app.isPackaged) {
-    await win.loadURL(devServerUrl).catch((err: Error) => {
+    await win.loadURL(devServerUrl).catch((_err: Error) => {
       dialog.showErrorBox('Development Load Error', `Could not connect to the Vite development server at:\n${devServerUrl}\n\nPlease ensure 'npm run dev' is running.`);
     });
     win.webContents.openDevTools();
@@ -287,7 +248,7 @@ async function createWindow() {
       app.quit();
       return;
     }
-    await win.loadFile(indexHtmlPath).catch((err: Error) => {
+    await win.loadFile(indexHtmlPath).catch((_err: Error) => {
       dialog.showErrorBox('Production Load Error', `Could not load the application file:\n${indexHtmlPath}`);
     });
   }
@@ -313,7 +274,6 @@ async function createWindow() {
       
       const imageBuffer = Buffer.from(base64Data, 'base64');
       const image = sharp(imageBuffer);
-      const metadata = await image.metadata(); // keep for potential future debug
       
       const resizedBuffer = await image
         .resize(modelInputShape[3], modelInputShape[2], { fit: 'fill' })
@@ -362,9 +322,9 @@ async function createWindow() {
         width: w,
         height: h
       };
-    } catch (error) {
-      console.error('[infer-depth] failed', error);
-      event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });
+    } catch (_error) {
+      console.error('[infer-depth] failed', _error);
+      event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${_error}` });
       return null;
     }
   });
@@ -414,7 +374,7 @@ async function createWindow() {
     try {
       store.set('measurements', measurements);
       return true;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   });
@@ -430,7 +390,7 @@ async function createWindow() {
         useGPU: false,
         calibrationPitchOffsetDeg: 0
       });
-    } catch (error) {
+    } catch (_error) {
       return {
         defaultUnit: 'metric',
         autoSave: true,
@@ -447,7 +407,7 @@ async function createWindow() {
     try {
       store.set('settings', settings);
       return true;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   });
@@ -456,7 +416,7 @@ async function createWindow() {
     try {
       store.delete('measurements');
       return true;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   });
@@ -466,13 +426,13 @@ async function createWindow() {
 app.whenReady().then(async () => {
   try {
     await loadModel();
-  } catch (error) {
+  } catch (_error) {
     // Continue anyway, as we want the app to at least start
   }
 
   try {
     await createWindow();
-  } catch (error) {
+  } catch (_error) {
     app.quit();
     return;
   }
@@ -497,11 +457,11 @@ app.on('second-instance', () => {
 })
 
 // Handle any uncaught exceptions
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', (_error) => {
   app.quit();
 });
 
-process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+process.on('unhandledRejection', (reason: any, _promise: Promise<any>) => {
   if (win) {
     const wc = win.webContents;
     if (!wc.isDestroyed()) {

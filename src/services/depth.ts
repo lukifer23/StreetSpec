@@ -1,89 +1,111 @@
-import { DepthPlane, DecodedDepthData } from '../types/common';
-import { get, set } from 'idb-keyval';
+import { get, set, del, keys } from 'idb-keyval';
+import { OnnxDepthMap, CameraParams } from '../types/common';
 
-const CACHE_PREFIX = 'depth-raw-';
+// Cache configuration
+const CACHE_VERSION = '1.0';
+const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
+const MAX_CACHE_SIZE = 50; // Maximum number of cached depth maps
 
-// --- Helper functions for parsing binary data ---
-function readUInt16LE(buffer: Uint8Array, offset: number): number {
-    const view = new DataView(buffer.buffer, buffer.byteOffset);
-    return view.getUint16(offset, true);
+// Generate cache key from camera parameters
+function generateCacheKey(params: CameraParams): string {
+  if (!params.panoId || !params.heading || !params.pitch || !params.fov) {
+    return '';
+  }
+  
+  return `${CACHE_PREFIX}${params.panoId}_${params.heading}_${params.pitch}_${params.fov}`;
 }
 
-function readFloat32LE(buffer: Uint8Array, offset: number): number {
-    const view = new DataView(buffer.buffer, buffer.byteOffset);
-    return view.getFloat32(offset, true);
-}
-// --- End Helper Functions ---
-
-function parseDepthMapData(decompressedBytes: Uint8Array): DecodedDepthData | null {
-    try {
-        const headerSize = decompressedBytes[0];
-        if (headerSize !== 8) {
-            return null;
-        }
-        const numberOfPlanes = readUInt16LE(decompressedBytes, 1);
-        const width = readUInt16LE(decompressedBytes, 3);
-        const height = readUInt16LE(decompressedBytes, 5);
-        const planeDataOffset = readUInt16LE(decompressedBytes, 7);
-
-        if (width !== 512 || height !== 256) {
-            return null;
-        }
-
-        const indicesStart = headerSize;
-        const indicesLength = width * height;
-        const indices = new Uint8Array(decompressedBytes.buffer, decompressedBytes.byteOffset + indicesStart, indicesLength);
-
-        const planes: DepthPlane[] = [];
-        for (let i = 0; i < numberOfPlanes; i++) {
-            const planeOffset = planeDataOffset + i * 16;
-            const nx = readFloat32LE(decompressedBytes, planeOffset + 0);
-            const ny = readFloat32LE(decompressedBytes, planeOffset + 4);
-            const nz = readFloat32LE(decompressedBytes, planeOffset + 8);
-            const d = readFloat32LE(decompressedBytes, planeOffset + 12);
-            planes.push({ nx, ny, nz, d });
-        }
-
-        return {
-            planes,
-            indices,
-            width,
-            height
-        };
-    } catch (error) {
-        return null;
+// Check if depth map is cached
+export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepthMap | null> {
+  try {
+    const cacheKey = generateCacheKey(params);
+    if (!cacheKey) return null;
+    
+    const cached = await get(cacheKey);
+    if (cached && cached.data && cached.width && cached.height) {
+      console.log('[cache] Hit for key:', cacheKey);
+      return cached as OnnxDepthMap;
     }
+    
+    return null;
+  } catch (error) {
+    console.warn('[cache] Error reading from cache:', error);
+    return null;
+  }
 }
 
-export async function getParsedDepthData(panoId: string): Promise<DecodedDepthData | null> {
-    const cacheKey = `${CACHE_PREFIX}${panoId}`;
-    try {
-        // Try cache first
-        const cached: Uint8Array | undefined = await get(cacheKey);
-        if (cached && cached.length > 0) {
-            const parsed = parseDepthMapData(cached);
-            if (parsed) return parsed;
-        }
-    } catch {
-        // ignore cache errors
+// Cache depth map
+export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap): Promise<void> {
+  try {
+    const cacheKey = generateCacheKey(params);
+    if (!cacheKey) return;
+    
+    await set(cacheKey, depthMap);
+    console.log('[cache] Stored depth map for key:', cacheKey);
+    
+    // Implement LRU by limiting cache size
+    await enforceCacheSizeLimit();
+  } catch (error) {
+    console.warn('[cache] Error writing to cache:', error);
+  }
+}
+
+// Enforce cache size limit using LRU strategy
+async function enforceCacheSizeLimit(): Promise<void> {
+  try {
+    const allKeys = await keys();
+    const cacheKeys = allKeys.filter(key => 
+      typeof key === 'string' && key.startsWith(CACHE_PREFIX)
+    ) as string[];
+    
+    if (cacheKeys.length > MAX_CACHE_SIZE) {
+      // Remove oldest entries (simple strategy - could be improved with timestamps)
+      const keysToRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_SIZE);
+      await Promise.all(keysToRemove.map(key => del(key)));
+      console.log('[cache] Removed', keysToRemove.length, 'old entries');
     }
+  } catch (error) {
+    console.warn('[cache] Error enforcing cache size limit:', error);
+  }
+}
 
-    try {
-        const rawData: Uint8Array | null = await window.electronAPI.invoke('fetch-depth-data', panoId);
+// Clear all cached depth maps
+export async function clearDepthCache(): Promise<void> {
+  try {
+    const allKeys = await keys();
+    const cacheKeys = allKeys.filter(key => 
+      typeof key === 'string' && key.startsWith(CACHE_PREFIX)
+    ) as string[];
+    
+    await Promise.all(cacheKeys.map(key => del(key)));
+    console.log('[cache] Cleared', cacheKeys.length, 'cached depth maps');
+  } catch (error) {
+    console.warn('[cache] Error clearing cache:', error);
+  }
+}
 
-        if (!rawData) {
-            return null;
-        }
-
-        const parsedData = parseDepthMapData(rawData);
-
-        if (parsedData) {
-            // store to cache (fire and forget)
-            set(cacheKey, rawData).catch(() => {/* ignore */});
-        }
-        return parsedData;
-
-    } catch (error) {
-        return null;
+// Get cache statistics
+export async function getCacheStats(): Promise<{ count: number; size: number }> {
+  try {
+    const allKeys = await keys();
+    const cacheKeys = allKeys.filter(key => 
+      typeof key === 'string' && key.startsWith(CACHE_PREFIX)
+    ) as string[];
+    
+    let totalSize = 0;
+    for (const key of cacheKeys) {
+      const cached = await get(key);
+      if (cached && cached.data) {
+        totalSize += cached.data.length * 4; // Float32 = 4 bytes
+      }
     }
+    
+    return {
+      count: cacheKeys.length,
+      size: totalSize
+    };
+  } catch (error) {
+    console.warn('[cache] Error getting cache stats:', error);
+    return { count: 0, size: 0 };
+  }
 }

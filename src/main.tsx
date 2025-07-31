@@ -1,17 +1,19 @@
+import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App'
+import App from './App.tsx'
 import './index.css'
 
-// Post-processing - This might be specific to the template, verify its necessity
-postMessage({ payload: 'removeLoading' }, '*')
+// Handle any uncaught errors in the renderer process
+window.addEventListener('error', (event) => {
+  console.error('Renderer error:', event.error);
+});
 
-// Use the exposed API from the preload script
-if (window.electronAPI?.onMainProcessMessage) {
-  const _removeListener = window.electronAPI.onMainProcessMessage((message) => {
-    // Handle main process messages silently in production
-  });
-}
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+});
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <App />
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
 )

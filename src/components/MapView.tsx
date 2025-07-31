@@ -1,5 +1,5 @@
 /// <reference types="@types/google.maps" />
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CameraParams, OnnxDepthMap } from '../types/common';
 import { calculateFov } from '../services/geometry';
 
@@ -39,14 +39,12 @@ const MapView: React.FC<MapViewProps> = ({
   isGeneratingMap,
   mapGenerationError,
   onnxDepthMap,
-  onGenerateDepthMap,
   calibrateMode=false,
   onCalibrateClick
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
 
   // Initialization Effect
   useEffect(() => {
@@ -108,8 +106,6 @@ const MapView: React.FC<MapViewProps> = ({
         fov: fov,
       };
       
-      // Store locally to enable/disable button
-      setCurrentCameraParams(newParams); 
       // Propagate up to App
       onCameraParamsChange(newParams);
     };

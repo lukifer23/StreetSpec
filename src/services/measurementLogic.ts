@@ -31,7 +31,6 @@ function getRobustDepthSample(
   const mid = Math.floor(vals.length / 2);
   const depth = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
   if (debug) {
-    // eslint-disable-next-line no-console
     console.log('[depth] samples', vals.length, 'median', depth);
   }
   return depth;

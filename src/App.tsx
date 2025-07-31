@@ -5,51 +5,67 @@ import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
 import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings } from './types/common';
+import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
 
-// Add rate limiting configuration at the top of the file
-const RATE_LIMIT = {
-  maxRetries: 3,
-  retryDelay: 1000,
-  maxConcurrent: 1
+// Tooltip component for better UX
+const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div 
+      style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          color: 'white',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          whiteSpace: 'nowrap',
+          zIndex: 1000,
+          marginBottom: '8px',
+          pointerEvents: 'none'
+        }}>
+          {text}
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            border: '4px solid transparent',
+            borderTopColor: 'rgba(0, 0, 0, 0.8)'
+          }} />
+        </div>
+      )}
+    </div>
+  );
 };
-
-let requestQueue: Array<() => Promise<unknown>> = [];
-let isProcessingQueue = false;
-
-// Queue processor function (unused but kept for future rate limiting implementation)
-// async function processQueue() {
-//   if (isProcessingQueue || requestQueue.length === 0) return;
-//   
-//   isProcessingQueue = true;
-//   while (requestQueue.length > 0) {
-//     const request = requestQueue.shift();
-//     if (request) {
-//       try {
-//         await request();
-//         // Add delay between requests
-//         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.retryDelay));
-//       } catch (error) {
-//         // Silent error handling for production
-//       }
-//     }
-//   }
-//   isProcessingQueue = false;
-// }
 
 // Add rate-limited fetch function
 async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response> {
+  const maxRetries = 3;
+  const retryDelay = 1000;
+  
   try {
     const response = await fetch(url);
-    if (response.status === 429 && retryCount < RATE_LIMIT.maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.retryDelay));
+    if (response.status === 429 && retryCount < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
       return rateLimitedFetch(url, retryCount + 1);
     }
     return response;
   } catch (error) {
-    if (retryCount < RATE_LIMIT.maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.retryDelay));
+    if (retryCount < maxRetries) {
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
       return rateLimitedFetch(url, retryCount + 1);
     }
     throw error;
@@ -110,6 +126,30 @@ function App() {
 
     loadPersistedData();
   }, []);
+
+  // Apply theme when settings change
+  useEffect(() => {
+    const applyTheme = () => {
+      const root = document.documentElement;
+      let theme = settings.theme;
+      
+      if (theme === 'system') {
+        theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      
+      root.setAttribute('data-theme', theme);
+    };
+
+    applyTheme();
+
+    // Listen for system theme changes
+    if (settings.theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => applyTheme();
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  }, [settings.theme]);
 
   // Auto-save measurements when they change
   useEffect(() => {
@@ -191,18 +231,27 @@ function App() {
     setMapGenerationError(null);
     setOnnxDepthMap(null);
 
-    const imgWidth = 640;
-    const imgHeight = 640;
-
-    const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
-                   `size=${imgWidth}x${imgHeight}&` +
-                   (currentCameraParams.panoId ? `pano=${currentCameraParams.panoId}&` : `location=${currentCameraParams.lat},${currentCameraParams.lng}&`) +
-                   `heading=${currentCameraParams.heading ?? 0}&` +
-                   `pitch=${currentCameraParams.pitch ?? 0}&` +
-                   `fov=${currentCameraParams.fov ?? 90}&` +
-                   `key=${apiKey}`;
-
     try {
+      // Check cache first
+      const cachedDepthMap = await getCachedDepthMap(currentCameraParams);
+      if (cachedDepthMap) {
+        console.log('[depth] Using cached depth map');
+        setOnnxDepthMap(cachedDepthMap);
+        setIsGeneratingMap(false);
+        return;
+      }
+
+      const imgWidth = 640;
+      const imgHeight = 640;
+
+      const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
+                     `size=${imgWidth}x${imgHeight}&` +
+                     (currentCameraParams.panoId ? `pano=${currentCameraParams.panoId}&` : `location=${currentCameraParams.lat},${currentCameraParams.lng}&`) +
+                     `heading=${currentCameraParams.heading ?? 0}&` +
+                     `pitch=${currentCameraParams.pitch ?? 0}&` +
+                     `fov=${currentCameraParams.fov ?? 90}&` +
+                     `key=${apiKey}`;
+
       const response = await rateLimitedFetch(apiUrl);
       
       if (!response.ok) {
@@ -229,6 +278,9 @@ function App() {
           throw new Error('Main process failed to return valid depth map data.');
         }
 
+        // Cache the result
+        await cacheDepthMap(currentCameraParams, result);
+        
         setOnnxDepthMap(result);
       };
 
@@ -306,6 +358,32 @@ function App() {
     setIsSettingsOpen(false);
   };
 
+  const handleExportCSV = useCallback(async () => {
+    if (measurements.length === 0) {
+      alert("No measurements to export.");
+      return;
+    }
+    
+    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y";
+    const rows = measurements.map(m => 
+      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y}`
+    );
+    const csvContent = `${header}\n${rows.join('\n')}`;
+
+    try {
+      if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
+        const filePath = await window.electronAPI.invoke('csv-export', csvContent);
+        if (filePath) {
+          alert(`Measurements exported successfully to: ${filePath}`);
+        }
+      } else {
+        alert("Export failed: Cannot communicate with the main process.");
+      }
+    } catch (error) {
+      alert(`Export failed: ${error}`);
+    }
+  }, [measurements]);
+
   // Keyboard shortcuts handler
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -333,33 +411,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUnitToggle]);
-
-  const handleExportCSV = async () => {
-    if (measurements.length === 0) {
-      alert("No measurements to export.");
-      return;
-    }
-    
-    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y";
-    const rows = measurements.map(m => 
-      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y}`
-    );
-    const csvContent = `${header}\n${rows.join('\n')}`;
-
-    try {
-      if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
-        const filePath = await window.electronAPI.invoke('csv-export', csvContent);
-        if (filePath) {
-          alert(`Measurements exported successfully to: ${filePath}`);
-        }
-      } else {
-        alert("Export failed: Cannot communicate with the main process.");
-      }
-    } catch (error) {
-      alert(`Export failed: ${error}`);
-    }
-  };
+  }, [handleUnitToggle, handleExportCSV, handleClearMeasurements]);
 
   useEffect(()=>{
     const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&calibrateMode){setCalibrateMode(false);}}
@@ -385,8 +437,16 @@ function App() {
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >⚙️</button>
-        <button style={{marginRight:10}} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}> {isGeneratingMap? 'Generating...' : 'Generate Depth Map'} </button>
-        <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>Calibrate Horizon</button>
+        <Tooltip text="Generate depth map for current Street View location">
+          <button style={{marginRight:10}} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}> 
+            {isGeneratingMap? 'Generating...' : 'Generate Depth Map'} 
+          </button>
+        </Tooltip>
+        <Tooltip text="Calibrate the horizon for accurate measurements. Click on the flat horizontal line where the sky meets the ground - like where the ocean meets the sky, or where a flat field meets the sky, or where distant mountains meet the sky. This tells the app what 'level' means in your view so measurements are accurate.">
+          <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>
+            Calibrate Horizon
+          </button>
+        </Tooltip>
         {isApiLoaded ? (
           <SearchBox 
             onPlaceSelected={handlePlaceSelected} 
@@ -484,7 +544,6 @@ function App() {
                 measurements={measurements}
                 onnxDepthMap={onnxDepthMap}
                 currentUnit={settings.defaultUnit}
-                onUnitToggle={handleUnitToggle}
               />
             </>
           ) : (
