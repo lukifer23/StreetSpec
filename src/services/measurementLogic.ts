@@ -130,6 +130,7 @@ export function estimateDistanceToPoint(
  * @param viewportHeight Total height of the viewport in pixels.
  * @param cameraParams Current camera parameters (vertical FOV, pitch).
  * @param distanceToBase Estimated distance from camera to the object's base (in meters).
+ * @param distanceToTop Estimated distance from camera to the object's top (in meters). If null, distanceToBase is used.
  * @returns Estimated height in meters, or null if calculation is not possible.
  */
 export function calculateEstimatedHeight(
@@ -137,7 +138,8 @@ export function calculateEstimatedHeight(
     topPixelY: number,
     viewportHeight: number,
     cameraParams: CameraParams | null,
-    distanceToBase: number | null
+    distanceToBase: number | null,
+    distanceToTop: number | null
 ): number | null {
     if (!cameraParams?.vFov || cameraParams.pitch === undefined || distanceToBase === null) {
         return null;
@@ -158,10 +160,11 @@ export function calculateEstimatedHeight(
 
     // Use tangent to find height relative to camera horizon plane
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
-    const heightAtTop = distanceToBase * Math.tan(angleToTop);
+    const effectiveTopDistance = distanceToTop ?? distanceToBase;
+    const heightAtTop = effectiveTopDistance * Math.tan(angleToTop);
 
     // Estimated height is the difference
-    const estimatedHeight = Math.abs(heightAtBase - heightAtTop);
+    const estimatedHeight = Math.abs(heightAtTop - heightAtBase);
 
     return estimatedHeight;
-} 
+}

@@ -117,12 +117,39 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       return;
     }
 
+    // Determine distance to the top point as well
+    let distanceToTop: number | null = null;
+
+    if (onnxDepthMap) {
+      distanceToTop = estimateDistanceToPoint(
+        coords.x,
+        coords.y,
+        viewWidth,
+        viewHeight,
+        cameraParams,
+        onnxDepthMap
+      );
+      console.log('[measure] Depth map top distance:', distanceToTop);
+    }
+
+    if (distanceToTop === null) {
+      const dirTop = screenToWorld(coords, cameraParams, viewWidth, viewHeight);
+      const wpTop = estimateGroundPlaneIntersection(dirTop, cameraParams);
+      if (wpTop) {
+        distanceToTop = calculateDistance3D({ x: 0, y: 0, z: 0 }, wpTop);
+        console.log('[measure] fallback ground-plane top distance', distanceToTop);
+      } else {
+        console.warn('[measure] unable to get ground-plane fallback for top');
+      }
+    }
+
     const estimatedHeight = calculateEstimatedHeight(
-      startPoint.y, 
+      startPoint.y,
       coords.y,
-      viewHeight, 
-      cameraParams, 
-      distanceToBase
+      viewHeight,
+      cameraParams,
+      distanceToBase,
+      distanceToTop
     );
     console.log('[measure] Estimated height:', estimatedHeight);
 
