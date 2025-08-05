@@ -93,7 +93,8 @@ function App() {
     autoSave: true,
     theme: 'light',
     language: 'en',
-    measurementHistoryLimit: 1000
+    measurementHistoryLimit: 1000,
+    cameraHeight: 2.5
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -188,9 +189,13 @@ function App() {
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
-    const merged = { ...params, calibrationPitchOffsetDeg: settings.calibrationPitchOffsetDeg ?? 0 };
+    const merged = {
+      ...params,
+      calibrationPitchOffsetDeg: settings.calibrationPitchOffsetDeg ?? 0,
+      cameraHeight: params.cameraHeight ?? settings.cameraHeight ?? 2.5,
+    };
     setCurrentCameraParams(merged);
-  }, [settings.calibrationPitchOffsetDeg]);
+  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight]);
 
   const handleCalibrateClick = useCallback((pixelY:number, viewH:number)=>{
      if(!currentCameraParams||!currentCameraParams.fov||currentCameraParams.pitch===undefined) {setCalibrateMode(false);return;}

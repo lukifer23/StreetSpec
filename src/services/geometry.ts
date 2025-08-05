@@ -108,13 +108,14 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
  * Assumes camera is at origin (0,0,0) and ground is at y = -cameraHeight.
  *
  * @param directionVector - Normalized 3D direction vector from the camera.
- * @param cameraHeight - Assumed height of the camera above the ground plane (meters).
+ * @param cameraParams - Camera parameters containing cameraHeight (meters).
  * @returns The estimated 3D world point {x, y, z} relative to the camera, or null if no intersection.
  */
 export function estimateGroundPlaneIntersection(
     directionVector: Vector3,
-    cameraHeight: number = 2.5 // Default assumed height
+    cameraParams?: CameraParams
 ): Vector3 | null {
+    const cameraHeight = cameraParams?.cameraHeight ?? 2.5; // Default assumed height
     const HORIZON_THRESHOLD = 0.01; // Treat vectors with |y| < threshold as horizontal
 
     // Check if the vector points downwards (negative y component) and is not too close to horizontal

@@ -60,6 +60,18 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         </div>
 
         <div className={styles.field}>
+          <label htmlFor="cameraHeight">Camera Height (m)</label>
+          <input
+            id="cameraHeight"
+            type="number"
+            min={0}
+            step={0.1}
+            value={form.cameraHeight ?? 2.5}
+            onChange={e => handleChange('cameraHeight', parseFloat(e.target.value))}
+          />
+        </div>
+
+        <div className={styles.field}>
           <label htmlFor="history">Measurement History Limit</label>
           <input
             id="history"

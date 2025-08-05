@@ -99,7 +99,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     if (distanceToBase === null) {
       // fallback to ground plane
       const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
-      const wp = estimateGroundPlaneIntersection(dir);
+      const wp = estimateGroundPlaneIntersection(dir, cameraParams);
       if (wp) {
         distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
         console.log('[measure] fallback ground-plane distance', distanceToBase);

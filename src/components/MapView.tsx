@@ -44,6 +44,7 @@ const MapView: React.FC<MapViewProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
+  const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialization Effect
@@ -67,6 +68,7 @@ const MapView: React.FC<MapViewProps> = ({
         }
       );
       streetViewRef.current = panorama;
+      streetViewServiceRef.current = new google.maps.StreetViewService();
       setIsInitialized(true);
     } catch (error) {
       // Silent error handling for production
@@ -96,7 +98,7 @@ const MapView: React.FC<MapViewProps> = ({
       const panoId = svInstance.getPano();
       const fov = calculateFov(zoom);
 
-      const newParams: CameraParams = {
+      const baseParams: CameraParams = {
         panoId: panoId ?? undefined,
         lat: position?.lat() ?? undefined,
         lng: position?.lng() ?? undefined,
@@ -105,9 +107,18 @@ const MapView: React.FC<MapViewProps> = ({
         zoom: zoom ?? undefined,
         fov: fov,
       };
-      
-      // Propagate up to App
-      onCameraParamsChange(newParams);
+
+      if (streetViewServiceRef.current && panoId) {
+        streetViewServiceRef.current.getPanorama({ pano: panoId }, (data, status) => {
+          let cameraHeight: number | undefined;
+          if (status === google.maps.StreetViewStatus.OK) {
+            cameraHeight = (data as any)?.location?.latLngAltitude?.altitude;
+          }
+          onCameraParamsChange({ ...baseParams, cameraHeight });
+        });
+      } else {
+        onCameraParamsChange(baseParams);
+      }
     };
 
     const debouncedUpdateParams = debounce(updateLogic, 250); 

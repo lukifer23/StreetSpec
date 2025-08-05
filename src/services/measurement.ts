@@ -55,12 +55,12 @@ export function createMeasurement(
   // Fallback to Ground Plane Intersection if depth data failed or wasn't available
   if (!worldPoint1) {
       const directionVec1 = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
-      worldPoint1 = estimateGroundPlaneIntersection(directionVec1);
+      worldPoint1 = estimateGroundPlaneIntersection(directionVec1, cameraParams);
       if (!worldPoint1) errorMessage = (errorMessage || "") + "Ground plane intersection failed for start point. ";
   }
   if (!worldPoint2) {
       const directionVec2 = screenToWorld(endPoint, cameraParams, viewWidth, viewHeight);
-      worldPoint2 = estimateGroundPlaneIntersection(directionVec2);
+      worldPoint2 = estimateGroundPlaneIntersection(directionVec2, cameraParams);
       if (!worldPoint2) errorMessage = (errorMessage || "") + "Ground plane intersection failed for end point. ";
   }
 
