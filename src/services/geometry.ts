@@ -157,34 +157,46 @@ export function screenToWorldWithDepth(
     // 1. Get the 3D direction vector for the screen point
     const directionVector = screenToWorld(screenPoint, cameraParams, viewWidth, viewHeight);
 
-    // 2. Iterate through depth map planes to find the intersection distance
+    // 2. Map the screen pixel to a depth-map index
+    const mapX = Math.round((screenPoint.x / viewWidth) * depthData.width);
+    const mapY = Math.round((screenPoint.y / viewHeight) * depthData.height);
+    const clampedX = Math.max(0, Math.min(depthData.width - 1, mapX));
+    const clampedY = Math.max(0, Math.min(depthData.height - 1, mapY));
+    const pixelIndex = clampedY * depthData.width + clampedX;
+    const planeIndex = depthData.indices[pixelIndex];
+
     let minDistance = Infinity;
     const epsilon = 1e-6; // Small value to avoid division by zero and parallel checks
 
-    for (const plane of depthData.planes) {
-        // Construct the normal vector from the plane data
-        const normal: Vector3 = { x: plane.nx, y: plane.ny, z: plane.nz }; 
-        const planeDistance = plane.d; // Use the correct distance property 'd'
-
-        // Calculate the dot product of the direction vector and the plane normal
+    // 3. Try intersecting with the plane selected by the depth index
+    const selectedPlane = depthData.planes[planeIndex];
+    if (selectedPlane) {
+        const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
         const dotVN = dotProduct(directionVector, normal);
-
-        // Check if the ray is parallel to the plane (dot product is close to zero)
-        if (Math.abs(dotVN) < epsilon) {
-            continue; // Skip this plane
-        }
-
-        // Calculate the distance 't' along the ray to the intersection point
-        // Formula: t = planeDistance / (directionVector . planeNormal)
-        const t = planeDistance / dotVN;
-
-        // We only care about intersections in front of the camera (t > 0)
-        if (t > epsilon && t < minDistance) {
-            minDistance = t;
+        if (Math.abs(dotVN) >= epsilon) {
+            const t = selectedPlane.d / dotVN;
+            if (t > epsilon) {
+                minDistance = t;
+            }
         }
     }
 
-    // 3. If a valid intersection distance was found, calculate the world point
+    // 4. Fall back to searching all planes if no valid plane was found
+    if (minDistance === Infinity) {
+        for (const plane of depthData.planes) {
+            const normal: Vector3 = { x: plane.nx, y: plane.ny, z: plane.nz };
+            const dotVN = dotProduct(directionVector, normal);
+            if (Math.abs(dotVN) < epsilon) {
+                continue;
+            }
+            const t = plane.d / dotVN;
+            if (t > epsilon && t < minDistance) {
+                minDistance = t;
+            }
+        }
+    }
+
+    // 5. If a valid intersection distance was found, calculate the world point
     if (minDistance !== Infinity) {
         const worldPoint: Vector3 = {
             x: directionVector.x * minDistance,
