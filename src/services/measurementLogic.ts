@@ -143,18 +143,22 @@ export function calculateEstimatedHeight(
         return null;
     }
 
-    // Simple linear FOV assumption (more accurate would use tan)
+    // Convert pixel offsets into view angles using perspective projection.
+    // We previously scaled angles linearly, which is less accurate near the
+    // edges of the field of view.  Here we map each pixel to an angle by
+    // taking the arctangent of its position relative to the center, scaled by
+    // tan(FOV/2).  This mirrors how a pinhole camera projects the scene.
     const verticalFovRadians = (cameraParams.vFov * Math.PI) / 180;
-    
-    // Calculate angle for each pixel relative to the center (pitch angle)
     const centerPixelY = viewportHeight / 2;
     const effectivePitch = (cameraParams.pitch - (cameraParams.calibrationPitchOffsetDeg ?? 0));
     const pitchRadians = (effectivePitch * Math.PI) / 180;
+    const halfViewport = viewportHeight / 2;
+    const tanHalfFov = Math.tan(verticalFovRadians / 2);
 
     // Angle relative to horizon for base and top points
     // Note: Positive angle is downwards from horizon in this calculation
-    const angleToBase = pitchRadians + ((basePixelY - centerPixelY) / viewportHeight) * verticalFovRadians;
-    const angleToTop = pitchRadians + ((topPixelY - centerPixelY) / viewportHeight) * verticalFovRadians;
+    const angleToBase = pitchRadians + Math.atan(((basePixelY - centerPixelY) / halfViewport) * tanHalfFov);
+    const angleToTop = pitchRadians + Math.atan(((topPixelY - centerPixelY) / halfViewport) * tanHalfFov);
 
     // Use tangent to find height relative to camera horizon plane
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
