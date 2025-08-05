@@ -228,9 +228,62 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       context.beginPath();
       context.arc(currentMousePos.x, currentMousePos.y, pointRadius, 0, Math.PI * 2);
       context.fill();
+
+      // Provisional height estimation
+      const viewWidth = overlay.offsetWidth;
+      const viewHeight = overlay.offsetHeight;
+      let distanceToBase: number | null = null;
+
+      if (cameraParams) {
+        if (onnxDepthMap) {
+          distanceToBase = estimateDistanceToPoint(
+            startPoint.x,
+            startPoint.y,
+            viewWidth,
+            viewHeight,
+            cameraParams,
+            onnxDepthMap
+          );
+        }
+
+        if (distanceToBase === null) {
+          const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
+          const wp = estimateGroundPlaneIntersection(dir, cameraParams);
+          if (wp) {
+            distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, wp);
+          }
+        }
+
+        const estimatedHeight = calculateEstimatedHeight(
+          startPoint.y,
+          currentMousePos.y,
+          viewHeight,
+          cameraParams,
+          distanceToBase
+        );
+
+        if (estimatedHeight !== null) {
+          const finalDistance =
+            currentUnit === 'imperial'
+              ? UNIT_CONVERSIONS.metersToFeet(estimatedHeight)
+              : estimatedHeight;
+          const unitLabel = currentUnit === 'metric' ? 'm' : 'ft';
+
+          context.fillStyle = 'white';
+          context.shadowColor = 'black';
+          context.shadowBlur = 4;
+          context.fillText(
+            `${finalDistance.toFixed(2)}${unitLabel}`,
+            currentMousePos.x + 10,
+            currentMousePos.y - 10
+          );
+          context.shadowBlur = 0;
+          context.fillStyle = '#00ffff';
+        }
+      }
     }
 
-  }, [phase, startPoint, currentMousePos, measurements]);
+  }, [phase, startPoint, currentMousePos, measurements, cameraParams, onnxDepthMap, currentUnit]);
 
   const startMeasurement = useCallback(() => {
     console.log('[measure] startMeasurement called');
