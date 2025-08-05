@@ -137,35 +137,60 @@ const MapView: React.FC<MapViewProps> = ({
 
   // --- UI Indicator for Depth Map Generation (Uses props now) ---
   const GenStatusIndicator = () => {
-      let text = 'ML Depth: ';
-      let color = '#eee';
+      let message: string;
       if (isGeneratingMap) {
-        text += 'Generating...';
-        color = 'orange';
+        message = 'Generating depth map…';
       } else if (mapGenerationError) {
-        text += `Error (${mapGenerationError})`;
-        color = 'red';
+        message = `Error generating depth map: ${mapGenerationError}`;
       } else if (onnxDepthMap) {
-        text += `Ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
-        color = 'lime';
+        message = `Depth map ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
       } else {
-        text += 'Not Generated';
-        color = '#aaa';
+        message = 'Depth map not generated';
       }
-  
+
       return (
-        <div style={{
-          position: 'absolute', 
-          top: '10px', 
-          right: '10px', 
-          backgroundColor: 'rgba(0, 0, 0, 0.7)', 
-          color: color,
-          padding: '4px 8px',
-          borderRadius: '4px',
-          fontSize: '0.8em',
-          zIndex: 100
-        }}>
-          {text}
+        <div
+          role="status"
+          aria-live={isGeneratingMap ? 'assertive' : 'polite'}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: '#fff',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '0.8em',
+            zIndex: 100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          {isGeneratingMap && (
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 38 38"
+              stroke="#fff"
+              aria-hidden="true"
+            >
+              <g fill="none" fillRule="evenodd">
+                <circle cx="19" cy="19" r="18" strokeOpacity="0.25" />
+                <path d="M37 19c0-9.94-8.06-18-18-18" stroke="#fff">
+                  <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    from="0 19 19"
+                    to="360 19 19"
+                    dur="1s"
+                    repeatCount="indefinite"
+                  />
+                </path>
+              </g>
+            </svg>
+          )}
+          {message}
         </div>
       );
     };
