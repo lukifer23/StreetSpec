@@ -28,6 +28,7 @@ export interface CameraParams {
   vFov?: number;         // Calculated vertical Field of View (degrees)
   pano?: string;         // Optional: The current panorama ID
   calibrationPitchOffsetDeg?: number; // applied offset for horizon calibration
+  cameraHeight?: number; // Height of camera above ground in meters
   // Potentially add: altitude, exact camera position vector later
 }
 
@@ -90,6 +91,7 @@ export interface AppSettings {
   measurementHistoryLimit: number;
   useGPU?: boolean;
   calibrationPitchOffsetDeg?: number;
+  cameraHeight?: number;
 }
 
 // Error types for better error handling
