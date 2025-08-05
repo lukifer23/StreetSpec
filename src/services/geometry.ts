@@ -23,19 +23,31 @@ const normalizeVector = (vec: Vector3): Vector3 => {
 };
 
 /**
- * Calculates the Field of View (FOV) based on the Street View zoom level.
- * This is an approximation, the exact formula might vary slightly.
+ * Calculates the horizontal and vertical field of view (FOV) based on the
+ * Street View zoom level. Uses Google's documented relationship of
+ * `hFov = 180 / 2^zoom` and derives the vertical FOV from the viewport aspect
+ * ratio.
+ *
  * @param zoom - The Street View zoom level (0 is widest).
- * @returns The horizontal FOV in degrees.
+ * @param aspectRatio - The viewport aspect ratio (width / height).
+ * @returns An object containing both the horizontal and vertical FOV in degrees.
  */
-export function calculateFov(zoom: number | undefined | null): number {
-  if (zoom === undefined || zoom === null) {
-    // Default to a reasonable FOV if zoom is unknown (e.g., zoom 1)
-    return 90;
-  }
-  // Clamp zoom level for safety, e.g., between 0 and 4 or 5
-  const clampedZoom = Math.max(0, Math.min(zoom, 4)); 
-  return 180 / Math.pow(2, clampedZoom);
+export function calculateFov(
+  zoom: number | undefined | null,
+  aspectRatio: number
+): { hFov: number; vFov: number } {
+  // Default to zoom level 1 (approx. 90° horizontal FOV) if zoom is unknown
+  const effectiveZoom = zoom ?? 1;
+  // Clamp zoom level for safety
+  const clampedZoom = Math.max(0, Math.min(effectiveZoom, 4));
+  // Google Street View documented formula
+  const hFov = 180 / Math.pow(2, clampedZoom);
+  // Derive vertical FOV from horizontal FOV and aspect ratio
+  const hFovRad = degreesToRadians(hFov);
+  const vFovRad = 2 * Math.atan(Math.tan(hFovRad / 2) / aspectRatio);
+  const vFov = (vFovRad * 180) / Math.PI;
+
+  return { hFov, vFov };
 }
 
 /**
@@ -43,13 +55,13 @@ export function calculateFov(zoom: number | undefined | null): number {
  * relative to the camera's orientation.
  *
  * @param screenPoint - The {x, y} pixel coordinates on the screen/canvas.
- * @param cameraParams - Current camera parameters (heading, pitch, fov).
+ * @param cameraParams - Current camera parameters (heading, pitch, vertical FOV).
  * @param viewWidth - The width of the viewport/canvas in pixels.
  * @param viewHeight - The height of the viewport/canvas in pixels.
  * @returns A normalized 3D direction vector {x, y, z}.
  */
 export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, viewWidth: number, viewHeight: number): Vector3 {
-    const { heading = 0, pitch = 0, fov = 90 } = cameraParams;
+    const { heading = 0, pitch = 0, vFov = 90 } = cameraParams;
 
     // 1. Convert screen coordinates to Normalized Device Coordinates (NDC)
     // NDC range from -1 to 1, with (0,0) at the center.
@@ -58,7 +70,7 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
 
     // 2. Account for FOV and aspect ratio
     // Calculate the distance from the camera to the projection plane based on FOV
-    const fovRadians = degreesToRadians(fov);
+    const fovRadians = degreesToRadians(vFov);
     // tan(fov/2) = (projectionPlaneHeight/2) / distance
     // distance = (projectionPlaneHeight/2) / tan(fov/2)
     // Assuming projectionPlaneHeight corresponds to NDC range [-1, 1], so height/2 = 1
@@ -141,7 +153,7 @@ export function estimateGroundPlaneIntersection(
  * Calculates the 3D world coordinates corresponding to a 2D screen point using depth data.
  * 
  * @param screenPoint - The {x, y} pixel coordinates on the screen/canvas.
- * @param cameraParams - Current camera parameters (heading, pitch, fov).
+ * @param cameraParams - Current camera parameters (heading, pitch, vertical FOV).
  * @param viewWidth - The width of the viewport/canvas in pixels.
  * @param viewHeight - The height of the viewport/canvas in pixels.
  * @param depthData - Parsed depth data containing plane information.

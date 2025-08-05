@@ -94,7 +94,9 @@ const MapView: React.FC<MapViewProps> = ({
       const pov = svInstance.getPov();
       const zoom = svInstance.getZoom();
       const panoId = svInstance.getPano();
-      const fov = calculateFov(zoom);
+      const container = mapContainerRef.current;
+      const aspect = container ? container.clientWidth / container.clientHeight : 1;
+      const { hFov, vFov } = calculateFov(zoom, aspect);
 
       const newParams: CameraParams = {
         panoId: panoId ?? undefined,
@@ -103,7 +105,8 @@ const MapView: React.FC<MapViewProps> = ({
         heading: pov?.heading ?? undefined,
         pitch: pov?.pitch ?? undefined,
         zoom: zoom ?? undefined,
-        fov: fov,
+        fov: hFov,
+        vFov: vFov,
       };
       
       // Propagate up to App
