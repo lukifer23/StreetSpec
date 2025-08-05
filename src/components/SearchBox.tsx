@@ -25,6 +25,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null); // Use ref to hold instance
   const [inputValue, setInputValue] = useState(''); // Track input value
+  const [error, setError] = useState('');
 
   useEffect(() => {
     // Ensure the API is loaded and the input element exists
@@ -40,16 +41,17 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
         // Add listener for place selection
         ac.addListener('place_changed', () => {
           if (autocompleteRef.current) {
-             const place = autocompleteRef.current.getPlace();
+            const place = autocompleteRef.current.getPlace();
             if (!place.geometry || !place.geometry.location) {
               // Check if input *might* be coordinates before logging error
               const potentialCoords = parseCoordinates(inputValue.trim());
               if (!potentialCoords) {
-                return; // Don't proceed if no geometry or valid coords
+                setError('Please enter valid coordinates.');
               }
               return; // Don't proceed if no geometry or valid coords
             }
             onPlaceSelected(place);
+            setError('');
           }
         });
       }
@@ -102,24 +104,41 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
 
       if (coords) {
         onCoordsEntered(coords);
+        setError('');
         // Prevent Autocomplete from trying to fetch details for raw coords
-        event.preventDefault(); 
+        event.preventDefault();
         // Optionally clear input or update it to decimal format?
-        // setInputValue(`${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`); 
+        // setInputValue(`${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`);
+      } else {
+        setError('Please enter valid coordinates.');
       }
     }
   };
 
   return (
-    <input
-      ref={inputRef}
-      type="text"
-      placeholder="Search location or enter Lat, Lng (or DMS)"
-      className={styles.searchInput} // Apply class from CSS Module
-      value={inputValue} // Control the input value
-      onChange={(e) => setInputValue(e.target.value)} // Update state on change
-      onKeyDown={handleKeyDown} // Handle Enter key
-    />
+    <div className={styles.container}>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Search location or enter Lat, Lng (or DMS)"
+        className={styles.searchInput} // Apply class from CSS Module
+        value={inputValue} // Control the input value
+        onChange={(e) => {
+          const value = e.target.value;
+          const trimmed = value.trim();
+          setInputValue(value);
+          if (error && (!trimmed || parseCoordinates(trimmed))) {
+            setError('');
+          }
+        }} // Update state on change
+        onKeyDown={handleKeyDown} // Handle Enter key
+      />
+      {error && (
+        <div className={styles.error} aria-live="polite" role="alert">
+          {error}
+        </div>
+      )}
+    </div>
   );
 };
 
