@@ -46,10 +46,22 @@ export interface Measurement {
 }
 
 // Structure for the returned ONNX depth map
+export interface ImageTransform {
+  originalWidth: number;
+  originalHeight: number;
+  resizedWidth: number;
+  resizedHeight: number;
+  scaleX: number;
+  scaleY: number;
+  offsetX: number;
+  offsetY: number;
+}
+
 export interface OnnxDepthMap {
   data: number[]; // Flattened Float32 array
   width: number;
   height: number;
+  transform?: ImageTransform; // Resize/crop parameters used before inference
 }
 
 // Depth plane representation for Street View depth data
