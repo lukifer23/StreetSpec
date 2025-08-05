@@ -4,7 +4,7 @@ import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
-import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings } from './types/common';
+import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
@@ -83,6 +83,7 @@ function App() {
   // --- State Lifted from MapView ---
   const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
   const [onnxDepthMap, setOnnxDepthMap] = useState<OnnxDepthMap | null>(null);
+  const [depthData, setDepthData] = useState<DecodedDepthData | null>(null);
   const [isGeneratingMap, setIsGeneratingMap] = useState<boolean>(false);
   const [mapGenerationError, setMapGenerationError] = useState<string | null>(null);
   // --- End Lifted State ---
@@ -209,6 +210,23 @@ function App() {
      setCalibrateMode(false);
      alert(`Calibration saved ΔPitch ${offset.toFixed(2)}°`);
   },[currentCameraParams,settings]);
+
+  // Fetch Street View depth data when pano changes
+  useEffect(() => {
+    const fetchDepthData = async () => {
+      if (!currentCameraParams?.panoId || !window.electronAPI?.invoke) {
+        setDepthData(null);
+        return;
+      }
+      try {
+        const data = await window.electronAPI.invoke('fetch-depth-data', currentCameraParams.panoId) as DecodedDepthData | null;
+        setDepthData(data);
+      } catch (err) {
+        setDepthData(null);
+      }
+    };
+    fetchDepthData();
+  }, [currentCameraParams?.panoId]);
 
   // Callback for when a place is selected in the SearchBox
   const handlePlaceSelected = (place: google.maps.places.PlaceResult) => {
@@ -543,11 +561,12 @@ function App() {
                 calibrateMode={calibrateMode}
                 onCalibrateClick={handleCalibrateClick}
               />
-              <MeasurementTool 
+              <MeasurementTool
                 cameraParams={currentCameraParams}
                 onMeasurementComplete={handleMeasurementComplete}
                 measurements={measurements}
                 onnxDepthMap={onnxDepthMap}
+                depthData={depthData}
                 currentUnit={settings.defaultUnit}
               />
             </>
