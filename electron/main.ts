@@ -274,9 +274,17 @@ async function createWindow() {
       
       const imageBuffer = Buffer.from(base64Data, 'base64');
       const image = sharp(imageBuffer);
-      
+
+      // Record original dimensions to help map viewport coordinates
+      const metadata = await image.metadata();
+      const originalWidth = metadata.width ?? modelInputShape[3];
+      const originalHeight = metadata.height ?? modelInputShape[2];
+
+      // Resize to the model's expected input while ignoring aspect ratio
+      const resizedWidth = modelInputShape[3];
+      const resizedHeight = modelInputShape[2];
       const resizedBuffer = await image
-        .resize(modelInputShape[3], modelInputShape[2], { fit: 'fill' })
+        .resize(resizedWidth, resizedHeight, { fit: 'fill' })
         .removeAlpha()
         .raw()
         .toBuffer();
@@ -317,10 +325,23 @@ async function createWindow() {
         throw new Error('ONNX output tensor invalid');
       }
 
+      // Parameters describing how the image was resized prior to inference
+      const transform = {
+        originalWidth,
+        originalHeight,
+        resizedWidth,
+        resizedHeight,
+        scaleX: resizedWidth / originalWidth,
+        scaleY: resizedHeight / originalHeight,
+        offsetX: 0,
+        offsetY: 0
+      };
+
       return {
         data: Array.from(outputTensor.data as Float32Array),
         width: w,
-        height: h
+        height: h,
+        transform
       };
     } catch (_error) {
       console.error('[infer-depth] failed', _error);

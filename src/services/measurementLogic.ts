@@ -3,6 +3,8 @@ import { CameraParams, OnnxDepthMap } from '../types/common';
 // Size of square kernel (odd number)
 const KERNEL_SIZE = 5; // 5×5 neighborhood
 
+const USE_BILINEAR = true;
+
 // Gather a neighbourhood of depth values around (x,y) and return a robust estimate (median)
 function getRobustDepthSample(
   mapX: number,
@@ -36,6 +38,35 @@ function getRobustDepthSample(
   return depth;
 }
 
+// Bilinear interpolation for sub-pixel depth sampling
+function getBilinearDepthSample(
+  mapX: number,
+  mapY: number,
+  depthMap: OnnxDepthMap
+): number | null {
+  const x0 = Math.floor(mapX);
+  const y0 = Math.floor(mapY);
+  const x1 = Math.min(x0 + 1, depthMap.width - 1);
+  const y1 = Math.min(y0 + 1, depthMap.height - 1);
+  const dx = mapX - x0;
+  const dy = mapY - y0;
+
+  const i00 = y0 * depthMap.width + x0;
+  const i10 = y0 * depthMap.width + x1;
+  const i01 = y1 * depthMap.width + x0;
+  const i11 = y1 * depthMap.width + x1;
+
+  const v00 = depthMap.data[i00];
+  const v10 = depthMap.data[i10];
+  const v01 = depthMap.data[i01];
+  const v11 = depthMap.data[i11];
+  if ([v00, v10, v01, v11].some(v => !v || !Number.isFinite(v))) return null;
+
+  const v0 = v00 * (1 - dx) + v10 * dx;
+  const v1 = v01 * (1 - dx) + v11 * dx;
+  return v0 * (1 - dy) + v1 * dy;
+}
+
 /**
  * Estimates the distance from the camera to a point corresponding to a pixel click
  * using the provided ONNX depth map.
@@ -63,17 +94,32 @@ export function estimateDistanceToPoint(
         return null;
     }
 
-    // Scale viewport coordinates to depth map coordinates
-    // Assuming viewport aspect ratio might differ from depth map
-    const mapX = Math.round((pixelX / viewportWidth) * depthMap.width);
-    const mapY = Math.round((pixelY / viewportHeight) * depthMap.height);
+    // Map viewport coordinates through any resize/crop transform used before inference
+    let mappedX: number;
+    let mappedY: number;
+    if (depthMap.transform) {
+        const { scaleX, scaleY, offsetX, offsetY, resizedWidth, resizedHeight } = depthMap.transform;
+        const x = pixelX * scaleX + offsetX;
+        const y = pixelY * scaleY + offsetY;
+        mappedX = (x / resizedWidth) * depthMap.width;
+        mappedY = (y / resizedHeight) * depthMap.height;
+    } else {
+        mappedX = (pixelX / viewportWidth) * depthMap.width;
+        mappedY = (pixelY / viewportHeight) * depthMap.height;
+    }
 
-    // Clamp coordinates to be within map bounds
-    const clampedX = Math.max(0, Math.min(depthMap.width - 1, mapX));
-    const clampedY = Math.max(0, Math.min(depthMap.height - 1, mapY));
+    // Clamp for robustness but keep fractional part for bilinear sampling
+    mappedX = Math.max(0, Math.min(depthMap.width - 1, mappedX));
+    mappedY = Math.max(0, Math.min(depthMap.height - 1, mappedY));
 
-    const distance = getRobustDepthSample(clampedX, clampedY, depthMap, true);
-    return distance;
+    if (USE_BILINEAR) {
+        const depth = getBilinearDepthSample(mappedX, mappedY, depthMap);
+        if (depth !== null) return depth;
+    }
+
+    const clampedX = Math.round(mappedX);
+    const clampedY = Math.round(mappedY);
+    return getRobustDepthSample(clampedX, clampedY, depthMap, true);
 }
 
 /**
