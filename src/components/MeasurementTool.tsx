@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Point, Measurement, CameraParams, OnnxDepthMap, UNIT_CONVERSIONS } from '../types/common';
+import { Point, Measurement, CameraParams, OnnxDepthMap, UNIT_CONVERSIONS, DecodedDepthData } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
+import { createMeasurement } from '../services/measurement';
 import styles from './MeasurementTool.module.css';
 
 interface MeasurementToolProps {
   cameraParams: CameraParams | null;
   onnxDepthMap: OnnxDepthMap | null;
+  depthData: DecodedDepthData | null;
   onMeasurementComplete: (measurement: Measurement) => void;
   measurements: Measurement[];
   currentUnit?: 'metric' | 'imperial';
@@ -15,10 +17,11 @@ interface MeasurementToolProps {
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({ 
-  cameraParams, 
-  onnxDepthMap, 
-  onMeasurementComplete, 
+const MeasurementTool: React.FC<MeasurementToolProps> = ({
+  cameraParams,
+  onnxDepthMap,
+  depthData,
+  onMeasurementComplete,
   measurements,
   currentUnit = 'metric'
 }) => {
@@ -68,7 +71,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
   };
 
   const completeMeasurement = useCallback((startPoint: Point, coords: Point) => {
-    console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!cameraParams, onnxDepthMap: !!onnxDepthMap });
+    console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!cameraParams, onnxDepthMap: !!onnxDepthMap, depthData: !!depthData });
     
     if (!cameraParams) {
       console.log('[measure] No camera params, resetting');
@@ -81,16 +84,26 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     const viewHeight = overlayRef.current?.offsetHeight || 640;
     console.log('[measure] View dimensions:', { viewWidth, viewHeight });
 
-    // Try to get distance using depth map first
+    if (depthData && !onnxDepthMap) {
+      const measurement = createMeasurement(startPoint, coords, cameraParams, viewWidth, viewHeight, depthData, currentUnit);
+      onMeasurementComplete(measurement);
+      console.log('[measure] Resetting measurement state');
+      setStartPoint(null);
+      setCurrentMousePos(null);
+      setPhase('idle');
+      return;
+    }
+
+    // Try to get distance using ONNX depth map first
     let distanceToBase: number | null = null;
-    
+
     if (onnxDepthMap) {
       distanceToBase = estimateDistanceToPoint(
-        startPoint.x, 
-        startPoint.y, 
-        viewWidth, 
-        viewHeight, 
-        cameraParams, 
+        startPoint.x,
+        startPoint.y,
+        viewWidth,
+        viewHeight,
+        cameraParams,
         onnxDepthMap
       );
       console.log('[measure] Depth map distance:', distanceToBase);
@@ -101,7 +114,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
       const wp = estimateGroundPlaneIntersection(dir);
       if (wp) {
-        distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
+        distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, wp);
         console.log('[measure] fallback ground-plane distance', distanceToBase);
       } else {
         console.warn('[measure] unable to get ground-plane fallback');
@@ -118,17 +131,16 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     }
 
     const estimatedHeight = calculateEstimatedHeight(
-      startPoint.y, 
+      startPoint.y,
       coords.y,
-      viewHeight, 
-      cameraParams, 
+      viewHeight,
+      cameraParams,
       distanceToBase
     );
     console.log('[measure] Estimated height:', estimatedHeight);
 
     if (estimatedHeight !== null) {
-      // Convert to imperial if needed
-      const finalDistance = currentUnit === 'imperial' 
+      const finalDistance = currentUnit === 'imperial'
         ? UNIT_CONVERSIONS.metersToFeet(estimatedHeight)
         : estimatedHeight;
 
@@ -149,7 +161,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     setStartPoint(null);
     setCurrentMousePos(null);
     setPhase('idle');
-  }, [cameraParams, onnxDepthMap, currentUnit, onMeasurementComplete]);
+  }, [cameraParams, onnxDepthMap, depthData, currentUnit, onMeasurementComplete]);
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {

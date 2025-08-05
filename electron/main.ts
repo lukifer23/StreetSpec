@@ -7,6 +7,8 @@ import sharp from 'sharp';
 import { existsSync } from 'node:fs';
 import * as fs from 'fs';
 import Store from 'electron-store';
+import { inflateSync } from 'node:zlib';
+import type { DecodedDepthData, DepthPlane } from '../src/types/common';
 
 // --- Add ESM __dirname equivalent --- 
 import { fileURLToPath } from 'node:url';
@@ -99,28 +101,56 @@ const RATE_LIMIT = {
 };
 
 // === Helper Function for Depth Data ===
-async function getRawDepthData(panoId: string): Promise<Uint8Array | null> {
+async function getStreetViewDepthData(panoId: string): Promise<DecodedDepthData | null> {
   const apiUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?pano=${panoId}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
-  
+
   try {
     const response = await fetch(apiUrl);
     if (!response.ok) {
       if (response.status === RATE_LIMIT.tooManyRequestsCode) {
         console.warn('[depth] Rate limited, retrying...');
         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.delayMs));
-        return getRawDepthData(panoId);
+        return getStreetViewDepthData(panoId);
       }
       return null;
     }
-    
+
     const data = await response.json() as any;
     if (data.status !== 'OK') {
       return null;
     }
-    
-    // This is a placeholder - actual depth data would need to be fetched from Google's depth API
-    // For now, we'll return null as the depth API is not publicly available
-    return null;
+
+    const depthMapBase64 = data?.depth_map?.data || data?.depthMap?.data;
+    if (!depthMapBase64) {
+      return null;
+    }
+
+    const compressed = Buffer.from(depthMapBase64, 'base64');
+    let inflated: Uint8Array;
+    try {
+      inflated = inflateSync(compressed);
+    } catch (err) {
+      console.error('[depth] Failed to inflate depth map:', err);
+      return null;
+    }
+
+    const view = new DataView(inflated.buffer, inflated.byteOffset, inflated.byteLength);
+    const numPlanes = view.getUint8(1);
+    const width = view.getUint16(2, true);
+    const height = view.getUint16(4, true);
+
+    const indices = new Uint8Array(inflated.slice(6, 6 + width * height));
+    let offset = 6 + width * height;
+    const planes: DepthPlane[] = [];
+    for (let i = 0; i < numPlanes; i++) {
+      const nx = view.getFloat32(offset, true); offset += 4;
+      const ny = view.getFloat32(offset, true); offset += 4;
+      const nz = view.getFloat32(offset, true); offset += 4;
+      const d = view.getFloat32(offset, true); offset += 4;
+      planes.push({ nx, ny, nz, d });
+    }
+
+    return { planes, indices, width, height };
   } catch (error) {
     console.error('[depth] Error fetching depth data:', error);
     return null;
@@ -259,22 +289,32 @@ async function createWindow() {
 
   // Set up IPC handlers
   // Depth inference handler
-  ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, imageDataUrl: string) => {
+  ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, args: any) => {
     console.log('[infer-depth] request received');
+    const imageDataUrl = typeof args === 'string' ? args : args?.imageDataUrl;
+    const panoId: string | undefined = typeof args === 'string' ? undefined : args?.panoId;
+
+    if (!imageDataUrl) {
+      event.sender.send('main-process-message', { type: 'error', message: 'No image data provided for inference.' });
+      return null;
+    }
+
     if (!depthSession) {
-      event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not loaded or failed to load.'});
+      if (panoId) {
+        return await getStreetViewDepthData(panoId);
+      }
+      event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not loaded or failed to load.' });
       return null;
     }
 
     try {
       console.time('[infer-depth] preprocess');
-      // Process image data and run inference
       const base64Data = imageDataUrl.split(',')[1];
       if (!base64Data) throw new Error('Invalid image data');
-      
+
       const imageBuffer = Buffer.from(base64Data, 'base64');
       const image = sharp(imageBuffer);
-      
+
       const resizedBuffer = await image
         .resize(modelInputShape[3], modelInputShape[2], { fit: 'fill' })
         .removeAlpha()
@@ -283,32 +323,29 @@ async function createWindow() {
 
       const float32Data = new Float32Array(modelInputShape[1] * modelInputShape[2] * modelInputShape[3]);
       for (let i = 0; i < modelInputShape[2] * modelInputShape[3]; i++) {
-         float32Data[i] = resizedBuffer[i * 3] / 255.0;         // R channel
-         float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
-         float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
-       }
+        float32Data[i] = resizedBuffer[i * 3] / 255.0;         // R channel
+        float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
+        float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
+      }
       console.timeEnd('[infer-depth] preprocess');
 
-      // Create tensor from the processed float data
       const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape);
       const feeds: Record<string, ort.Tensor> = {};
-      feeds[depthSession!.inputNames[0]] = inputTensor;
-      
+      feeds[depthSession.inputNames[0]] = inputTensor;
+
       console.time('[infer-depth] inference');
-      const results = await depthSession!.run(feeds);
+      const results = await depthSession.run(feeds);
       console.timeEnd('[infer-depth] inference');
 
-      const outputTensor = results[depthSession!.outputNames[0]];
+      const outputTensor = results[depthSession.outputNames[0]];
       console.log('[infer-depth] output dims', outputTensor.dims, 'dataLen', (outputTensor.data as Float32Array).length);
 
       let h: number | undefined;
       let w: number | undefined;
       if (outputTensor.dims.length === 4) {
-        // Expected [1,1,H,W]
         h = outputTensor.dims[2];
         w = outputTensor.dims[3];
       } else if (outputTensor.dims.length === 3) {
-        // Some exporters drop the channel dim: [1,H,W]
         h = outputTensor.dims[1];
         w = outputTensor.dims[2];
       }
@@ -324,6 +361,12 @@ async function createWindow() {
       };
     } catch (_error) {
       console.error('[infer-depth] failed', _error);
+      if (panoId) {
+        const fallback = await getStreetViewDepthData(panoId);
+        if (fallback) {
+          return fallback;
+        }
+      }
       event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${_error}` });
       return null;
     }
@@ -355,7 +398,7 @@ async function createWindow() {
   // Depth data fetch handler
   ipcMain.handle('fetch-depth-data', async (event: IpcMainInvokeEvent, panoId: string) => {
     try {
-      return await getRawDepthData(panoId);
+      return await getStreetViewDepthData(panoId);
     } catch (error) {
       return null;
     }

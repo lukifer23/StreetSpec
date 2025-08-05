@@ -4,7 +4,7 @@ import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
-import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings } from './types/common';
+import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
@@ -83,6 +83,7 @@ function App() {
   // --- State Lifted from MapView ---
   const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
   const [onnxDepthMap, setOnnxDepthMap] = useState<OnnxDepthMap | null>(null);
+  const [depthData, setDepthData] = useState<DecodedDepthData | null>(null);
   const [isGeneratingMap, setIsGeneratingMap] = useState<boolean>(false);
   const [mapGenerationError, setMapGenerationError] = useState<string | null>(null);
   // --- End Lifted State ---
@@ -230,6 +231,7 @@ function App() {
     setIsGeneratingMap(true);
     setMapGenerationError(null);
     setOnnxDepthMap(null);
+    setDepthData(null);
 
     try {
       // Check cache first
@@ -267,21 +269,25 @@ function App() {
         if (!base64data) {
           throw new Error('Failed to convert image blob to Data URL');
         }
-        
+
         if (!window.electronAPI?.invoke) {
           throw new Error('IPC invoke function not available. Please restart the application.');
         }
 
-        const result: OnnxDepthMap | null = await window.electronAPI.invoke('infer-depth', base64data);
-        
-        if (!result?.data || !result?.width || !result?.height) {
+        const result = await window.electronAPI.invoke('infer-depth', {
+          imageDataUrl: base64data,
+          panoId: currentCameraParams.panoId || currentCameraParams.pano
+        });
+
+        if (result && 'data' in result && 'width' in result) {
+          const onnxResult = result as OnnxDepthMap;
+          await cacheDepthMap(currentCameraParams, onnxResult);
+          setOnnxDepthMap(onnxResult);
+        } else if (result && 'planes' in result && 'indices' in result) {
+          setDepthData(result as DecodedDepthData);
+        } else {
           throw new Error('Main process failed to return valid depth map data.');
         }
-
-        // Cache the result
-        await cacheDepthMap(currentCameraParams, result);
-        
-        setOnnxDepthMap(result);
       };
 
       reader.onerror = () => {
@@ -538,11 +544,12 @@ function App() {
                 calibrateMode={calibrateMode}
                 onCalibrateClick={handleCalibrateClick}
               />
-              <MeasurementTool 
+              <MeasurementTool
                 cameraParams={currentCameraParams}
                 onMeasurementComplete={handleMeasurementComplete}
                 measurements={measurements}
                 onnxDepthMap={onnxDepthMap}
+                depthData={depthData}
                 currentUnit={settings.defaultUnit}
               />
             </>
