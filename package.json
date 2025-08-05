@@ -21,7 +21,8 @@
     "tsc:main": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop",
     "tsc:main:watch": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput",
     "tsc:preload": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop",
-    "tsc:preload:watch": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput"
+    "tsc:preload:watch": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput",
+    "test": "tsc src/services/measurementLogic.ts src/services/measurementLogic.test.ts --module es2020 --target ES2020 --esModuleInterop --moduleResolution node --allowJs --outDir build && node build/services/measurementLogic.test.js"
   },
   "engines": {
     "node": ">=18.0.0"
