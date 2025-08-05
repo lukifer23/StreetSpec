@@ -193,8 +193,8 @@ function App() {
   }, [settings.calibrationPitchOffsetDeg]);
 
   const handleCalibrateClick = useCallback((pixelY:number, viewH:number)=>{
-     if(!currentCameraParams||!currentCameraParams.fov||currentCameraParams.pitch===undefined) {setCalibrateMode(false);return;}
-     const verticalFov=currentCameraParams.fov;
+     if(!currentCameraParams||!currentCameraParams.vFov||currentCameraParams.pitch===undefined) {setCalibrateMode(false);return;}
+     const verticalFov=currentCameraParams.vFov;
      const center=viewH/2;
      const angle=((pixelY-center)/viewH)*verticalFov; // degrees
      const offset = -(currentCameraParams.pitch + angle);

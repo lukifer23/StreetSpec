@@ -24,7 +24,8 @@ export interface CameraParams {
   heading?: number;      // Camera direction (degrees clockwise from North)
   pitch?: number;        // Camera angle relative to horizon (degrees)
   zoom?: number;         // Street View zoom level (0 is widest)
-  fov?: number;          // Calculated Field of View (degrees)
+  fov?: number;          // Calculated horizontal Field of View (degrees)
+  vFov?: number;         // Calculated vertical Field of View (degrees)
   pano?: string;         // Optional: The current panorama ID
   calibrationPitchOffsetDeg?: number; // applied offset for horizon calibration
   // Potentially add: altitude, exact camera position vector later

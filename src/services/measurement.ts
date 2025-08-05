@@ -15,7 +15,7 @@ import { DecodedDepthData } from '../types/common'; // Import from common types
  * 
  * @param startPoint Screen coordinates of the start point.
  * @param endPoint Screen coordinates of the end point.
- * @param cameraParams Camera state at the time of measurement (must include fov and optional panoId).
+ * @param cameraParams Camera state at the time of measurement (must include horizontal and vertical FOV and optional panoId).
  * @param viewWidth The width of the view/canvas in pixels.
  * @param viewHeight The height of the view/canvas in pixels.
  * @param depthData Parsed depth data for the current panorama (optional).
@@ -33,8 +33,8 @@ export function createMeasurement(
 ): Measurement {
   let errorMessage: string | undefined = undefined; // To store potential errors/warnings
 
-  if (!cameraParams || cameraParams.fov === undefined) {
-      throw new Error("Camera parameters with FOV are required for measurement.");
+  if (!cameraParams || cameraParams.vFov === undefined) {
+      throw new Error("Camera parameters with vertical FOV are required for measurement.");
   }
 
   // 1. Estimate World Points
