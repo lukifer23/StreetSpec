@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Point, Measurement, CameraParams, OnnxDepthMap, UNIT_CONVERSIONS } from '../types/common';
+import { Point, Measurement, CameraParams, OnnxDepthMap, UNIT_CONVERSIONS, DecodedDepthData } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './MeasurementTool.module.css';
 
 interface MeasurementToolProps {
   cameraParams: CameraParams | null;
   onnxDepthMap: OnnxDepthMap | null;
+  depthData: DecodedDepthData | null;
   onMeasurementComplete: (measurement: Measurement) => void;
   measurements: Measurement[];
   currentUnit?: 'metric' | 'imperial';
@@ -15,10 +16,11 @@ interface MeasurementToolProps {
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({ 
-  cameraParams, 
-  onnxDepthMap, 
-  onMeasurementComplete, 
+const MeasurementTool: React.FC<MeasurementToolProps> = ({
+  cameraParams,
+  onnxDepthMap,
+  depthData,
+  onMeasurementComplete,
   measurements,
   currentUnit = 'metric'
 }) => {
@@ -81,16 +83,29 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     const viewHeight = overlayRef.current?.offsetHeight || 640;
     console.log('[measure] View dimensions:', { viewWidth, viewHeight });
 
-    // Try to get distance using depth map first
+    // Distance estimates
     let distanceToBase: number | null = null;
-    
-    if (onnxDepthMap) {
+    let planeDistance: number | null = null;
+
+    // When Street View depth planes are available, compute world points directly
+    if (depthData) {
+      const worldStart = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
+      const worldEnd = screenToWorldWithDepth(coords, cameraParams, viewWidth, viewHeight, depthData);
+      if (worldStart && worldEnd) {
+        planeDistance = calculateDistance3D(worldStart, worldEnd);
+        distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
+        console.log('[measure] plane distance:', planeDistance, 'base distance from planes:', distanceToBase);
+      }
+    }
+
+    // Fall back to ONNX depth for distance to base
+    if (distanceToBase === null && onnxDepthMap) {
       distanceToBase = estimateDistanceToPoint(
-        startPoint.x, 
-        startPoint.y, 
-        viewWidth, 
-        viewHeight, 
-        cameraParams, 
+        startPoint.x,
+        startPoint.y,
+        viewWidth,
+        viewHeight,
+        cameraParams,
         onnxDepthMap
       );
       console.log('[measure] Depth map distance:', distanceToBase);
@@ -110,27 +125,39 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       console.log('[measure] kernel depth distance', distanceToBase);
     }
 
-    if (distanceToBase === null) {
+    if (distanceToBase === null && planeDistance === null) {
       console.log('[measure] No distance calculated, resetting');
       setStartPoint(null);
       setPhase('idle');
       return;
     }
 
-    const estimatedHeight = calculateEstimatedHeight(
-      startPoint.y, 
-      coords.y,
-      viewHeight, 
-      cameraParams, 
-      distanceToBase
-    );
-    console.log('[measure] Estimated height:', estimatedHeight);
+    // Height from ONNX depth
+    let estimatedHeight: number | null = null;
+    if (distanceToBase !== null) {
+      estimatedHeight = calculateEstimatedHeight(
+        startPoint.y,
+        coords.y,
+        viewHeight,
+        cameraParams,
+        distanceToBase
+      );
+      console.log('[measure] Estimated height:', estimatedHeight);
+    }
 
-    if (estimatedHeight !== null) {
+    // Combine plane-based distance with ONNX estimate
+    let finalHeight: number | null = null;
+    if (planeDistance !== null && estimatedHeight !== null) {
+      finalHeight = (planeDistance + estimatedHeight) / 2;
+    } else {
+      finalHeight = planeDistance ?? estimatedHeight;
+    }
+
+    if (finalHeight !== null) {
       // Convert to imperial if needed
-      const finalDistance = currentUnit === 'imperial' 
-        ? UNIT_CONVERSIONS.metersToFeet(estimatedHeight)
-        : estimatedHeight;
+      const finalDistance = currentUnit === 'imperial'
+        ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
+        : finalHeight;
 
       const newMeasurement: Measurement = {
         id: uuidv4(),
@@ -149,7 +176,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     setStartPoint(null);
     setCurrentMousePos(null);
     setPhase('idle');
-  }, [cameraParams, onnxDepthMap, currentUnit, onMeasurementComplete]);
+  }, [cameraParams, onnxDepthMap, depthData, currentUnit, onMeasurementComplete]);
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {
@@ -270,21 +297,21 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     >
         {phase === 'idle' && (
             <button 
-                onClick={(e) => { e.stopPropagation(); startMeasurement(); }} 
-                disabled={!cameraParams || !onnxDepthMap}
-                title={!cameraParams ? "Waiting for camera parameters..." : !onnxDepthMap ? "Generate Depth Map first!" : "Start Height Estimation (M)"}
-                style={{ 
-                    position: 'absolute', 
-                    bottom: '20px', 
-                    left: '50%', 
-                    transform: 'translateX(-50%)', 
-                    zIndex: 10, 
+                onClick={(e) => { e.stopPropagation(); startMeasurement(); }}
+                disabled={!cameraParams || (!onnxDepthMap && !depthData)}
+                title={!cameraParams ? "Waiting for camera parameters..." : (!onnxDepthMap && !depthData) ? "Generate Depth Map first!" : "Start Height Estimation (M)"}
+                style={{
+                    position: 'absolute',
+                    bottom: '20px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 10,
                     padding: '10px 15px',
-                    cursor: (cameraParams && onnxDepthMap) ? 'pointer' : 'not-allowed',
+                    cursor: (cameraParams && (onnxDepthMap || depthData)) ? 'pointer' : 'not-allowed',
                     pointerEvents: 'auto'
                 }}
             >
-                {!cameraParams ? 'Waiting for Camera...' : !onnxDepthMap ? 'Depth Map Needed' : 'Estimate Height (M)'}
+                {!cameraParams ? 'Waiting for Camera...' : (!onnxDepthMap && !depthData) ? 'Depth Data Needed' : 'Estimate Height (M)'}
             </button>
         )}
         {phase !== 'idle' && (
