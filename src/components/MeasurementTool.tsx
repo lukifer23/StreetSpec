@@ -118,10 +118,11 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     }
 
     const estimatedHeight = calculateEstimatedHeight(
-      startPoint.y, 
+      startPoint.y,
       coords.y,
-      viewHeight, 
-      cameraParams, 
+      viewWidth,
+      viewHeight,
+      cameraParams,
       distanceToBase
     );
     console.log('[measure] Estimated height:', estimatedHeight);

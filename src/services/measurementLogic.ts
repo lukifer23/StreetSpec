@@ -81,14 +81,16 @@ export function estimateDistanceToPoint(
  * 
  * @param basePixelY Vertical pixel coordinate of the object's base.
  * @param topPixelY Vertical pixel coordinate of the object's top.
+ * @param viewportWidth Total width of the viewport in pixels.
  * @param viewportHeight Total height of the viewport in pixels.
- * @param cameraParams Current camera parameters (fov, pitch).
+ * @param cameraParams Current camera parameters (horizontal fov, pitch).
  * @param distanceToBase Estimated distance from camera to the object's base (in meters).
  * @returns Estimated height in meters, or null if calculation is not possible.
  */
 export function calculateEstimatedHeight(
     basePixelY: number,
     topPixelY: number,
+    viewportWidth: number,
     viewportHeight: number,
     cameraParams: CameraParams | null,
     distanceToBase: number | null
@@ -97,8 +99,10 @@ export function calculateEstimatedHeight(
         return null;
     }
 
-    // Simple linear FOV assumption (more accurate would use tan)
-    const verticalFovRadians = (cameraParams.fov * Math.PI) / 180;
+    // Derive vertical FOV from horizontal FOV and viewport aspect ratio
+    const horizontalFovRadians = (cameraParams.fov * Math.PI) / 180;
+    const aspectRatio = viewportWidth / viewportHeight;
+    const verticalFovRadians = 2 * Math.atan(Math.tan(horizontalFovRadians / 2) / aspectRatio);
     
     // Calculate angle for each pixel relative to the center (pitch angle)
     const centerPixelY = viewportHeight / 2;

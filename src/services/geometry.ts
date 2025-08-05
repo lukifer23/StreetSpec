@@ -43,7 +43,7 @@ export function calculateFov(zoom: number | undefined | null): number {
  * relative to the camera's orientation.
  *
  * @param screenPoint - The {x, y} pixel coordinates on the screen/canvas.
- * @param cameraParams - Current camera parameters (heading, pitch, fov).
+ * @param cameraParams - Current camera parameters (heading, pitch, horizontal fov).
  * @param viewWidth - The width of the viewport/canvas in pixels.
  * @param viewHeight - The height of the viewport/canvas in pixels.
  * @returns A normalized 3D direction vector {x, y, z}.
@@ -57,14 +57,11 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     const ndcY = 1 - (screenPoint.y / viewHeight) * 2; // Invert Y because screen Y is down
 
     // 2. Account for FOV and aspect ratio
-    // Calculate the distance from the camera to the projection plane based on FOV
-    const fovRadians = degreesToRadians(fov);
-    // tan(fov/2) = (projectionPlaneHeight/2) / distance
-    // distance = (projectionPlaneHeight/2) / tan(fov/2)
-    // Assuming projectionPlaneHeight corresponds to NDC range [-1, 1], so height/2 = 1
-    const zDistance = 1 / Math.tan(fovRadians / 2); 
-
     const aspectRatio = viewWidth / viewHeight;
+    const horizontalFovRadians = degreesToRadians(fov);
+    const verticalFovRadians = 2 * Math.atan(Math.tan(horizontalFovRadians / 2) / aspectRatio);
+    // Calculate the distance from the camera to the projection plane based on vertical FOV
+    const zDistance = 1 / Math.tan(verticalFovRadians / 2);
 
     // 3. Initial vector on the projection plane (before rotation)
     // Z points *out* from the screen/camera initially
@@ -141,7 +138,7 @@ export function estimateGroundPlaneIntersection(
  * Calculates the 3D world coordinates corresponding to a 2D screen point using depth data.
  * 
  * @param screenPoint - The {x, y} pixel coordinates on the screen/canvas.
- * @param cameraParams - Current camera parameters (heading, pitch, fov).
+ * @param cameraParams - Current camera parameters (heading, pitch, horizontal fov).
  * @param viewWidth - The width of the viewport/canvas in pixels.
  * @param viewHeight - The height of the viewport/canvas in pixels.
  * @param depthData - Parsed depth data containing plane information.

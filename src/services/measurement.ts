@@ -15,7 +15,7 @@ import { DecodedDepthData } from '../types/common'; // Import from common types
  * 
  * @param startPoint Screen coordinates of the start point.
  * @param endPoint Screen coordinates of the end point.
- * @param cameraParams Camera state at the time of measurement (must include fov and optional panoId).
+ * @param cameraParams Camera state at the time of measurement (must include horizontal fov and optional panoId).
  * @param viewWidth The width of the view/canvas in pixels.
  * @param viewHeight The height of the view/canvas in pixels.
  * @param depthData Parsed depth data for the current panorama (optional).
