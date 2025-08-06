@@ -8,10 +8,15 @@ const MAX_CACHE_SIZE = 50; // Maximum number of cached depth maps
 
 // Generate cache key from camera parameters
 function generateCacheKey(params: CameraParams): string {
-  if (!params.panoId || !params.heading || !params.pitch || !params.fov) {
+  if (
+    params.panoId === undefined ||
+    params.heading === undefined ||
+    params.pitch === undefined ||
+    params.fov === undefined
+  ) {
     return '';
   }
-  
+
   return `${CACHE_PREFIX}${params.panoId}_${params.heading}_${params.pitch}_${params.fov}`;
 }
 
@@ -19,10 +24,15 @@ function generateCacheKey(params: CameraParams): string {
 export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepthMap | null> {
   try {
     const cacheKey = generateCacheKey(params);
-    if (!cacheKey) return null;
-    
+    if (cacheKey === '') return null;
+
     const cached = await get(cacheKey);
-    if (cached && cached.data && cached.width && cached.height) {
+    if (
+      cached !== undefined &&
+      cached.data !== undefined &&
+      cached.width !== undefined &&
+      cached.height !== undefined
+    ) {
       console.log('[cache] Hit for key:', cacheKey);
       return cached as OnnxDepthMap;
     }
@@ -38,7 +48,7 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
 export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap): Promise<void> {
   try {
     const cacheKey = generateCacheKey(params);
-    if (!cacheKey) return;
+    if (cacheKey === '') return;
     
     await set(cacheKey, depthMap);
     console.log('[cache] Stored depth map for key:', cacheKey);
@@ -95,7 +105,7 @@ export async function getCacheStats(): Promise<{ count: number; size: number }> 
     let totalSize = 0;
     for (const key of cacheKeys) {
       const cached = await get(key);
-      if (cached && cached.data) {
+      if (cached !== undefined && cached.data !== undefined) {
         totalSize += cached.data.length * 4; // Float32 = 4 bytes
       }
     }
