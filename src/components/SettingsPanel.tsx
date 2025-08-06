@@ -30,6 +30,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             id="unit"
             value={form.defaultUnit}
             onChange={e => handleChange('defaultUnit', e.target.value as 'metric' | 'imperial')}
+            title="Select default measurement unit"
           >
             <option value="metric">Metric (m)</option>
             <option value="imperial">Imperial (ft)</option>
@@ -42,6 +43,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             id="theme"
             value={form.theme}
             onChange={e => handleChange('theme', e.target.value as 'light' | 'dark' | 'system')}
+            title="Select application theme"
           >
             <option value="light">Light</option>
             <option value="dark">Dark</option>
@@ -56,6 +58,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             type="checkbox"
             checked={!!form.useGPU}
             onChange={e => handleChange('useGPU', e.target.checked)}
+            title="Enable ONNX GPU acceleration if supported"
           />
         </div>
 
@@ -68,6 +71,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             step={0.1}
             value={form.cameraHeight ?? 2.5}
             onChange={e => handleChange('cameraHeight', parseFloat(e.target.value))}
+            title="Default camera height in meters"
           />
         </div>
 
@@ -80,6 +84,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             max={10000}
             value={form.measurementHistoryLimit}
             onChange={e => handleChange('measurementHistoryLimit', parseInt(e.target.value, 10))}
+            title="Maximum number of measurements to store"
           />
         </div>
 
