@@ -85,16 +85,18 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
 
     // Distance estimates
     let distanceToBase: number | null = null;
-    let planeDistance: number | null = null;
+    // Vertical height derived from Street View depth planes
+    let planeHeight: number | null = null;
 
     // When Street View depth planes are available, compute world points directly
     if (depthData) {
       const worldStart = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
       const worldEnd = screenToWorldWithDepth(coords, cameraParams, viewWidth, viewHeight, depthData);
       if (worldStart && worldEnd) {
-        planeDistance = calculateDistance3D(worldStart, worldEnd);
+        // Use vertical component of world coordinates for height
+        planeHeight = Math.abs(worldEnd.y - worldStart.y);
         distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
-        console.log('[measure] plane distance:', planeDistance, 'base distance from planes:', distanceToBase);
+        console.log('[measure] plane vertical height:', planeHeight, 'base distance from planes:', distanceToBase);
       }
     }
 
@@ -125,7 +127,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       console.log('[measure] kernel depth distance', distanceToBase);
     }
 
-    if (distanceToBase === null && planeDistance === null) {
+    if (distanceToBase === null && planeHeight === null) {
       console.log('[measure] No distance calculated, resetting');
       setStartPoint(null);
       setPhase('idle');
@@ -145,32 +147,38 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       console.log('[measure] Estimated height:', estimatedHeight);
     }
 
-    // Combine plane-based distance with ONNX estimate
+    // Choose the most reliable height estimate
     let finalHeight: number | null = null;
-    if (planeDistance !== null && estimatedHeight !== null) {
-      finalHeight = (planeDistance + estimatedHeight) / 2;
+    if (planeHeight !== null) {
+      // Depth planes succeeded; prefer this direct measurement
+      finalHeight = planeHeight;
     } else {
-      finalHeight = planeDistance ?? estimatedHeight;
+      finalHeight = estimatedHeight;
     }
 
-    if (finalHeight !== null) {
-      // Convert to imperial if needed
-      const finalDistance = currentUnit === 'imperial'
-        ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
-        : finalHeight;
-
-      const newMeasurement: Measurement = {
-        id: uuidv4(),
-        label: 'Est. Height',
-        distance: finalDistance,
-        startPoint: startPoint,
-        endPoint: coords,
-        unit: currentUnit,
-        timestamp: Date.now(),
-      };
-      console.log('[measure] Creating measurement:', newMeasurement);
-      onMeasurementComplete(newMeasurement);
+    if (finalHeight === null) {
+      console.log('[measure] No height calculated, resetting');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
     }
+
+    // Convert to imperial if needed
+    const finalDistance = currentUnit === 'imperial'
+      ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
+      : finalHeight;
+
+    const newMeasurement: Measurement = {
+      id: uuidv4(),
+      label: 'Est. Height',
+      distance: finalDistance,
+      startPoint: startPoint,
+      endPoint: coords,
+      unit: currentUnit,
+      timestamp: Date.now(),
+    };
+    console.log('[measure] Creating measurement:', newMeasurement);
+    onMeasurementComplete(newMeasurement);
 
     console.log('[measure] Resetting measurement state');
     setStartPoint(null);
