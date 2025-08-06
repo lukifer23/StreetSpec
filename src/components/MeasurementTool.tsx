@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { Point, Measurement, CameraParams, OnnxDepthMap, UNIT_CONVERSIONS, DecodedDepthData } from '../types/common';
-import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
+import { createMeasurement, calculateHeight } from '../services/measurement';
 import styles from './MeasurementTool.module.css';
 
 interface MeasurementToolProps {
@@ -71,7 +69,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
 
   const completeMeasurement = useCallback((startPoint: Point, coords: Point) => {
     console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!cameraParams, onnxDepthMap: !!onnxDepthMap });
-    
+
     if (!cameraParams) {
       console.log('[measure] No camera params, resetting');
       setStartPoint(null);
@@ -83,93 +81,22 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     const viewHeight = overlayRef.current?.offsetHeight || 640;
     console.log('[measure] View dimensions:', { viewWidth, viewHeight });
 
-    // Distance estimates
-    let distanceToBase: number | null = null;
-    let planeDistance: number | null = null;
+    const measurement = createMeasurement(
+      startPoint,
+      coords,
+      cameraParams,
+      viewWidth,
+      viewHeight,
+      depthData,
+      onnxDepthMap,
+      currentUnit
+    );
 
-    // When Street View depth planes are available, compute world points directly
-    if (depthData) {
-      const worldStart = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
-      const worldEnd = screenToWorldWithDepth(coords, cameraParams, viewWidth, viewHeight, depthData);
-      if (worldStart && worldEnd) {
-        planeDistance = calculateDistance3D(worldStart, worldEnd);
-        distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
-        console.log('[measure] plane distance:', planeDistance, 'base distance from planes:', distanceToBase);
-      }
-    }
-
-    // Fall back to ONNX depth for distance to base
-    if (distanceToBase === null && onnxDepthMap) {
-      distanceToBase = estimateDistanceToPoint(
-        startPoint.x,
-        startPoint.y,
-        viewWidth,
-        viewHeight,
-        cameraParams,
-        onnxDepthMap
-      );
-      console.log('[measure] Depth map distance:', distanceToBase);
-    }
-
-    if (distanceToBase === null) {
-      // fallback to ground plane
-      const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
-      const wp = estimateGroundPlaneIntersection(dir, cameraParams);
-      if (wp) {
-        distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
-        console.log('[measure] fallback ground-plane distance', distanceToBase);
-      } else {
-        console.warn('[measure] unable to get ground-plane fallback');
-      }
+    if (measurement) {
+      console.log('[measure] Creating measurement:', measurement);
+      onMeasurementComplete(measurement);
     } else {
-      console.log('[measure] kernel depth distance', distanceToBase);
-    }
-
-    if (distanceToBase === null && planeDistance === null) {
-      console.log('[measure] No distance calculated, resetting');
-      setStartPoint(null);
-      setPhase('idle');
-      return;
-    }
-
-    // Height from ONNX depth
-    let estimatedHeight: number | null = null;
-    if (distanceToBase !== null) {
-      estimatedHeight = calculateEstimatedHeight(
-        startPoint.y,
-        coords.y,
-        viewHeight,
-        cameraParams,
-        distanceToBase
-      );
-      console.log('[measure] Estimated height:', estimatedHeight);
-    }
-
-    // Combine plane-based distance with ONNX estimate
-    let finalHeight: number | null = null;
-    if (planeDistance !== null && estimatedHeight !== null) {
-      finalHeight = (planeDistance + estimatedHeight) / 2;
-    } else {
-      finalHeight = planeDistance ?? estimatedHeight;
-    }
-
-    if (finalHeight !== null) {
-      // Convert to imperial if needed
-      const finalDistance = currentUnit === 'imperial'
-        ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
-        : finalHeight;
-
-      const newMeasurement: Measurement = {
-        id: uuidv4(),
-        label: 'Est. Height',
-        distance: finalDistance,
-        startPoint: startPoint,
-        endPoint: coords,
-        unit: currentUnit,
-        timestamp: Date.now(),
-      };
-      console.log('[measure] Creating measurement:', newMeasurement);
-      onMeasurementComplete(newMeasurement);
+      console.log('[measure] Measurement calculation failed');
     }
 
     console.log('[measure] Resetting measurement state');
@@ -259,34 +186,16 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       // Provisional height estimation
       const viewWidth = overlay.offsetWidth;
       const viewHeight = overlay.offsetHeight;
-      let distanceToBase: number | null = null;
 
       if (cameraParams) {
-        if (onnxDepthMap) {
-          distanceToBase = estimateDistanceToPoint(
-            startPoint.x,
-            startPoint.y,
-            viewWidth,
-            viewHeight,
-            cameraParams,
-            onnxDepthMap
-          );
-        }
-
-        if (distanceToBase === null) {
-          const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
-          const wp = estimateGroundPlaneIntersection(dir, cameraParams);
-          if (wp) {
-            distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, wp);
-          }
-        }
-
-        const estimatedHeight = calculateEstimatedHeight(
-          startPoint.y,
-          currentMousePos.y,
-          viewHeight,
+        const estimatedHeight = calculateHeight(
+          startPoint,
+          currentMousePos,
           cameraParams,
-          distanceToBase
+          viewWidth,
+          viewHeight,
+          depthData,
+          onnxDepthMap
         );
 
         if (estimatedHeight !== null) {
@@ -310,7 +219,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       }
     }
 
-  }, [phase, startPoint, currentMousePos, measurements, cameraParams, onnxDepthMap, currentUnit]);
+  }, [phase, startPoint, currentMousePos, measurements, cameraParams, onnxDepthMap, depthData, currentUnit]);
 
   const startMeasurement = useCallback(() => {
     console.log('[measure] startMeasurement called');
