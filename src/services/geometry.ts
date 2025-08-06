@@ -181,15 +181,19 @@ export function screenToWorldWithDepth(
     let minDistance = Infinity;
     const epsilon = 1e-6; // Small value to avoid division by zero and parallel checks
 
-    // 3. Try intersecting with the plane selected by the depth index
-    const selectedPlane = depthData.planes[planeIndex];
-    if (selectedPlane) {
-        const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
-        const dotVN = dotProduct(directionVector, normal);
-        if (Math.abs(dotVN) >= epsilon) {
-            const t = selectedPlane.d / dotVN;
-            if (t > epsilon) {
-                minDistance = t;
+    // 3. Try intersecting with the plane selected by the depth index if valid
+    const isValidPlaneIndex =
+        planeIndex !== 255 && planeIndex >= 0 && planeIndex < depthData.planes.length;
+    if (isValidPlaneIndex) {
+        const selectedPlane = depthData.planes[planeIndex];
+        if (selectedPlane) {
+            const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
+            const dotVN = dotProduct(directionVector, normal);
+            if (Math.abs(dotVN) >= epsilon) {
+                const t = selectedPlane.d / dotVN;
+                if (t > epsilon) {
+                    minDistance = t;
+                }
             }
         }
     }
