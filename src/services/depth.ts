@@ -1,6 +1,10 @@
 import { get, set, del, keys } from 'idb-keyval';
 import { OnnxDepthMap, CameraParams } from '../types/common';
 
+interface CachedDepthMap extends OnnxDepthMap {
+  lastUsed: number;
+}
+
 // Cache configuration
 const CACHE_VERSION = '1.0';
 const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
@@ -21,10 +25,12 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
     const cacheKey = generateCacheKey(params);
     if (!cacheKey) return null;
     
-    const cached = await get(cacheKey);
+    const cached = (await get(cacheKey)) as CachedDepthMap | undefined;
     if (cached && cached.data && cached.width && cached.height) {
       console.log('[cache] Hit for key:', cacheKey);
-      return cached as OnnxDepthMap;
+      cached.lastUsed = Date.now();
+      await set(cacheKey, cached);
+      return cached;
     }
     
     return null;
@@ -39,8 +45,14 @@ export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap
   try {
     const cacheKey = generateCacheKey(params);
     if (!cacheKey) return;
-    
-    await set(cacheKey, depthMap);
+
+    const toStore: CachedDepthMap = {
+      data: depthMap.data,
+      width: depthMap.width,
+      height: depthMap.height,
+      lastUsed: Date.now()
+    };
+    await set(cacheKey, toStore);
     console.log('[cache] Stored depth map for key:', cacheKey);
     
     // Implement LRU by limiting cache size
@@ -54,13 +66,24 @@ export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap
 async function enforceCacheSizeLimit(): Promise<void> {
   try {
     const allKeys = await keys();
-    const cacheKeys = allKeys.filter(key => 
+    const cacheKeys = allKeys.filter(key =>
       typeof key === 'string' && key.startsWith(CACHE_PREFIX)
     ) as string[];
-    
+
     if (cacheKeys.length > MAX_CACHE_SIZE) {
-      // Remove oldest entries (simple strategy - could be improved with timestamps)
-      const keysToRemove = cacheKeys.slice(0, cacheKeys.length - MAX_CACHE_SIZE);
+      const cacheEntries = await Promise.all(
+        cacheKeys.map(async key => {
+          const item = (await get(key)) as CachedDepthMap | undefined;
+          return { key, lastUsed: item?.lastUsed ?? 0 };
+        })
+      );
+
+      cacheEntries.sort((a, b) => a.lastUsed - b.lastUsed);
+
+      const keysToRemove = cacheEntries
+        .slice(0, cacheEntries.length - MAX_CACHE_SIZE)
+        .map(entry => entry.key);
+
       await Promise.all(keysToRemove.map(key => del(key)));
       console.log('[cache] Removed', keysToRemove.length, 'old entries');
     }
