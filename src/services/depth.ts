@@ -5,6 +5,11 @@ import { OnnxDepthMap, CameraParams } from '../types/common';
 const CACHE_VERSION = '1.0';
 const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
 const MAX_CACHE_SIZE = 50; // Maximum number of cached depth maps
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+interface CachedDepthMap extends OnnxDepthMap {
+  timestamp: number;
+}
 
 // Generate cache key from camera parameters
 function generateCacheKey(params: CameraParams): string {
@@ -21,12 +26,22 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
     const cacheKey = generateCacheKey(params);
     if (!cacheKey) return null;
     
-    const cached = await get(cacheKey);
-    if (cached && cached.data && cached.width && cached.height) {
-      console.log('[cache] Hit for key:', cacheKey);
-      return cached as OnnxDepthMap;
+    const cached = await get<CachedDepthMap>(cacheKey);
+    if (!cached) return null;
+
+    const isExpired = !cached.timestamp || (Date.now() - cached.timestamp > CACHE_TTL_MS);
+    if (isExpired) {
+      await del(cacheKey);
+      return null;
     }
-    
+
+    if (cached.data && cached.width && cached.height) {
+      console.log('[cache] Hit for key:', cacheKey);
+      const { timestamp, ...depthMap } = cached;
+      void timestamp;
+      return depthMap as OnnxDepthMap;
+    }
+
     return null;
   } catch (error) {
     console.warn('[cache] Error reading from cache:', error);
@@ -39,8 +54,12 @@ export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap
   try {
     const cacheKey = generateCacheKey(params);
     if (!cacheKey) return;
-    
-    await set(cacheKey, depthMap);
+
+    const depthWithTimestamp: CachedDepthMap = {
+      ...depthMap,
+      timestamp: Date.now()
+    };
+    await set(cacheKey, depthWithTimestamp);
     console.log('[cache] Stored depth map for key:', cacheKey);
     
     // Implement LRU by limiting cache size
