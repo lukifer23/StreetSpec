@@ -121,6 +121,8 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
         ref={inputRef}
         type="text"
         placeholder="Search location or enter Lat, Lng (or DMS)"
+        title="Enter coordinates in decimal degrees or DMS format"
+        aria-label="Search location or enter coordinates in decimal degrees or degrees, minutes, seconds format"
         className={styles.searchInput} // Apply class from CSS Module
         value={inputValue} // Control the input value
         onChange={(e) => {
