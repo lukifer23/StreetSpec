@@ -1,29 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { Point, Measurement, CameraParams, OnnxDepthMap, UNIT_CONVERSIONS, DecodedDepthData } from '../types/common';
+import { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './MeasurementTool.module.css';
 
-interface MeasurementToolProps {
-  cameraParams: CameraParams | null;
-  onnxDepthMap: OnnxDepthMap | null;
-  depthData: DecodedDepthData | null;
-  onMeasurementComplete: (measurement: Measurement) => void;
-  measurements: Measurement[];
-  currentUnit?: 'metric' | 'imperial';
-}
+import { useMeasurementStore } from '../stores/measurementStore';
+import { useCameraStore } from '../stores/cameraStore';
+import { useViewStore } from '../stores/viewStore';
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
-const MeasurementTool: React.FC<MeasurementToolProps> = ({
-  cameraParams,
-  onnxDepthMap,
-  depthData,
-  onMeasurementComplete,
-  measurements,
-  currentUnit = 'metric'
-}) => {
+const MeasurementTool: React.FC = () => {
+  const { measurements, addMeasurement } = useMeasurementStore();
+  const { settings } = useSettingsStore();
+  const { defaultUnit } = settings;
+  const { cameraParams, onnxDepthMap, depthData } = useCameraStore();
+  const { onGenerateDepthMap, isCalibrated } = useViewStore();
+
   const [phase, setPhase] = useState<MeasurementPhase>('idle');
   const [startPoint, setStartPoint] = useState<Point | null>(null);
   const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
@@ -62,8 +55,8 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       if (coords && startPoint) {
         completeMeasurement(startPoint, coords);
       } else if (coords && !startPoint) {
-        // If we're in placingEnd but no startPoint, start a new measurement
-        console.log('[measure] No startPoint in placingEnd, starting new measurement');
+        // If we're in placingEnd but no startPoint, this is the first click
+        console.log('[measure] First click in placingEnd, setting startPoint');
         setStartPoint(coords);
       }
     }
@@ -164,27 +157,25 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     }
 
     // Convert to imperial if needed
-    const finalDistance = currentUnit === 'imperial'
+    const finalDistance = defaultUnit === 'imperial'
       ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
       : finalHeight;
 
-    const newMeasurement: Measurement = {
-      id: uuidv4(),
+    const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
       label: 'Est. Height',
       distance: finalDistance,
       startPoint: startPoint,
       endPoint: coords,
-      unit: currentUnit,
-      timestamp: Date.now(),
+      unit: defaultUnit,
     };
     console.log('[measure] Creating measurement:', newMeasurement);
-    onMeasurementComplete(newMeasurement);
+    addMeasurement(newMeasurement);
 
     console.log('[measure] Resetting measurement state');
     setStartPoint(null);
     setCurrentMousePos(null);
     setPhase('idle');
-  }, [cameraParams, onnxDepthMap, depthData, currentUnit, onMeasurementComplete]);
+  }, [cameraParams, onnxDepthMap, depthData, defaultUnit, addMeasurement]);
 
   const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {
@@ -299,10 +290,10 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
 
         if (estimatedHeight !== null) {
           const finalDistance =
-            currentUnit === 'imperial'
+            defaultUnit === 'imperial'
               ? UNIT_CONVERSIONS.metersToFeet(estimatedHeight)
               : estimatedHeight;
-          const unitLabel = currentUnit === 'metric' ? 'm' : 'ft';
+          const unitLabel = defaultUnit === 'metric' ? 'm' : 'ft';
 
           context.fillStyle = 'white';
           context.shadowColor = 'black';
@@ -318,24 +309,33 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
       }
     }
 
-  }, [phase, startPoint, currentMousePos, measurements, cameraParams, onnxDepthMap, currentUnit]);
+  }, [phase, startPoint, currentMousePos, measurements, cameraParams, onnxDepthMap, defaultUnit]);
 
-  const startMeasurement = useCallback(() => {
+  const startMeasurement = useCallback(async () => {
     console.log('[measure] startMeasurement called');
     if (!cameraParams) {
       alert("Camera parameters not yet available. Please wait a moment.");
       return;
     }
+
+    if (!onnxDepthMap && !depthData) {
+      if (onGenerateDepthMap) {
+        await onGenerateDepthMap();
+      }
+    }
+
     setPhase('placingEnd');
     setStartPoint(null);
     setCurrentMousePos(null);
-  }, [cameraParams]);
+  }, [cameraParams, onnxDepthMap, depthData, onGenerateDepthMap]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'm' && phase === 'idle') {
+        event.preventDefault();
         startMeasurement();
       } else if (event.key === 'Escape' && phase !== 'idle') {
+        event.preventDefault();
         setPhase('idle');
         setStartPoint(null);
         setCurrentMousePos(null);
@@ -358,9 +358,15 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
     >
         {phase === 'idle' && (
             <button 
-                onClick={(e) => { e.stopPropagation(); startMeasurement(); }}
-                disabled={!cameraParams || (!onnxDepthMap && !depthData)}
-                title={!cameraParams ? "Waiting for camera parameters..." : (!onnxDepthMap && !depthData) ? "Generate Depth Map first!" : "Start Height Estimation (M)"}
+                onClick={(e) => { 
+                    e.preventDefault();
+                    e.stopPropagation(); 
+                    if (phase === 'idle') {
+                        startMeasurement(); 
+                    }
+                }}
+                disabled={!cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated}
+                title={!cameraParams ? "Waiting for camera parameters..." : (!onnxDepthMap && !depthData) ? "Generate Depth Map first!" : !isCalibrated ? "Calibrate horizon first!" : "Start Height Estimation (M)"}
                 style={{
                     position: 'absolute',
                     bottom: '20px',
@@ -368,11 +374,11 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
                     transform: 'translateX(-50%)',
                     zIndex: 10,
                     padding: '10px 15px',
-                    cursor: (cameraParams && (onnxDepthMap || depthData)) ? 'pointer' : 'not-allowed',
+                    cursor: (cameraParams && (onnxDepthMap || depthData) && isCalibrated) ? 'pointer' : 'not-allowed',
                     pointerEvents: 'auto'
                 }}
             >
-                {!cameraParams ? 'Waiting for Camera...' : (!onnxDepthMap && !depthData) ? 'Depth Data Needed' : 'Estimate Height (M)'}
+                {!cameraParams ? 'Waiting for Camera...' : (!onnxDepthMap && !depthData) ? 'Depth Data Needed' : !isCalibrated ? 'Calibrate Horizon First' : 'Estimate Height (M)'}
             </button>
         )}
         {phase !== 'idle' && (
@@ -390,7 +396,7 @@ const MeasurementTool: React.FC<MeasurementToolProps> = ({
              role="status"
              aria-live="polite"
             >
-                {!startPoint ? 'Click object BASE' : 'Click object TOP'} (Esc to cancel)
+                {!startPoint ? 'Step 1: Click object BASE' : 'Step 2: Click object TOP'} (Esc to cancel)
             </div>
         )}
         

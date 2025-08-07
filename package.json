@@ -22,7 +22,11 @@
     "tsc:main:watch": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput",
     "tsc:preload": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop",
     "tsc:preload:watch": "tsc -p tsconfig.node.json --module commonjs --resolveJsonModule --esModuleInterop --watch --preserveWatchOutput",
-    "test": "tsc src/services/measurementLogic.ts src/services/measurementLogic.test.ts --module es2020 --target ES2020 --esModuleInterop --moduleResolution node --allowJs --outDir build && node build/services/measurementLogic.test.js"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:unit": "jest --testPathPattern=unit",
+    "test:integration": "jest --testPathPattern=integration"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -31,16 +35,21 @@
     "@googlemaps/js-api-loader": "^1.16.8",
     "electron-store": "^10.1.0",
     "idb-keyval": "^6.2.2",
+    "immer": "^10.1.1",
     "node-fetch": "^3.3.2",
     "onnxruntime-node": "^1.18.0",
     "pako": "^2.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.34.1",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "zustand": "^5.0.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.4",
+    "@testing-library/react": "^16.3.0",
     "@types/google.maps": "^3.58.1",
+    "@types/jest": "^30.0.0",
     "@types/node": "^18.19.86",
     "@types/node-fetch": "^2.6.12",
     "@types/pako": "^2.0.3",
@@ -51,6 +60,7 @@
     "@typescript-eslint/parser": "^7.18.0",
     "@vitejs/plugin-react": "^4.3.1",
     "concurrently": "^8.2.2",
+    "core-js": "^3.45.0",
     "cross-env": "^7.0.3",
     "electron": "^31.7.7",
     "electron-builder": "^25.1.8",
@@ -59,6 +69,11 @@
     "eslint-plugin-react": "^7.35.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.8",
+    "fake-indexeddb": "^6.0.1",
+    "identity-obj-proxy": "^3.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "ts-jest": "^29.4.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.19",
     "vite-plugin-electron": "^0.29.0",

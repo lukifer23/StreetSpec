@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import styles from './SearchBox.module.css'; // Import CSS Module
+import { useCameraStore } from '../stores/cameraStore';
 
 // Regex for Decimal Degrees (Lat, Lng)
 const decimalLatLngRegex = /^(-?\d{1,3}(?:\.\d+)?)[,\s]+(-?\d{1,3}(?:\.\d+)?)$/;
 
 // Regex for Degrees Minutes Seconds (DMS) - More robust
 const dmsRegex = /(\d{1,3})[°\s]+(\d{1,2})['\s]+(\d{1,2}(?:\.\d+)?)["\s]*([NS])?[,\s]+(\d{1,3})[°\s]+(\d{1,2})['\s]+(\d{1,2}(?:\.\d+)?)["\s]*([EW])?/i;
-
-interface SearchBoxProps {
-  onPlaceSelected: (place: google.maps.places.PlaceResult) => void;
-  onCoordsEntered: (coords: { lat: number; lng: number }) => void; // New callback
-}
 
 // Function to convert DMS to Decimal Degrees
 function dmsToDecimal(degrees: number, minutes: number, seconds: number, direction: string): number {
@@ -21,11 +17,25 @@ function dmsToDecimal(degrees: number, minutes: number, seconds: number, directi
     return decimal;
 }
 
-const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered }) => {
+const SearchBox: React.FC = () => {
+  const { setTargetCoords } = useCameraStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null); // Use ref to hold instance
   const [inputValue, setInputValue] = useState(''); // Track input value
   const [error, setError] = useState('');
+
+  const onPlaceSelected = (place: google.maps.places.PlaceResult) => {
+    if (place.geometry?.location) {
+      setTargetCoords({
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng(),
+      });
+    }
+  };
+
+  const onCoordsEntered = (coords: { lat: number; lng: number }) => {
+    setTargetCoords(coords);
+  };
 
   useEffect(() => {
     // Ensure the API is loaded and the input element exists

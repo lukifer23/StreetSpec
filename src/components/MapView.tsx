@@ -1,20 +1,10 @@
 /// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState } from 'react';
-import { CameraParams, OnnxDepthMap } from '../types/common';
+import { CameraParams } from '../types/common';
 import { calculateFov } from '../services/geometry';
 
-// Define interfaces
-interface MapViewProps {
-  lat?: number;
-  lng?: number;
-  onCameraParamsChange: (params: CameraParams) => void;
-  isGeneratingMap: boolean;
-  mapGenerationError: string | null;
-  onnxDepthMap: OnnxDepthMap | null;
-  onGenerateDepthMap: () => void;
-  calibrateMode?: boolean;
-  onCalibrateClick?: (pixelY:number, viewportH:number)=>void;
-}
+import { useViewStore } from '../stores/viewStore';
+import { useCameraStore } from '../stores/cameraStore';
 
 // Default coords
 const DEFAULT_LAT = 40.7580;
@@ -32,16 +22,18 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
   };
 }
 
-const MapView: React.FC<MapViewProps> = ({ 
-  lat, 
-  lng, 
+const MapView: React.FC<{
+  onCameraParamsChange: (params: CameraParams) => void;
+  onGenerateDepthMap: () => void;
+  onCalibrateClick?: (pixelY:number, viewportH:number)=>void;
+}> = ({ 
   onCameraParamsChange,
-  isGeneratingMap,
-  mapGenerationError,
-  onnxDepthMap,
-  calibrateMode=false,
   onCalibrateClick
 }) => {
+  const { lat, lng } = useCameraStore(state => ({ lat: state.targetCoords?.lat, lng: state.targetCoords?.lng }));
+  const { isGeneratingMap, mapGenerationError, calibrateMode } = useViewStore();
+  const { onnxDepthMap } = useCameraStore();
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);

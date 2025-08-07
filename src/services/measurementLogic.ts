@@ -139,7 +139,7 @@ export function calculateEstimatedHeight(
     cameraParams: CameraParams | null,
     distanceToBase: number | null
 ): number | null {
-    if (!cameraParams?.vFov || cameraParams.pitch === undefined || distanceToBase === null) {
+    if (!cameraParams?.vFov || cameraParams.pitch === undefined || distanceToBase === null || distanceToBase <= 0 || viewportHeight <= 0) {
         return null;
     }
 
@@ -165,7 +165,7 @@ export function calculateEstimatedHeight(
     const heightAtTop = distanceToBase * Math.tan(angleToTop);
 
     // Estimated height is the difference
-    const estimatedHeight = Math.abs(heightAtBase - heightAtTop);
+    const estimatedHeight = heightAtBase - heightAtTop;
 
     return estimatedHeight;
 } 

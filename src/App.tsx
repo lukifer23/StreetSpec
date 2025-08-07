@@ -9,6 +9,11 @@ import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
 
+import { useMeasurementStore } from './stores/measurementStore';
+import { useSettingsStore } from './stores/settingsStore';
+import { useViewStore } from './stores/viewStore';
+import { useCameraStore } from './stores/cameraStore';
+
 // Tooltip component for better UX
 const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -73,33 +78,17 @@ async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response> 
 }
 
 function App() {
-  // State to hold the target coordinates for the map
-  const [targetCoords, setTargetCoords] = useState<Coordinates | null>(null);
-  // State to hold the API key (ensure it's loaded safely)
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   const [isApiLoaded, setIsApiLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  // --- State Lifted from MapView ---
-  const [currentCameraParams, setCurrentCameraParams] = useState<CameraParams | null>(null);
-  const [onnxDepthMap, setOnnxDepthMap] = useState<OnnxDepthMap | null>(null);
-  const [depthData, setDepthData] = useState<DecodedDepthData | null>(null);
-  const [isGeneratingMap, setIsGeneratingMap] = useState<boolean>(false);
-  const [mapGenerationError, setMapGenerationError] = useState<string | null>(null);
-  // --- End Lifted State ---
-
-  const [measurements, setMeasurements] = useState<Measurement[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({
-    defaultUnit: 'metric',
-    autoSave: true,
-    theme: 'light',
-    language: 'en',
-    measurementHistoryLimit: 1000,
-    cameraHeight: 2.5
-  });
   const [isLoading, setIsLoading] = useState(true);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [calibrateMode,setCalibrateMode]=useState(false);
+
+  const [isCalibrated, setIsCalibrated] = useState(false);
+
+  // Zustand store hooks
+  const { measurements, addMeasurement, deleteMeasurement, renameMeasurement, clearMeasurements, setMeasurements } = useMeasurementStore();
+  const { settings, setSettings, updateSettings, toggleUnit } = useSettingsStore();
+  const { isSettingsOpen, isGeneratingMap, calibrateMode, error, mapGenerationError, setIsSettingsOpen, setIsGeneratingMap, setCalibrateMode, setError, setMapGenerationError } = useViewStore();
+  const { targetCoords, currentCameraParams, onnxDepthMap, depthData, setTargetCoords, setCurrentCameraParams, setOnnxDepthMap, setDepthData } = useCameraStore();
 
   // Load settings and measurements on app start
   useEffect(() => {
@@ -127,7 +116,7 @@ function App() {
     };
 
     loadPersistedData();
-  }, []);
+  }, [setSettings, setMeasurements]);
 
   // Apply theme when settings change
   useEffect(() => {
@@ -186,17 +175,22 @@ function App() {
     }).catch(() => {
       setError("Failed to load Google Maps. Please check the console and API Key.");
     });
-  }, [apiKey]);
+  }, [apiKey, setError]);
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
+    if (params.panoId !== currentCameraParams?.panoId) {
+      setIsCalibrated(false);
+      updateSettings({ calibrationPitchOffsetDeg: 0 });
+    }
+
     const merged = {
       ...params,
       calibrationPitchOffsetDeg: settings.calibrationPitchOffsetDeg ?? 0,
       cameraHeight: params.cameraHeight ?? settings.cameraHeight ?? 2.5,
     };
     setCurrentCameraParams(merged);
-  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight]);
+  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams?.panoId, updateSettings]);
 
   const handleCalibrateClick = useCallback((pixelY:number, viewH:number)=>{
      if(!currentCameraParams||!currentCameraParams.vFov||currentCameraParams.pitch===undefined) {setCalibrateMode(false);return;}
@@ -205,11 +199,12 @@ function App() {
      const angle=((pixelY-center)/viewH)*verticalFov; // degrees
      const offset = -(currentCameraParams.pitch + angle);
      const newSettings={...settings, calibrationPitchOffsetDeg:offset};
-     setSettings(newSettings);
+     updateSettings({ calibrationPitchOffsetDeg: offset });
      window.electronAPI?.invoke('save-settings',newSettings).catch(()=>{});
      setCalibrateMode(false);
+     setIsCalibrated(true);
      alert(`Calibration saved ΔPitch ${offset.toFixed(2)}°`);
-  },[currentCameraParams,settings]);
+  },[currentCameraParams, settings, updateSettings, setCalibrateMode]);
 
   // Fetch Street View depth data when pano changes
   useEffect(() => {
@@ -226,7 +221,7 @@ function App() {
       }
     };
     fetchDepthData();
-  }, [currentCameraParams?.panoId]);
+  }, [currentCameraParams?.panoId, setDepthData]);
 
   // Callback for when a place is selected in the SearchBox
   const handlePlaceSelected = (place: google.maps.places.PlaceResult) => {
@@ -317,25 +312,20 @@ function App() {
     } finally {
       setIsGeneratingMap(false);
     }
-  }, [currentCameraParams, apiKey, isGeneratingMap]);
-  // --- End Depth Map Generation Logic ---
+  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap]);
+  const { setOnGenerateDepthMap } = useViewStore();
+
+  useEffect(() => {
+    setOnGenerateDepthMap(handleGenerateDepthMap);
+  }, [handleGenerateDepthMap, setOnGenerateDepthMap]);
 
   // Add a new measurement to the list
-  const handleMeasurementComplete = useCallback((newMeasurement: Measurement) => {
-    setMeasurements(prev => {
-      const updated = [...prev, newMeasurement];
-      
-      // Enforce measurement history limit
-      if (updated.length > settings.measurementHistoryLimit) {
-        return updated.slice(-settings.measurementHistoryLimit);
-      }
-      
-      return updated;
-    });
-  }, [settings.measurementHistoryLimit]);
+  const handleMeasurementComplete = useCallback((newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'>) => {
+    addMeasurement(newMeasurement);
+  }, [addMeasurement]);
 
   const handleClearMeasurements = useCallback(async () => {
-    setMeasurements([]);
+    clearMeasurements();
     if (window.electronAPI?.invoke) {
       try {
         await window.electronAPI.invoke('clear-data');
@@ -343,31 +333,16 @@ function App() {
         // Silent error handling for production
       }
     }
-  }, []);
+  }, [clearMeasurements]);
 
-  const handleDeleteMeasurement = useCallback((idToDelete: string) => {
-    setMeasurements(prev => prev.filter(m => m.id !== idToDelete));
-  }, []);
-
-  const handleRenameMeasurement = useCallback((idToRename: string, newName: string) => {
-    setMeasurements(prev => 
-      prev.map(m => m.id === idToRename ? { ...m, name: newName } : m)
-    );
-  }, []);
-
-  // Unit toggle handler
   const handleUnitToggle = useCallback(() => {
-    const newUnit: 'metric' | 'imperial' = settings.defaultUnit === 'metric' ? 'imperial' : 'metric';
-    const newSettings: AppSettings = { ...settings, defaultUnit: newUnit };
-    setSettings(newSettings);
-    
-    // Save settings
+    toggleUnit();
     if (window.electronAPI?.invoke) {
-      window.electronAPI.invoke('save-settings', newSettings).catch(() => {
+      window.electronAPI.invoke('save-settings', settings).catch(() => {
         // Silent error handling for production
       });
     }
-  }, [settings]);
+  }, [toggleUnit, settings]);
 
   const handleSaveSettingsPanel = async (newSettings: AppSettings) => {
     setSettings(newSettings);
@@ -440,7 +415,7 @@ function App() {
     const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape'&&calibrateMode){setCalibrateMode(false);}}
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
-  },[calibrateMode]);
+  },[calibrateMode, setCalibrateMode]);
 
   // Display error state
   if (error) {
@@ -454,6 +429,12 @@ function App() {
 
   return (
     <div className={styles.appContainer}>
+      {currentCameraParams && settings.calibrationPitchOffsetDeg === 0 && (
+        <div className={styles.calibrationNotification}>
+          <p>For accurate measurements, please calibrate the horizon first.</p>
+          <button onClick={() => setCalibrateMode(true)}>Calibrate Now</button>
+        </div>
+      )}
       <div className={styles.header}>
         <button
           style={{ marginRight: 10 }}
@@ -466,15 +447,12 @@ function App() {
           </button>
         </Tooltip>
         <Tooltip text="Calibrate the horizon for accurate measurements. Click on the flat horizontal line where the sky meets the ground - like where the ocean meets the sky, or where a flat field meets the sky, or where distant mountains meet the sky. This tells the app what 'level' means in your view so measurements are accurate.">
-          <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>
+          <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode} className={!isCalibrated ? styles.highlight : ''}>
             Calibrate Horizon
           </button>
         </Tooltip>
         {isApiLoaded ? (
-          <SearchBox 
-            onPlaceSelected={handlePlaceSelected} 
-            onCoordsEntered={handleCoordsEntered}
-          />
+          <SearchBox />
         ) : (
           <div className={styles.loadingPlaceholder} style={{height: 'auto', width: '400px'}}>Loading Search...</div>
         )}
@@ -521,7 +499,7 @@ function App() {
                          type="text" 
                          placeholder="Add Name..." 
                          value={m.name || ''} 
-                         onChange={(e) => handleRenameMeasurement(m.id, e.target.value)}
+                         onChange={(e) => renameMeasurement(m.id, e.target.value)}
                          className={styles.nameInput}
                          title="Rename Measurement"
                        />
@@ -529,7 +507,7 @@ function App() {
                            {m.label}: {m.distance.toFixed(2)}{m.unit === 'metric' ? 'm' : 'ft'}
                        </span>
                        <button 
-                         onClick={() => handleDeleteMeasurement(m.id)}
+                         onClick={() => deleteMeasurement(m.id)}
                          className={styles.deleteButton}
                          title="Delete Measurement"
                        >✕</button>
