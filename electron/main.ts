@@ -97,7 +97,8 @@ const store = new Store({
         depthBias: { type: 'number' },
         depthKernelSize: { type: 'number', enum: [3,5,7] },
         depthUseBilinear: { type: 'boolean' },
-        depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 }
+        depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
+        autoCalibrateDepth: { type: 'boolean' }
       }
     }
   }

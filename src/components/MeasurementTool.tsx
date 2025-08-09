@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Point, Measurement, UNIT_CONVERSIONS, AppSettings } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
+import { calibrationManager } from '../services/depthCalibration';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './MeasurementTool.module.css';
 
@@ -314,6 +315,26 @@ const MeasurementTool: React.FC = () => {
         // Higher confidence when planes succeed and distance is reasonable
         const distOk = distanceToBase > 0.5 && distanceToBase < 200;
         confidence = distOk ? 0.9 : 0.7;
+
+        // Optional auto-calibration: compare ONNX predicted distance at base vs plane distance
+        if (settings.autoCalibrateDepth && onnxDepthMap) {
+          const onnxDist = estimateDistanceToPoint(
+            startPoint.x,
+            startPoint.y,
+            viewWidth,
+            viewHeight,
+            currentCameraParams,
+            onnxDepthMap,
+            {
+              depthKernelSize: (settings.depthKernelSize as 3|5|7) ?? 5,
+              depthUseBilinear: settings.depthUseBilinear ?? true,
+              depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold ?? 0.35,
+            }
+          );
+          if (onnxDist && distanceToBase) {
+            calibrationManager.addSample(onnxDist, distanceToBase);
+          }
+        }
       }
     }
 

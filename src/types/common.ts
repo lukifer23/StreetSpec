@@ -125,6 +125,7 @@ export interface AppSettings {
   depthKernelSize?: 3 | 5 | 7;
   depthUseBilinear?: boolean;
   depthEdgeRejectThreshold?: number; // normalized gradient threshold 0..1
+  autoCalibrateDepth?: boolean;
 }
 
 // Comprehensive error handling system

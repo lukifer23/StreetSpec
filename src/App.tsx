@@ -5,6 +5,7 @@ import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
 import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
+import { calibrationManager } from './services/depthCalibration';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
@@ -347,6 +348,10 @@ function App() {
       } catch {
         // silent
       }
+    }
+    // If auto-calibration toggled on, reset samples to fit fresh scene context
+    if (newSettings.autoCalibrateDepth) {
+      calibrationManager.reset();
     }
     setIsSettingsOpen(false);
   };

@@ -151,6 +151,17 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
+        <div className={styles.field}>
+          <label htmlFor="autoCal">Auto-calibrate Depth (experimental)</label>
+          <input
+            id="autoCal"
+            type="checkbox"
+            checked={!!form.autoCalibrateDepth}
+            onChange={e => handleChange('autoCalibrateDepth', e.target.checked)}
+            title="Continuously fit ONNX depth to plane-based distances"
+          />
+        </div>
+
         <div className={styles.actions}>
           <button className={styles.secondary} onClick={onClose}>Cancel</button>
           <button className={styles.primary} onClick={handleSubmit}>Save</button>
