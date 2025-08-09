@@ -3,6 +3,12 @@ import {
   estimateDistanceToPoint,
   calculateEstimatedHeight,
 } from '../../../services/measurementLogic';
+import { DecodedDepthData, Point } from '../../../types/common';
+import { screenToWorldWithDepth } from '../../../services/geometry';
+
+jest.mock('../../../services/geometry', () => ({
+  screenToWorldWithDepth: jest.fn(),
+}));
 import { CameraParams, OnnxDepthMap } from '../../../types/common';
 
 describe('Measurement Logic Service', () => {
@@ -143,11 +149,16 @@ describe('Measurement Logic Service', () => {
   });
 
   describe('calculateEstimatedHeight', () => {
+    const basePoint: Point = { x: 50, y: 200 };
+    const topPoint: Point = { x: 50, y: 100 };
+
     it('should return null for null camera params', () => {
       const result = calculateEstimatedHeight(
-        100,
-        200,
+        basePoint,
+        topPoint,
+        640,
         480,
+        null,
         null,
         10
       );
@@ -155,12 +166,14 @@ describe('Measurement Logic Service', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null for null distance', () => {
+    it('should return null for null distance when depth data missing', () => {
       const result = calculateEstimatedHeight(
-        100,
-        200,
+        basePoint,
+        topPoint,
+        640,
         480,
         mockCameraParams,
+        null,
         null
       );
 
@@ -169,10 +182,12 @@ describe('Measurement Logic Service', () => {
 
     it('should calculate height for valid input', () => {
       const result = calculateEstimatedHeight(
-        200,
-        100,
+        basePoint,
+        topPoint,
+        640,
         480,
         mockCameraParams,
+        null,
         10
       );
 
@@ -183,10 +198,12 @@ describe('Measurement Logic Service', () => {
 
     it('should handle same Y coordinates', () => {
       const result = calculateEstimatedHeight(
-        100,
-        100,
+        { x: 50, y: 100 },
+        { x: 50, y: 100 },
+        640,
         480,
         mockCameraParams,
+        null,
         10
       );
 
@@ -195,10 +212,12 @@ describe('Measurement Logic Service', () => {
 
     it('should handle inverted Y coordinates (top below base)', () => {
       const result = calculateEstimatedHeight(
-        200,
-        100,
+        { x: 50, y: 200 },
+        { x: 50, y: 100 },
+        640,
         480,
         mockCameraParams,
+        null,
         10
       );
 
@@ -208,10 +227,12 @@ describe('Measurement Logic Service', () => {
 
     it('should handle extreme Y coordinates', () => {
       const result = calculateEstimatedHeight(
-        0,
-        480,
+        { x: 0, y: 0 },
+        { x: 0, y: 480 },
+        640,
         480,
         mockCameraParams,
+        null,
         10
       );
 
@@ -220,10 +241,12 @@ describe('Measurement Logic Service', () => {
 
     it('should handle zero viewport height', () => {
       const result = calculateEstimatedHeight(
-        100,
-        200,
+        basePoint,
+        topPoint,
+        640,
         0,
         mockCameraParams,
+        null,
         10
       );
 
@@ -232,14 +255,32 @@ describe('Measurement Logic Service', () => {
 
     it('should handle negative distance', () => {
       const result = calculateEstimatedHeight(
-        100,
-        200,
+        basePoint,
+        topPoint,
+        640,
         480,
         mockCameraParams,
+        null,
         -10
       );
 
       expect(result).toBeNull();
+    });
+
+    it('should use depth data when available', () => {
+      const depth: DecodedDepthData = { planes: [], indices: new Uint8Array(), width: 1, height: 1 };
+      (screenToWorldWithDepth as jest.Mock).mockReturnValueOnce({ x: 0, y: -1, z: 0 }).mockReturnValueOnce({ x: 0, y: 2, z: 0 });
+      const result = calculateEstimatedHeight(
+        basePoint,
+        topPoint,
+        640,
+        480,
+        mockCameraParams,
+        depth,
+        null
+      );
+
+      expect(result).toBeCloseTo(3);
     });
   });
 
@@ -338,10 +379,12 @@ describe('Measurement Logic Service', () => {
 
       // Then calculate height using that distance
       const height = calculateEstimatedHeight(
-        200,
-        100,
+        { x: 50, y: 200 },
+        { x: 50, y: 100 },
+        640,
         480,
         mockCameraParams,
+        null,
         distance
       );
 

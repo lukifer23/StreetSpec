@@ -78,18 +78,13 @@ const MeasurementTool: React.FC = () => {
 
     // Distance estimates
     let distanceToBase: number | null = null;
-    // Vertical height derived from Street View depth planes
-    let planeHeight: number | null = null;
 
-    // When Street View depth planes are available, compute world points directly
+    // Use Street View depth planes to estimate base distance if available
     if (depthData) {
       const worldStart = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
-      const worldEnd = screenToWorldWithDepth(coords, cameraParams, viewWidth, viewHeight, depthData);
-      if (worldStart && worldEnd) {
-        // Use vertical component of world coordinates for height
-        planeHeight = Math.abs(worldEnd.y - worldStart.y);
+      if (worldStart) {
         distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
-        console.log('[measure] plane vertical height:', planeHeight, 'base distance from planes:', distanceToBase);
+        console.log('[measure] base distance from planes:', distanceToBase);
       }
     }
 
@@ -120,34 +115,15 @@ const MeasurementTool: React.FC = () => {
       console.log('[measure] kernel depth distance', distanceToBase);
     }
 
-    if (distanceToBase === null && planeHeight === null) {
-      console.log('[measure] No distance calculated, resetting');
-      setStartPoint(null);
-      setPhase('idle');
-      return;
-    }
-
-    // Height from ONNX depth
-    let estimatedHeight: number | null = null;
-    if (distanceToBase !== null) {
-      estimatedHeight = calculateEstimatedHeight(
-        startPoint.y,
-        coords.y,
-        viewHeight,
-        cameraParams,
-        distanceToBase
-      );
-      console.log('[measure] Estimated height:', estimatedHeight);
-    }
-
-    // Choose the most reliable height estimate
-    let finalHeight: number | null = null;
-    if (planeHeight !== null) {
-      // Depth planes succeeded; prefer this direct measurement
-      finalHeight = planeHeight;
-    } else {
-      finalHeight = estimatedHeight;
-    }
+    const finalHeight = calculateEstimatedHeight(
+      startPoint,
+      coords,
+      viewWidth,
+      viewHeight,
+      cameraParams,
+      depthData,
+      distanceToBase,
+    );
 
     if (finalHeight === null) {
       console.log('[measure] No height calculated, resetting');
