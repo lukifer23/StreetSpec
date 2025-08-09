@@ -5,6 +5,7 @@ import {
   clearDepthCache,
   getCacheStats,
 } from '../../../services/depth';
+import { estimateDistanceToPoint } from '../../../services/measurementLogic';
 import { CameraParams, OnnxDepthMap } from '../../../types/common';
 import { clear } from 'idb-keyval';
 
@@ -111,11 +112,43 @@ describe('Depth Service with fake-indexeddb', () => {
     it('should report correct count and size', async () => {
       await cacheDepthMap({ ...mockCameraParams, panoId: 'pano-1' }, mockDepthMap);
       await cacheDepthMap({ ...mockCameraParams, panoId: 'pano-2' }, mockDepthMap);
-      
+
       const stats = await getCacheStats();
       expect(stats.count).toBe(2);
       // Each mockDepthMap has 100 Float32 numbers, and each Float32 is 4 bytes.
       expect(stats.size).toBe(100 * 4 * 2);
+    });
+  });
+
+  describe('sparse depth data', () => {
+    const camera: CameraParams = { vFov: 90, pitch: 0 };
+    const viewportWidth = 2;
+    const viewportHeight = 2;
+
+    it('computes weighted average when some neighbors are invalid', () => {
+      const depthMap: OnnxDepthMap = {
+        data: [
+          10, NaN,
+          6, Infinity,
+        ],
+        width: 2,
+        height: 2,
+      };
+      const result = estimateDistanceToPoint(0.5, 0.5, viewportWidth, viewportHeight, camera, depthMap);
+      expect(result).toBeCloseTo(8);
+    });
+
+    it('falls back to median when fewer than two valid samples', () => {
+      const depthMap: OnnxDepthMap = {
+        data: [
+          10, NaN,
+          NaN, NaN,
+        ],
+        width: 2,
+        height: 2,
+      };
+      const result = estimateDistanceToPoint(0.5, 0.5, viewportWidth, viewportHeight, camera, depthMap);
+      expect(result).toBe(10);
     });
   });
 });

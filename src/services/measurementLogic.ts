@@ -55,16 +55,35 @@ function getBilinearDepthSample(
   const i10 = y0 * depthMap.width + x1;
   const i01 = y1 * depthMap.width + x0;
   const i11 = y1 * depthMap.width + x1;
+  const neighbors = [
+    { value: depthMap.data[i00], weight: (1 - dx) * (1 - dy) },
+    { value: depthMap.data[i10], weight: dx * (1 - dy) },
+    { value: depthMap.data[i01], weight: (1 - dx) * dy },
+    { value: depthMap.data[i11], weight: dx * dy },
+  ];
 
-  const v00 = depthMap.data[i00];
-  const v10 = depthMap.data[i10];
-  const v01 = depthMap.data[i01];
-  const v11 = depthMap.data[i11];
-  if ([v00, v10, v01, v11].some(v => !v || !Number.isFinite(v))) return null;
+  const valid = neighbors.filter(n => n.value && n.value > 0 && Number.isFinite(n.value));
+  if (valid.length === 0) return null;
+  if (valid.length < 2) {
+    const vals = valid.map(n => n.value).sort((a, b) => a - b);
+    const mid = Math.floor(vals.length / 2);
+    return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+  }
 
-  const v0 = v00 * (1 - dx) + v10 * dx;
-  const v1 = v01 * (1 - dx) + v11 * dx;
-  return v0 * (1 - dy) + v1 * dy;
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const n of valid) {
+    totalWeight += n.weight;
+    weightedSum += n.value * n.weight;
+  }
+
+  if (totalWeight === 0) {
+    const vals = valid.map(n => n.value).sort((a, b) => a - b);
+    const mid = Math.floor(vals.length / 2);
+    return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+  }
+
+  return weightedSum / totalWeight;
 }
 
 /**
