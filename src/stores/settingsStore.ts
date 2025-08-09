@@ -16,6 +16,8 @@ const defaultSettings: AppSettings = {
   measurementHistoryLimit: 1000,
   cameraHeight: 2.5,
   calibrationPitchOffsetDeg: 0,
+  depthScale: 1,
+  depthBias: 0,
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({

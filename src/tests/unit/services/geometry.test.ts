@@ -7,7 +7,7 @@ import {
   screenToWorldWithDepth,
 } from '../../../services/geometry';
 import { CameraParams, Point, Vector3 } from '../../../types/common';
-import { DecodedDepthData, DepthPlane } from '../../../types/common';
+import { DecodedDepthData } from '../../../types/common';
 
 describe('Geometry Service', () => {
   let mockCameraParams: CameraParams;

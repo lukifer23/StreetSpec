@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, KeyboardEvent } from 'react';
+import React, { useState, useEffect, useRef, KeyboardEvent, useCallback } from 'react';
 import styles from './SearchBox.module.css'; // Import CSS Module
 import { useCameraStore } from '../stores/cameraStore';
 
@@ -24,18 +24,18 @@ const SearchBox: React.FC = () => {
   const [inputValue, setInputValue] = useState(''); // Track input value
   const [error, setError] = useState('');
 
-  const onPlaceSelected = (place: google.maps.places.PlaceResult) => {
+  const onPlaceSelected = useCallback((place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
       setTargetCoords({
         lat: place.geometry.location.lat(),
         lng: place.geometry.location.lng(),
       });
     }
-  };
+  }, [setTargetCoords]);
 
-  const onCoordsEntered = (coords: { lat: number; lng: number }) => {
+  const onCoordsEntered = useCallback((coords: { lat: number; lng: number }) => {
     setTargetCoords(coords);
-  };
+  }, [setTargetCoords]);
 
   useEffect(() => {
     // Ensure the API is loaded and the input element exists

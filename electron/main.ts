@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { existsSync } from 'node:fs';
 import * as fs from 'fs';
 import Store from 'electron-store';
+import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
 
 // --- Add ESM __dirname equivalent --- 
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,9 @@ const store = new Store({
       language: 'en',
       measurementHistoryLimit: 1000,
       useGPU: false,
-      calibrationPitchOffsetDeg: 0
+      calibrationPitchOffsetDeg: 0,
+      depthScale: 1,
+      depthBias: 0
     }
   },
   schema: {
@@ -57,7 +60,9 @@ const store = new Store({
         language: { type: 'string' },
         measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 },
         useGPU: { type: 'boolean' },
-        calibrationPitchOffsetDeg: { type: 'number' }
+        calibrationPitchOffsetDeg: { type: 'number' },
+        depthScale: { type: 'number' },
+        depthBias: { type: 'number' }
       }
     }
   }
@@ -337,8 +342,12 @@ async function createWindow() {
         offsetY: 0
       };
 
+      const settings = store.get('settings', {} as any) as any;
+      const scale = settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1;
+      const bias = settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0;
+
       return {
-        data: Array.from(outputTensor.data as Float32Array),
+        data: Array.from(outputTensor.data as Float32Array, (v) => v * scale + bias),
         width: w,
         height: h,
         transform
@@ -409,7 +418,9 @@ async function createWindow() {
         language: 'en',
         measurementHistoryLimit: 1000,
         useGPU: false,
-        calibrationPitchOffsetDeg: 0
+        calibrationPitchOffsetDeg: 0,
+        depthScale: 1,
+        depthBias: 0
       });
     } catch (_error) {
       return {
@@ -419,7 +430,9 @@ async function createWindow() {
         language: 'en',
         measurementHistoryLimit: 1000,
         useGPU: false,
-        calibrationPitchOffsetDeg: 0
+        calibrationPitchOffsetDeg: 0,
+        depthScale: 1,
+        depthBias: 0
       };
     }
   });
