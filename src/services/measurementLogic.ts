@@ -1,4 +1,5 @@
-import { CameraParams, OnnxDepthMap } from '../types/common';
+import { CameraParams, OnnxDepthMap, Point, DecodedDepthData } from '../types/common';
+import { screenToWorldWithDepth } from './geometry';
 
 // Size of square kernel (odd number)
 const KERNEL_SIZE = 5; // 5×5 neighborhood
@@ -124,30 +125,43 @@ export function estimateDistanceToPoint(
 
 /**
  * Estimates the height of an object based on pixel clicks and camera parameters.
- * 
- * @param basePixelY Vertical pixel coordinate of the object's base.
- * @param topPixelY Vertical pixel coordinate of the object's top.
+ *
+ * @param basePoint Screen coordinates of the object's base.
+ * @param topPoint Screen coordinates of the object's top.
+ * @param viewportWidth Total width of the viewport in pixels.
  * @param viewportHeight Total height of the viewport in pixels.
  * @param cameraParams Current camera parameters (vertical FOV, pitch).
- * @param distanceToBase Estimated distance from camera to the object's base (in meters).
+ * @param depthData Street View depth data for the current panorama.
+ * @param distanceToBase Estimated distance from camera to the object's base (meters) for fallback.
  * @returns Estimated height in meters, or null if calculation is not possible.
  */
 export function calculateEstimatedHeight(
-    basePixelY: number,
-    topPixelY: number,
+    basePoint: Point,
+    topPoint: Point,
+    viewportWidth: number,
     viewportHeight: number,
     cameraParams: CameraParams | null,
-    distanceToBase: number | null
+    depthData: DecodedDepthData | null,
+    distanceToBase: number | null,
 ): number | null {
-    if (!cameraParams?.vFov || cameraParams.pitch === undefined || distanceToBase === null || distanceToBase <= 0 || viewportHeight <= 0) {
+    if (!cameraParams || viewportWidth <= 0 || viewportHeight <= 0) {
         return null;
     }
 
-    // Convert pixel offsets into view angles using perspective projection.
-    // We previously scaled angles linearly, which is less accurate near the
-    // edges of the field of view.  Here we map each pixel to an angle by
-    // taking the arctangent of its position relative to the center, scaled by
-    // tan(FOV/2).  This mirrors how a pinhole camera projects the scene.
+    // First try using depth planes to directly obtain world coordinates
+    if (depthData) {
+        const baseWorld = screenToWorldWithDepth(basePoint, cameraParams, viewportWidth, viewportHeight, depthData);
+        const topWorld = screenToWorldWithDepth(topPoint, cameraParams, viewportWidth, viewportHeight, depthData);
+        if (baseWorld && topWorld) {
+            return topWorld.y - baseWorld.y;
+        }
+    }
+
+    // Fallback to angle-based estimation if depth lookup fails
+    if (!cameraParams.vFov || cameraParams.pitch === undefined || distanceToBase === null || distanceToBase <= 0) {
+        return null;
+    }
+
     const verticalFovRadians = (cameraParams.vFov * Math.PI) / 180;
     const centerPixelY = viewportHeight / 2;
     const effectivePitch = (cameraParams.pitch - (cameraParams.calibrationPitchOffsetDeg ?? 0));
@@ -155,17 +169,10 @@ export function calculateEstimatedHeight(
     const halfViewport = viewportHeight / 2;
     const tanHalfFov = Math.tan(verticalFovRadians / 2);
 
-    // Angle relative to horizon for base and top points
-    // Note: Positive angle is downwards from horizon in this calculation
-    const angleToBase = pitchRadians + Math.atan(((basePixelY - centerPixelY) / halfViewport) * tanHalfFov);
-    const angleToTop = pitchRadians + Math.atan(((topPixelY - centerPixelY) / halfViewport) * tanHalfFov);
+    const angleToBase = pitchRadians + Math.atan(((basePoint.y - centerPixelY) / halfViewport) * tanHalfFov);
+    const angleToTop = pitchRadians + Math.atan(((topPoint.y - centerPixelY) / halfViewport) * tanHalfFov);
 
-    // Use tangent to find height relative to camera horizon plane
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
     const heightAtTop = distanceToBase * Math.tan(angleToTop);
-
-    // Estimated height is the difference
-    const estimatedHeight = heightAtBase - heightAtTop;
-
-    return estimatedHeight;
-} 
+    return heightAtBase - heightAtTop;
+}
