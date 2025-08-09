@@ -16,6 +16,15 @@ export interface Point {
   y: number;
 }
 
+// Distortion coefficients for camera lens
+export interface DistortionCoefficients {
+  k1: number;
+  k2: number;
+  p1: number;
+  p2: number;
+  k3?: number;
+}
+
 // Represents the state of the Street View camera
 export interface CameraParams {
   panoId?: string;       // Current Panorama ID
@@ -29,6 +38,7 @@ export interface CameraParams {
   pano?: string;         // Optional: The current panorama ID
   calibrationPitchOffsetDeg?: number; // applied offset for horizon calibration
   cameraHeight?: number; // Height of camera above ground in meters
+  distortion?: DistortionCoefficients; // Lens distortion coefficients
   // Potentially add: altitude, exact camera position vector later
 }
 
