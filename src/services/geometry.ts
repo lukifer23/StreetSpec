@@ -127,7 +127,8 @@ export function estimateGroundPlaneIntersection(
     directionVector: Vector3,
     cameraParams?: CameraParams
 ): Vector3 | null {
-    const cameraHeight = cameraParams?.cameraHeight ?? 2.5; // Default assumed height
+    const cameraHeight = cameraParams?.cameraHeight;
+    if (cameraHeight === undefined) return null;
     const HORIZON_THRESHOLD = 0.01; // Treat vectors with |y| < threshold as horizontal
 
     // Check if the vector points downwards (negative y component) and is not too close to horizontal

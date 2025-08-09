@@ -63,7 +63,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         </div>
 
         <div className={styles.field}>
-          <label htmlFor="cameraHeight">Camera Height (m)</label>
+          <label htmlFor="cameraHeight">Default Camera Height (m)</label>
           <input
             id="cameraHeight"
             type="number"
@@ -71,7 +71,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             step={0.1}
             value={form.cameraHeight ?? 2.5}
             onChange={e => handleChange('cameraHeight', parseFloat(e.target.value))}
-            title="Default camera height in meters"
+            title="Used when panorama metadata lacks camera height"
           />
         </div>
 

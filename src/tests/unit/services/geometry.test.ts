@@ -7,7 +7,7 @@ import {
   screenToWorldWithDepth,
 } from '../../../services/geometry';
 import { CameraParams, Point, Vector3 } from '../../../types/common';
-import { DecodedDepthData, DepthPlane } from '../../../types/common';
+import { DecodedDepthData } from '../../../types/common';
 
 describe('Geometry Service', () => {
   let mockCameraParams: CameraParams;
@@ -102,7 +102,13 @@ describe('Geometry Service', () => {
   describe('estimateGroundPlaneIntersection', () => {
     it('should return null for upward-pointing vector', () => {
       const upwardDirection: Vector3 = { x: 0, y: 1, z: 0 };
-      const result = estimateGroundPlaneIntersection(upwardDirection);
+      const result = estimateGroundPlaneIntersection(upwardDirection, mockCameraParams);
+      expect(result).toBeNull();
+    });
+
+    it('should return null when camera height is missing', () => {
+      const direction: Vector3 = { x: 0, y: -1, z: 1 };
+      const result = estimateGroundPlaneIntersection(direction);
       expect(result).toBeNull();
     });
 
