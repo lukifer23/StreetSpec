@@ -55,26 +55,7 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
   );
 };
 
-// Add rate-limited fetch function
-async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response> {
-  const maxRetries = 3;
-  const retryDelay = 1000;
-  
-  try {
-    const response = await fetch(url);
-    if (response.status === 429 && retryCount < maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      return rateLimitedFetch(url, retryCount + 1);
-    }
-    return response;
-  } catch (error) {
-    if (retryCount < maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      return rateLimitedFetch(url, retryCount + 1);
-    }
-    throw error;
-  }
-}
+import { executeWithRateLimit } from './services/rateLimiter';
 
 function App() {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -284,7 +265,7 @@ function App() {
                      `fov=${currentCameraParams.fov ?? 90}&` +
                      `key=${apiKey}`;
 
-      const response = await rateLimitedFetch(apiUrl);
+      const response = await executeWithRateLimit('google-maps', () => fetch(apiUrl), { timeout: 15000 });
       
       if (!response.ok) {
         throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
