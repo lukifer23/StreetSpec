@@ -1,4 +1,4 @@
-import { CameraParams, Point, Vector3 } from '../types/common';
+import { CameraParams, Point, Vector3, DistortionCoefficients } from '../types/common';
 import { DecodedDepthData } from './depth';
 
 // Helper function to calculate the dot product of two vectors
@@ -20,6 +20,26 @@ const normalizeVector = (vec: Vector3): Vector3 => {
         y: vec.y / length,
         z: vec.z / length,
     };
+};
+
+// Iteratively undistort a normalized point given distortion coefficients
+const undistortPoint = (
+    x: number,
+    y: number,
+    coeffs: DistortionCoefficients
+): { x: number; y: number } => {
+    let xUndistorted = x;
+    let yUndistorted = y;
+    const { k1 = 0, k2 = 0, p1 = 0, p2 = 0, k3 = 0 } = coeffs || {};
+    for (let i = 0; i < 5; i++) {
+        const r2 = xUndistorted * xUndistorted + yUndistorted * yUndistorted;
+        const radial = 1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2;
+        const deltaX = 2 * p1 * xUndistorted * yUndistorted + p2 * (r2 + 2 * xUndistorted * xUndistorted);
+        const deltaY = p1 * (r2 + 2 * yUndistorted * yUndistorted) + 2 * p2 * xUndistorted * yUndistorted;
+        xUndistorted = (x - deltaX) / radial;
+        yUndistorted = (y - deltaY) / radial;
+    }
+    return { x: xUndistorted, y: yUndistorted };
 };
 
 /**
@@ -68,6 +88,15 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     const ndcX = (screenPoint.x / viewWidth) * 2 - 1;
     const ndcY = 1 - (screenPoint.y / viewHeight) * 2; // Invert Y because screen Y is down
 
+    // Apply undistortion if distortion coefficients are provided
+    let undistortedX = ndcX;
+    let undistortedY = ndcY;
+    if (cameraParams.distortion) {
+        const undistorted = undistortPoint(ndcX, ndcY, cameraParams.distortion);
+        undistortedX = undistorted.x;
+        undistortedY = undistorted.y;
+    }
+
     // 2. Account for FOV and aspect ratio
     // Calculate the distance from the camera to the projection plane based on FOV
     const fovRadians = degreesToRadians(vFov);
@@ -81,8 +110,8 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // 3. Initial vector on the projection plane (before rotation)
     // Z points *out* from the screen/camera initially
     let vector: Vector3 = {
-        x: ndcX * aspectRatio, // Scale X by aspect ratio
-        y: ndcY, 
+        x: undistortedX * aspectRatio, // Scale X by aspect ratio
+        y: undistortedY,
         z: zDistance,
     };
 

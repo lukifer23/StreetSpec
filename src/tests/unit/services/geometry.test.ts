@@ -92,6 +92,18 @@ describe('Geometry Service', () => {
       expect(result).toBeDefined();
     });
 
+    it('should account for distortion on edge pixels', () => {
+      const distortedParams: CameraParams = {
+        ...mockCameraParams,
+        distortion: { k1: 0.1, k2: -0.05, p1: 0.01, p2: -0.01 },
+      };
+      const edgePoint = { x: 0, y: 0 };
+      const distortedResult = screenToWorld(edgePoint, distortedParams, 640, 480);
+      const undistortedResult = screenToWorld(edgePoint, mockCameraParams, 640, 480);
+      expect(distortedResult.x).not.toBeCloseTo(undistortedResult.x);
+      expect(distortedResult.y).not.toBeCloseTo(undistortedResult.y);
+    });
+
     it('should apply camera transformations correctly', () => {
       const cameraWithHeading = { ...mockCameraParams, heading: 90 };
       const result = screenToWorld(mockPoint, cameraWithHeading, 640, 480);
