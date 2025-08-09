@@ -66,12 +66,15 @@ export interface OnnxDepthMap {
   transform?: ImageTransform; // Resize/crop parameters used before inference
 }
 
-// Depth plane representation for Street View depth data
+// Depth plane representation for Street View depth data. Google encodes
+// planes using the equation `n·x + d = 0` where the normal vector points
+// toward the camera and `d` is the signed distance from the origin along that
+// normal (positive for planes in front of the camera).
 export interface DepthPlane {
   nx: number; // Normal vector X component
   ny: number; // Normal vector Y component
   nz: number; // Normal vector Z component
-  d: number;  // Distance from origin to plane
+  d: number;  // Signed distance from origin to plane along the normal
 }
 
 // Parsed depth data structure

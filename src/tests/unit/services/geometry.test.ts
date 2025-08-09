@@ -194,5 +194,49 @@ describe('Geometry Service', () => {
       );
       expect(result).toBeDefined();
     });
+
+    it('should compute correct world point for plane facing camera', () => {
+      const depthData: DecodedDepthData = {
+        planes: [{ nx: 0, ny: 0, nz: -1, d: 5 }],
+        indices: new Uint8Array([0]),
+        width: 1,
+        height: 1,
+      };
+      const result = screenToWorldWithDepth(
+        mockPoint,
+        mockCameraParams,
+        640,
+        480,
+        depthData
+      );
+      expect(result).toBeDefined();
+      if (result) {
+        expect(result.x).toBeCloseTo(0);
+        expect(result.y).toBeCloseTo(0);
+        expect(result.z).toBeCloseTo(5);
+      }
+    });
+
+    it('should compute correct world point for plane facing away from camera', () => {
+      const depthData: DecodedDepthData = {
+        planes: [{ nx: 0, ny: 0, nz: 1, d: -5 }],
+        indices: new Uint8Array([0]),
+        width: 1,
+        height: 1,
+      };
+      const result = screenToWorldWithDepth(
+        mockPoint,
+        mockCameraParams,
+        640,
+        480,
+        depthData
+      );
+      expect(result).toBeDefined();
+      if (result) {
+        expect(result.x).toBeCloseTo(0);
+        expect(result.y).toBeCloseTo(0);
+        expect(result.z).toBeCloseTo(5);
+      }
+    });
   });
 });
