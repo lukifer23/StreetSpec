@@ -159,6 +159,18 @@ Access settings via the gear icon (⚙️) in the header:
 - **Default Unit**: Metric (meters) or Imperial (feet)
 - **GPU Acceleration**: Toggle for ONNX inference
 - **Measurement History Limit**: Maximum number of measurements to keep
+- **Depth Scale / Bias**: Adjust calibration applied to depth maps
+
+### Depth Calibration
+Depth models can output depths that are consistently scaled or offset. The app applies a
+model-specific scale and bias to raw depth values before they are used. Default values are
+derived from sample scenes with known distances, but you can refine them:
+
+1. Visit locations with known distances (e.g., a building of known height).
+2. Record the model's predicted depth and the actual distance for several points.
+3. Fit a line using `actual = scale * predicted + bias`.
+4. Enter the resulting **Depth Scale** and **Depth Bias** in the settings panel.
+5. Depth inference will use these parameters for all future measurements.
 
 ## Project Structure
 

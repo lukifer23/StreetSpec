@@ -92,6 +92,8 @@ export interface AppSettings {
   useGPU?: boolean;
   calibrationPitchOffsetDeg?: number;
   cameraHeight?: number;
+  depthScale?: number;
+  depthBias?: number;
 }
 
 // Error types for better error handling

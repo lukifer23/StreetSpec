@@ -76,6 +76,30 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         </div>
 
         <div className={styles.field}>
+          <label htmlFor="depthScale">Depth Scale</label>
+          <input
+            id="depthScale"
+            type="number"
+            step={0.01}
+            value={form.depthScale ?? 1}
+            onChange={e => handleChange('depthScale', parseFloat(e.target.value))}
+            title="Multiply raw depth values by this factor"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label htmlFor="depthBias">Depth Bias (m)</label>
+          <input
+            id="depthBias"
+            type="number"
+            step={0.01}
+            value={form.depthBias ?? 0}
+            onChange={e => handleChange('depthBias', parseFloat(e.target.value))}
+            title="Add this bias after scaling depth values"
+          />
+        </div>
+
+        <div className={styles.field}>
           <label htmlFor="history">Measurement History Limit</label>
           <input
             id="history"

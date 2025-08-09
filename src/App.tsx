@@ -4,7 +4,7 @@ import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
-import { Coordinates, CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
+import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
@@ -88,7 +88,7 @@ function App() {
   const { measurements, addMeasurement, deleteMeasurement, renameMeasurement, clearMeasurements, setMeasurements } = useMeasurementStore();
   const { settings, setSettings, updateSettings, toggleUnit } = useSettingsStore();
   const { isSettingsOpen, isGeneratingMap, calibrateMode, error, mapGenerationError, setIsSettingsOpen, setIsGeneratingMap, setCalibrateMode, setError, setMapGenerationError } = useViewStore();
-  const { targetCoords, currentCameraParams, onnxDepthMap, depthData, setTargetCoords, setCurrentCameraParams, setOnnxDepthMap, setDepthData } = useCameraStore();
+  const { targetCoords, currentCameraParams, onnxDepthMap, depthData, setCurrentCameraParams, setOnnxDepthMap, setDepthData } = useCameraStore();
 
   // Load settings and measurements on app start
   useEffect(() => {
@@ -222,22 +222,6 @@ function App() {
     };
     fetchDepthData();
   }, [currentCameraParams?.panoId, setDepthData]);
-
-  // Callback for when a place is selected in the SearchBox
-  const handlePlaceSelected = (place: google.maps.places.PlaceResult) => {
-    if (place.geometry?.location) {
-      const newCoords = {
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng(),
-      };
-      setTargetCoords(newCoords);
-    }
-  };
-
-  // Callback for when raw coordinates are entered
-  const handleCoordsEntered = (coords: Coordinates) => {
-    setTargetCoords(coords);
-  };
 
   // --- Depth Map Generation Logic (Lifted from MapView) ---
   const handleGenerateDepthMap = useCallback(async () => {
