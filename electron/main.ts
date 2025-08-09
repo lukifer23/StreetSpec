@@ -18,6 +18,7 @@ const __dirname = dirname(__filename);
 // Initialize electron-store for persistence
 const store = new Store({
   defaults: {
+    projects: {},
     measurements: [],
     settings: {
       defaultUnit: 'metric',
@@ -32,6 +33,37 @@ const store = new Store({
     }
   },
   schema: {
+    projects: {
+      type: 'object',
+      patternProperties: {
+        '.*': {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            measurements: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  label: { type: 'string' },
+                  name: { type: 'string' },
+                  startPoint: { type: 'object' },
+                  endPoint: { type: 'object' },
+                  distance: { type: 'number' },
+                  unit: { type: 'string', enum: ['metric', 'imperial'] },
+                  timestamp: { type: 'number' },
+                  panoId: { type: 'string' },
+                  cameraParams: { type: 'object' },
+                  error: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     measurements: {
       type: 'array',
       items: {
@@ -62,7 +94,11 @@ const store = new Store({
         useGPU: { type: 'boolean' },
         calibrationPitchOffsetDeg: { type: 'number' },
         depthScale: { type: 'number' },
-        depthBias: { type: 'number' }
+        depthBias: { type: 'number' },
+        depthKernelSize: { type: 'number', enum: [3,5,7] },
+        depthUseBilinear: { type: 'boolean' },
+        depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
+        autoCalibrateDepth: { type: 'boolean' }
       }
     }
   }
@@ -93,8 +129,15 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0)
 }
 
-// Global variables for model session
+// Global variables for model session with proper memory management
 let depthSession: ort.InferenceSession | null = null;
+let sessionLoadAttempts = 0;
+const MAX_SESSION_LOAD_ATTEMPTS = 3;
+const SESSION_LOAD_RETRY_DELAY = 2000; // 2 seconds
+
+// Memory monitoring
+let lastMemoryCheck = Date.now();
+const MEMORY_CHECK_INTERVAL = 30000; // 30 seconds
 
 // Add rate limiting configuration
 const RATE_LIMIT = {
@@ -102,6 +145,55 @@ const RATE_LIMIT = {
   delayMs: 1000,
   tooManyRequestsCode: 429
 };
+
+// === Memory Management Functions ===
+function getMemoryUsage(): { rss: number; heapUsed: number; heapTotal: number } {
+  const usage = process.memoryUsage();
+  return {
+    rss: Math.round(usage.rss / 1024 / 1024), // MB
+    heapUsed: Math.round(usage.heapUsed / 1024 / 1024), // MB
+    heapTotal: Math.round(usage.heapTotal / 1024 / 1024) // MB
+  };
+}
+
+function logMemoryUsage(context: string): void {
+  const memory = getMemoryUsage();
+  console.log(`[memory] ${context} - RSS: ${memory.rss}MB, Heap: ${memory.heapUsed}/${memory.heapTotal}MB`);
+}
+
+async function cleanupModelSession(): Promise<void> {
+  if (depthSession) {
+    try {
+      console.log('[model] Cleaning up ONNX session...');
+      await depthSession.release();
+      depthSession = null;
+      sessionLoadAttempts = 0;
+      logMemoryUsage('After session cleanup');
+    } catch (error) {
+      console.error('[model] Error during session cleanup:', error);
+    }
+  }
+}
+
+async function reloadModelSession(): Promise<boolean> {
+  await cleanupModelSession();
+  
+  if (sessionLoadAttempts >= MAX_SESSION_LOAD_ATTEMPTS) {
+    console.error('[model] Max session load attempts reached');
+    return false;
+  }
+  
+  sessionLoadAttempts++;
+  console.log(`[model] Attempting to reload session (attempt ${sessionLoadAttempts}/${MAX_SESSION_LOAD_ATTEMPTS})`);
+  
+  try {
+    await loadModel();
+    return depthSession !== null;
+  } catch (error) {
+    console.error('[model] Failed to reload session:', error);
+    return false;
+  }
+}
 
 // === Helper Function for Depth Data ===
 async function getRawDepthData(panoId: string): Promise<Uint8Array | null> {
@@ -172,7 +264,7 @@ const modelPath = app.isPackaged
 
 const modelExists = existsSync(modelPath);
 
-async function loadModel() {
+async function loadModel(): Promise<void> {
   console.log('[model] Model path:', modelPath);
   console.log('[model] Model exists:', modelExists);
   console.log('[model] __dirname:', __dirname);
@@ -189,13 +281,31 @@ async function loadModel() {
   
   try {
     console.log('[model] Loading ONNX model...');
+    logMemoryUsage('Before model load');
     
-    // Try with minimal session options first
-    depthSession = await ort.InferenceSession.create(modelPath);
+    // Configure session options for better memory management
+    const sessionOptions: ort.InferenceSession.SessionOptions = {
+      executionProviders: ['cpu'],
+      graphOptimizationLevel: 'all',
+      enableCpuMemArena: true,
+      enableMemPattern: true,
+      executionMode: 'sequential',
+      extra: {
+        session: {
+          use_ort_model_bytes_directly: true,
+          use_per_session_threads: true,
+          session_logid: 'PoleCheckDepthModel'
+        }
+      }
+    };
+    
+    // Try with optimized session options
+    depthSession = await ort.InferenceSession.create(modelPath, sessionOptions);
     
     console.log('[model] Model loaded successfully');
     console.log('[model] Input names:', depthSession.inputNames);
     console.log('[model] Output names:', depthSession.outputNames);
+    logMemoryUsage('After model load');
     
     if (win) {
       win.webContents.send('main-process-message', { type: 'model-status', status: 'loaded' });
@@ -204,10 +314,13 @@ async function loadModel() {
   } catch (error) {
     depthSession = null;
     console.error('[model] Failed to load model:', error);
+    logMemoryUsage('After model load failure');
     
     if (win) {
       win.webContents.send('main-process-message', { type: 'error', message: `Failed to load ONNX model: ${error}` });
     }
+    
+    throw error; // Re-throw for proper error handling
   }
 }
 // --- End ONNX Setup ---
@@ -263,16 +376,23 @@ async function createWindow() {
   });
 
   // Set up IPC handlers
-  // Depth inference handler
+  // Depth inference handler with improved error handling and memory management
   ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, imageDataUrl: string) => {
     console.log('[infer-depth] request received');
+    
     if (!depthSession) {
-      event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not loaded or failed to load.'});
-      return null;
+      console.warn('[infer-depth] No depth session available, attempting reload...');
+      const reloadSuccess = await reloadModelSession();
+      if (!reloadSuccess) {
+        event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not available and could not be reloaded.'});
+        return null;
+      }
     }
 
     try {
       console.time('[infer-depth] preprocess');
+      logMemoryUsage('Before inference');
+      
       // Process image data and run inference
       const base64Data = imageDataUrl.split(',')[1];
       if (!base64Data) throw new Error('Invalid image data');
@@ -329,7 +449,7 @@ async function createWindow() {
       if (!w || !h || !(outputTensor.data instanceof Float32Array) || (outputTensor.data as Float32Array).length === 0) {
         throw new Error('ONNX output tensor invalid');
       }
-
+      
       // Parameters describing how the image was resized prior to inference
       const transform = {
         originalWidth,
@@ -341,20 +461,28 @@ async function createWindow() {
         offsetX: 0,
         offsetY: 0
       };
-
       const settings = store.get('settings', {} as any) as any;
-      const scale = settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1;
-      const bias = settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0;
-
+      const scale = (settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1) as number;
+      const bias = (settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0) as number;
+      
+      logMemoryUsage('After inference');
       return {
         data: Array.from(outputTensor.data as Float32Array, (v) => v * scale + bias),
         width: w,
         height: h,
         transform
       };
-    } catch (_error) {
-      console.error('[infer-depth] failed', _error);
-      event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${_error}` });
+    } catch (error) {
+      console.error('[infer-depth] failed', error);
+      logMemoryUsage('After inference failure');
+      
+      // Attempt to recover from session errors
+      if (error instanceof Error && error.message.includes('session')) {
+        console.warn('[infer-depth] Session error detected, attempting reload...');
+        await reloadModelSession();
+      }
+      
+      event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });
       return null;
     }
   });
@@ -392,17 +520,48 @@ async function createWindow() {
   });
 
   // Persistence handlers
+  ipcMain.handle('get-projects', async () => {
+    try {
+      return store.get('projects', {});
+    } catch (error) {
+      return {};
+    }
+  });
+
+  // Measurements persistence handlers
   ipcMain.handle('get-measurements', async () => {
     try {
       return store.get('measurements', []);
-    } catch (error) {
+    } catch (_error) {
       return [];
     }
   });
 
-  ipcMain.handle('save-measurements', async (event: IpcMainInvokeEvent, measurements: any[]) => {
+  ipcMain.handle('save-measurements', async (_event: IpcMainInvokeEvent, measurements: any[]) => {
     try {
       store.set('measurements', measurements);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  });
+
+  ipcMain.handle('save-project', async (event: IpcMainInvokeEvent, project: any) => {
+    try {
+      const projects = store.get('projects', {});
+      projects[project.id] = project;
+      store.set('projects', projects);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  });
+
+  ipcMain.handle('delete-project', async (event: IpcMainInvokeEvent, projectId: string) => {
+    try {
+      const projects = store.get('projects', {});
+      delete projects[projectId];
+      store.set('projects', projects);
       return true;
     } catch (_error) {
       return false;
@@ -478,28 +637,55 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  win = null
-  if (process.platform !== 'darwin') app.quit()
-})
+app.on('window-all-closed', async () => {
+  // Clean up ONNX session before quitting
+  await cleanupModelSession();
+  win = null;
+  if (process.platform !== 'darwin') app.quit();
+});
 
 app.on('second-instance', () => {
   if (win) {
     if (win.isMinimized()) win.restore()
     win.focus()
   }
-})
+});
 
 // Handle any uncaught exceptions
-process.on('uncaughtException', (_error) => {
+process.on('uncaughtException', async (error) => {
+  console.error('[fatal] Uncaught exception:', error);
+  await cleanupModelSession();
   app.quit();
 });
 
-process.on('unhandledRejection', (reason: any, _promise: Promise<any>) => {
+process.on('unhandledRejection', async (reason: any, _promise: Promise<any>) => {
+  console.error('[fatal] Unhandled rejection:', reason);
   if (win) {
     const wc = win.webContents;
     if (!wc.isDestroyed()) {
         wc.send('main-process-message', { type: 'error', message: `Unhandled Rejection: ${reason}` });
     }
   }
+});
+
+// Periodic memory monitoring
+setInterval(() => {
+  const now = Date.now();
+  if (now - lastMemoryCheck >= MEMORY_CHECK_INTERVAL) {
+    logMemoryUsage('Periodic check');
+    lastMemoryCheck = now;
+  }
+}, MEMORY_CHECK_INTERVAL);
+
+// Graceful shutdown handling
+process.on('SIGINT', async () => {
+  console.log('[shutdown] Received SIGINT, cleaning up...');
+  await cleanupModelSession();
+  app.quit();
+});
+
+process.on('SIGTERM', async () => {
+  console.log('[shutdown] Received SIGTERM, cleaning up...');
+  await cleanupModelSession();
+  app.quit();
 }); 

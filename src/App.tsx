@@ -5,14 +5,14 @@ import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
 import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
+import { calibrationManager } from './services/depthCalibration';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
 
-import { useMeasurementStore } from './stores/measurementStore';
-import { useSettingsStore } from './stores/settingsStore';
-import { useViewStore } from './stores/viewStore';
-import { useCameraStore } from './stores/cameraStore';
+import { useRootStore } from './stores/rootStore';
+import PolylineTool from './components/PolylineTool';
+import ProjectPanel from './components/ProjectPanel';
 
 // Tooltip component for better UX
 const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
@@ -56,26 +56,7 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
   );
 };
 
-// Add rate-limited fetch function
-async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response> {
-  const maxRetries = 3;
-  const retryDelay = 1000;
-  
-  try {
-    const response = await fetch(url);
-    if (response.status === 429 && retryCount < maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      return rateLimitedFetch(url, retryCount + 1);
-    }
-    return response;
-  } catch (error) {
-    if (retryCount < maxRetries) {
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-      return rateLimitedFetch(url, retryCount + 1);
-    }
-    throw error;
-  }
-}
+import { executeWithRateLimit } from './services/rateLimiter';
 
 function App() {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -84,11 +65,42 @@ function App() {
 
   const [isCalibrated, setIsCalibrated] = useState(false);
 
-  // Zustand store hooks
-  const { measurements, addMeasurement, deleteMeasurement, renameMeasurement, clearMeasurements, setMeasurements } = useMeasurementStore();
-  const { settings, setSettings, updateSettings, toggleUnit } = useSettingsStore();
-  const { isSettingsOpen, isGeneratingMap, calibrateMode, error, mapGenerationError, setIsSettingsOpen, setIsGeneratingMap, setCalibrateMode, setError, setMapGenerationError } = useViewStore();
-  const { targetCoords, currentCameraParams, onnxDepthMap, depthData, setCurrentCameraParams, setOnnxDepthMap, setDepthData } = useCameraStore();
+  // Use consolidated root store
+  const { 
+    measurements, 
+    addMeasurement, 
+    deleteMeasurement, 
+    renameMeasurement, 
+    clearMeasurements, 
+    setMeasurements,
+    settings,
+    setSettings,
+    updateSettings,
+    toggleUnit,
+    isSettingsOpen,
+    isGeneratingMap,
+    calibrateMode,
+    error,
+    mapGenerationError,
+    setIsSettingsOpen,
+    setIsGeneratingMap,
+    setCalibrateMode,
+    setError,
+    setMapGenerationError,
+    setIsPolylineToolActive,
+    setIsAreaToolActive,
+    setIsVolumeToolActive,
+    isProjectPanelOpen,
+    setIsProjectPanelOpen,
+    targetCoords,
+    currentCameraParams,
+    onnxDepthMap,
+    depthData,
+    setTargetCoords,
+    setCurrentCameraParams,
+    setOnnxDepthMap,
+    setDepthData
+  } = useRootStore();
 
   // Load settings and measurements on app start
   useEffect(() => {
@@ -254,7 +266,7 @@ function App() {
                      `fov=${currentCameraParams.fov ?? 90}&` +
                      `key=${apiKey}`;
 
-      const response = await rateLimitedFetch(apiUrl);
+      const response = await executeWithRateLimit('google-maps', () => fetch(apiUrl), { timeout: 15000 });
       
       if (!response.ok) {
         throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
@@ -297,7 +309,7 @@ function App() {
       setIsGeneratingMap(false);
     }
   }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap]);
-  const { setOnGenerateDepthMap } = useViewStore();
+  const { setOnGenerateDepthMap } = useRootStore();
 
   useEffect(() => {
     setOnGenerateDepthMap(handleGenerateDepthMap);
@@ -337,6 +349,10 @@ function App() {
         // silent
       }
     }
+    // If auto-calibration toggled on, reset samples to fit fresh scene context
+    if (newSettings.autoCalibrateDepth) {
+      calibrationManager.reset();
+    }
     setIsSettingsOpen(false);
   };
 
@@ -346,9 +362,9 @@ function App() {
       return;
     }
     
-    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y";
+    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y,Source,Confidence";
     const rows = measurements.map(m => 
-      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y}`
+      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y},${m.source ?? ''},${m.confidence !== undefined ? Math.round((m.confidence || 0) * 100) + '%' : ''}`
     );
     const csvContent = `${header}\n${rows.join('\n')}`;
 
@@ -422,6 +438,11 @@ function App() {
       <div className={styles.header}>
         <button
           style={{ marginRight: 10 }}
+          onClick={() => setIsProjectPanelOpen(true)}
+          title="Projects"
+        >📁</button>
+        <button
+          style={{ marginRight: 10 }}
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >⚙️</button>
@@ -435,6 +456,21 @@ function App() {
             Calibrate Horizon
           </button>
         </Tooltip>
+        <Tooltip text="Measure distances along a path">
+          <button style={{marginRight:10}} onClick={() => setIsPolylineToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            Polyline Tool
+          </button>
+        </Tooltip>
+        <Tooltip text="Measure area on the ground plane">
+          <button style={{marginRight:10}} onClick={() => setIsAreaToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            Area Tool
+          </button>
+        </Tooltip>
+        <Tooltip text="Measure volume on the ground plane">
+          <button style={{marginRight:10}} onClick={() => setIsVolumeToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            Volume Tool
+          </button>
+        </Tooltip>
         {isApiLoaded ? (
           <SearchBox />
         ) : (
@@ -442,6 +478,7 @@ function App() {
         )}
       </div>
 
+      {isProjectPanelOpen && <ProjectPanel />}
       {isSettingsOpen && (
         <SettingsPanel
           initial={settings}
@@ -476,7 +513,7 @@ function App() {
                 No measurements yet.
              </div> 
           ) : (
-             <ul className={styles.measurementList}>
+              <ul className={styles.measurementList}>
                 {measurements.map(m => (
                     <li key={m.id} className={styles.measurementItem}>
                        <input 
@@ -487,9 +524,11 @@ function App() {
                          className={styles.nameInput}
                          title="Rename Measurement"
                        />
-                       <span className={styles.measurementDetails}>
-                           {m.label}: {m.distance.toFixed(2)}{m.unit === 'metric' ? 'm' : 'ft'}
-                       </span>
+                        <span className={styles.measurementDetails}>
+                            {m.label}: {m.distance.toFixed(2)}{m.unit === 'metric' ? 'm' : 'ft'}
+                            {m.source ? ` · ${m.source}` : ''}
+                            {m.confidence !== undefined ? ` · conf ${Math.round((m.confidence || 0) * 100)}%` : ''}
+                        </span>
                        <button 
                          onClick={() => deleteMeasurement(m.id)}
                          className={styles.deleteButton}
@@ -523,14 +562,8 @@ function App() {
                 calibrateMode={calibrateMode}
                 onCalibrateClick={handleCalibrateClick}
               />
-              <MeasurementTool
-                cameraParams={currentCameraParams}
-                onMeasurementComplete={handleMeasurementComplete}
-                measurements={measurements}
-                onnxDepthMap={onnxDepthMap}
-                depthData={depthData}
-                currentUnit={settings.defaultUnit}
-              />
+              <MeasurementTool />
+              <PolylineTool />
             </>
           ) : (
             <div className={styles.loadingPlaceholder}>Loading Map...</div>

@@ -1,0 +1,16 @@
+.container {
+  margin-top: 20px;
+}
+
+.revisionList {
+  list-style: none;
+  padding: 0;
+}
+
+.revisionList li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid #444;
+}

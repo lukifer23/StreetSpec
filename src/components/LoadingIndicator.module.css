@@ -1,0 +1,255 @@
+.loadingIndicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  min-width: 120px;
+  min-height: 80px;
+}
+
+.loadingIndicator.small {
+  padding: 12px;
+  min-width: 80px;
+  min-height: 60px;
+  gap: 8px;
+}
+
+.loadingIndicator.large {
+  padding: 32px;
+  min-width: 160px;
+  min-height: 120px;
+  gap: 16px;
+}
+
+.loadingIndicator.fadeOut {
+  opacity: 0;
+  transform: scale(0.95);
+}
+
+/* Spinner styles */
+.spinner {
+  border: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Progress bar styles */
+.progressContainer {
+  width: 100%;
+  max-width: 200px;
+  position: relative;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 8px;
+}
+
+.progressBar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  background: linear-gradient(90deg, currentColor, currentColor 80%, transparent);
+}
+
+.progressText {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #333;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+/* Skeleton styles */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Pulse styles */
+.pulseContainer {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.pulse {
+  border-radius: 50%;
+  animation: pulse 1.4s ease-in-out infinite both;
+}
+
+@keyframes pulse {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Message styles */
+.message {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  text-align: center;
+  line-height: 1.4;
+  max-width: 200px;
+  word-wrap: break-word;
+}
+
+.loadingIndicator.small .message {
+  font-size: 12px;
+  max-width: 150px;
+}
+
+.loadingIndicator.large .message {
+  font-size: 16px;
+  max-width: 250px;
+}
+
+/* Backdrop styles */
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease;
+}
+
+.backdrop.fadeOut {
+  opacity: 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .loadingIndicator {
+    padding: 16px;
+    min-width: 100px;
+    min-height: 70px;
+  }
+  
+  .loadingIndicator.large {
+    padding: 24px;
+    min-width: 140px;
+    min-height: 100px;
+  }
+  
+  .message {
+    font-size: 13px;
+    max-width: 180px;
+  }
+}
+
+@media (max-width: 480px) {
+  .loadingIndicator {
+    padding: 12px;
+    min-width: 80px;
+    min-height: 60px;
+    gap: 8px;
+  }
+  
+  .message {
+    font-size: 12px;
+    max-width: 150px;
+  }
+  
+  .progressContainer {
+    max-width: 150px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .loadingIndicator {
+    background: rgba(30, 30, 30, 0.95);
+    color: #fff;
+  }
+  
+  .message {
+    color: #fff;
+  }
+  
+  .progressContainer {
+    background: #2a2a2a;
+  }
+  
+  .progressText {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+  
+  .skeleton {
+    background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .loadingIndicator {
+    border: 2px solid currentColor;
+    background: #fff;
+  }
+  
+  .progressContainer {
+    border: 1px solid #000;
+  }
+  
+  .message {
+    font-weight: 700;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+  
+  .skeleton {
+    animation: none;
+    background: #f0f0f0;
+  }
+  
+  .pulse {
+    animation: none;
+    opacity: 0.7;
+  }
+  
+  .loadingIndicator {
+    transition: none;
+  }
+  
+  .backdrop {
+    transition: none;
+  }
+}

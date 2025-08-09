@@ -31,7 +31,7 @@
    ./setup.sh         # Run the setup script
    ```
 
-## 📋 What the Setup Scripts Do
+##  What the Setup Scripts Do
 
 ### Prerequisites Check
 - ✅ **Node.js** (v18+ recommended)
@@ -96,7 +96,7 @@ VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
 npm run dev
 ```
 
-## 🆘 Troubleshooting
+##  Troubleshooting
 
 ### "Node.js not found"
 - Install Node.js from [nodejs.org](https://nodejs.org/)
@@ -123,7 +123,7 @@ npm run dev
 - Make script executable: `chmod +x setup.sh`
 - Or run with sudo if needed: `sudo ./setup.sh`
 
-## 🎯 Next Steps
+## Next Steps
 
 After successful setup:
 1. **Get a Google Maps API key** (if you haven't already)
@@ -131,7 +131,7 @@ After successful setup:
 3. **Generate a depth map** for your first measurement
 4. **Read the main README.md** for usage instructions
 
-## 📞 Need Help?
+## Need Help?
 
 - Check the main [README.md](README.md) for detailed documentation
 - Review [CONTRIBUTING.md](CONTRIBUTING.md) for development setup
@@ -139,4 +139,4 @@ After successful setup:
 
 ---
 
-**Happy measuring! 📏** 
+**Happy measuring! ** 

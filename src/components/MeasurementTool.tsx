@@ -1,166 +1,37 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Point, Measurement, UNIT_CONVERSIONS, AppSettings } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
+import { calibrationManager } from '../services/depthCalibration';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './MeasurementTool.module.css';
 
-import { useMeasurementStore } from '../stores/measurementStore';
-import { useCameraStore } from '../stores/cameraStore';
-import { useViewStore } from '../stores/viewStore';
+import { useRootStore } from '../stores/rootStore';
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
-const MeasurementTool: React.FC = () => {
-  const { measurements, addMeasurement } = useMeasurementStore();
-  const { settings } = useSettingsStore();
-  const { defaultUnit } = settings;
-  const { cameraParams, onnxDepthMap, depthData } = useCameraStore();
-  const { onGenerateDepthMap, isCalibrated } = useViewStore();
-
-  const [phase, setPhase] = useState<MeasurementPhase>('idle');
-  const [startPoint, setStartPoint] = useState<Point | null>(null);
-  const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  const getClickCoords = (event: React.MouseEvent<HTMLDivElement>): Point | null => {
-    const rect = overlayRef.current?.getBoundingClientRect();
-    if (!rect) return null;
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    };
-  };
-
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    console.log('[measure] Click detected, phase:', phase);
-    if (phase === 'idle') {
-      const coords = getClickCoords(event);
-      console.log('[measure] Starting measurement, coords:', coords);
-      if (coords) {
-        setStartPoint(coords);
-        setPhase('placingEnd');
-      }
-    } else if (phase === 'placingStart') {
-      // Handle the first click when starting from button
-      const coords = getClickCoords(event);
-      console.log('[measure] First click (placingStart), coords:', coords);
-      if (coords) {
-        setStartPoint(coords);
-        setPhase('placingEnd');
-      }
-    } else if (phase === 'placingEnd') {
-      const coords = getClickCoords(event);
-      console.log('[measure] Completing measurement, coords:', coords, 'startPoint:', startPoint);
-      if (coords && startPoint) {
-        completeMeasurement(startPoint, coords);
-      } else if (coords && !startPoint) {
-        // If we're in placingEnd but no startPoint, this is the first click
-        console.log('[measure] First click in placingEnd, setting startPoint');
-        setStartPoint(coords);
-      }
-    }
-  };
-
-  const completeMeasurement = useCallback((startPoint: Point, coords: Point) => {
-    console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!cameraParams, onnxDepthMap: !!onnxDepthMap });
-    
-    if (!cameraParams) {
-      console.log('[measure] No camera params, resetting');
-      setStartPoint(null);
-      setPhase('idle');
-      return;
-    }
-
-    const viewWidth = overlayRef.current?.offsetWidth || 640;
-    const viewHeight = overlayRef.current?.offsetHeight || 640;
-    console.log('[measure] View dimensions:', { viewWidth, viewHeight });
-
-    // Distance estimates
-    let distanceToBase: number | null = null;
-
-    // Use Street View depth planes to estimate base distance if available
-    if (depthData) {
-      const worldStart = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
-      if (worldStart) {
-        distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
-        console.log('[measure] base distance from planes:', distanceToBase);
-      }
-    }
-
-    // Fall back to ONNX depth for distance to base
-    if (distanceToBase === null && onnxDepthMap) {
-      distanceToBase = estimateDistanceToPoint(
-        startPoint.x,
-        startPoint.y,
-        viewWidth,
-        viewHeight,
-        cameraParams,
-        onnxDepthMap
-      );
-      console.log('[measure] Depth map distance:', distanceToBase);
-    }
-
-    if (distanceToBase === null) {
-      // fallback to ground plane
-      const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
-      const wp = estimateGroundPlaneIntersection(dir, cameraParams);
-      if (wp) {
-        distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
-        console.log('[measure] fallback ground-plane distance', distanceToBase);
-      } else {
-        console.warn('[measure] unable to get ground-plane fallback');
-      }
-    } else {
-      console.log('[measure] kernel depth distance', distanceToBase);
-    }
-
-    const finalHeight = calculateEstimatedHeight(
-      startPoint,
-      coords,
-      viewWidth,
-      viewHeight,
-      cameraParams,
-      depthData,
-      distanceToBase,
-    );
-
-    if (finalHeight === null) {
-      console.log('[measure] No height calculated, resetting');
-      setStartPoint(null);
-      setPhase('idle');
-      return;
-    }
-
-    // Convert to imperial if needed
-    const finalDistance = defaultUnit === 'imperial'
-      ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
-      : finalHeight;
-
-    const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
-      label: 'Est. Height',
-      distance: finalDistance,
-      startPoint: startPoint,
-      endPoint: coords,
-      unit: defaultUnit,
-    };
-    console.log('[measure] Creating measurement:', newMeasurement);
-    addMeasurement(newMeasurement);
-
-    console.log('[measure] Resetting measurement state');
-    setStartPoint(null);
-    setCurrentMousePos(null);
-    setPhase('idle');
-  }, [cameraParams, onnxDepthMap, depthData, defaultUnit, addMeasurement]);
-
-  const handleMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (phase === 'placingEnd') {
-      const coords = getClickCoords(event);
-      setCurrentMousePos(coords);
-    }
-  };
-
-  useEffect(() => {
+// Memoized canvas drawing component
+const MeasurementCanvas = React.memo<{
+  measurements: Measurement[];
+  phase: MeasurementPhase;
+  startPoint: Point | null;
+  currentMousePos: Point | null;
+  cameraParams: any;
+  onnxDepthMap: any;
+  defaultUnit: string;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  overlayRef: React.RefObject<HTMLDivElement>;
+}>(({ 
+  measurements, 
+  phase, 
+  startPoint, 
+  currentMousePos, 
+  cameraParams, 
+  onnxDepthMap, 
+  defaultUnit,
+  canvasRef,
+  overlayRef
+}) => {
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     const overlay = overlayRef.current;
@@ -172,6 +43,7 @@ const MeasurementTool: React.FC = () => {
 
     context.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Draw existing measurements
     context.strokeStyle = '#ff00ff';
     context.fillStyle = '#ff00ff';
     context.lineWidth = 2;
@@ -205,9 +77,9 @@ const MeasurementTool: React.FC = () => {
       context.fillText(`${m.label}: ${m.distance.toFixed(2)}${unitLabel}`, midX + 10, midY);
       context.shadowBlur = 0;
       context.fillStyle = '#ff00ff';
-
     });
 
+    // Draw current measurement
     context.strokeStyle = '#00ffff';
     context.fillStyle = '#00ffff';
     context.lineWidth = 2;
@@ -284,12 +156,351 @@ const MeasurementTool: React.FC = () => {
         }
       }
     }
+  }, [measurements, phase, startPoint, currentMousePos, cameraParams, onnxDepthMap, defaultUnit, canvasRef, overlayRef]);
 
-  }, [phase, startPoint, currentMousePos, measurements, cameraParams, onnxDepthMap, defaultUnit]);
+  useEffect(() => {
+    drawCanvas();
+  }, [drawCanvas]);
+
+  return <canvas ref={canvasRef} className={styles.measurementCanvas} />;
+});
+
+MeasurementCanvas.displayName = 'MeasurementCanvas';
+
+// Memoized status indicator component
+const StatusIndicator = React.memo<{
+  phase: MeasurementPhase;
+  startPoint: Point | null;
+}>(({ phase, startPoint }) => {
+  const statusStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    bottom: '20px',
+    left: '10px',
+    color: 'white',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: '5px 10px',
+    borderRadius: '4px',
+    fontSize: '0.9em',
+    pointerEvents: 'none' as const
+  }), []);
+
+  const message = useMemo(() => {
+    return !startPoint ? 'Step 1: Click object BASE' : 'Step 2: Click object TOP';
+  }, [startPoint]);
+
+  if (phase === 'idle') return null;
+
+  return (
+    <div style={statusStyle} role="status" aria-live="polite">
+      {message} (Esc to cancel)
+    </div>
+  );
+});
+
+StatusIndicator.displayName = 'StatusIndicator';
+
+// Memoized start button component
+const StartButton = React.memo<{
+  phase: MeasurementPhase;
+  cameraParams: any;
+  onnxDepthMap: any;
+  depthData: any;
+  isCalibrated: boolean;
+  onStartMeasurement: () => void;
+}>(({ phase, cameraParams, onnxDepthMap, depthData, isCalibrated, onStartMeasurement }) => {
+  const buttonStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    bottom: '20px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 10,
+    padding: '10px 15px',
+    cursor: (cameraParams && (onnxDepthMap || depthData) && isCalibrated) ? 'pointer' : 'not-allowed',
+    pointerEvents: 'auto' as const
+  }), [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+
+  const isDisabled = !cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated;
+  
+  const getTitle = useCallback(() => {
+    if (!cameraParams) return "Waiting for camera parameters...";
+    if (!onnxDepthMap && !depthData) return "Generate Depth Map first!";
+    if (!isCalibrated) return "Calibrate horizon first!";
+    return "Start Height Estimation (M)";
+  }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+
+  const getButtonText = useCallback(() => {
+    if (!cameraParams) return 'Waiting for Camera...';
+    if (!onnxDepthMap && !depthData) return 'Depth Data Needed';
+    if (!isCalibrated) return 'Calibrate Horizon First';
+    return 'Estimate Height (M)';
+  }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (phase === 'idle') {
+      onStartMeasurement();
+    }
+  }, [phase, onStartMeasurement]);
+
+  if (phase !== 'idle') return null;
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isDisabled}
+      title={getTitle()}
+      style={buttonStyle}
+    >
+      {getButtonText()}
+    </button>
+  );
+});
+
+StartButton.displayName = 'StartButton';
+
+const MeasurementTool: React.FC = () => {
+  const { measurements, addMeasurement } = useRootStore();
+  const { settings, currentCameraParams, onnxDepthMap, depthData } = useRootStore();
+  const { updateSettings } = useRootStore();
+  const { isCalibrated, onGenerateDepthMap } = useRootStore();
+  const { defaultUnit } = settings;
+
+  const [phase, setPhase] = useState<MeasurementPhase>('idle');
+  const [startPoint, setStartPoint] = useState<Point | null>(null);
+  const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const applyCalTimerRef = useRef<number | null>(null);
+
+  const getClickCoords = useCallback((event: React.MouseEvent<HTMLDivElement>): Point | null => {
+    const rect = overlayRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    };
+  }, []);
+
+  const completeMeasurement = useCallback((startPoint: Point, coords: Point) => {
+    console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!currentCameraParams, onnxDepthMap: !!onnxDepthMap });
+    
+    if (!currentCameraParams) {
+      console.log('[measure] No camera params, resetting');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
+    }
+
+    const viewWidth = overlayRef.current?.offsetWidth || 640;
+    const viewHeight = overlayRef.current?.offsetHeight || 640;
+    console.log('[measure] View dimensions:', { viewWidth, viewHeight });
+
+    // Distance estimates
+    let distanceToBase: number | null = null;
+    // Vertical height derived from Street View depth planes
+    let planeHeight: number | null = null;
+    let source: 'planes' | 'onnx' | 'ground' | undefined;
+    let confidence = 0.0;
+
+    // When Street View depth planes are available, compute world points directly
+    if (depthData) {
+      const worldStart = screenToWorldWithDepth(startPoint, currentCameraParams, viewWidth, viewHeight, depthData);
+      const worldEnd = screenToWorldWithDepth(coords, currentCameraParams, viewWidth, viewHeight, depthData);
+      if (worldStart && worldEnd) {
+        // Use vertical component of world coordinates for height
+        planeHeight = Math.abs(worldEnd.y - worldStart.y);
+        distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
+        console.log('[measure] plane vertical height:', planeHeight, 'base distance from planes:', distanceToBase);
+        source = 'planes';
+        // Higher confidence when planes succeed and distance is reasonable
+        const distOk = distanceToBase > 0.5 && distanceToBase < 200;
+        confidence = distOk ? 0.9 : 0.7;
+
+        // Optional auto-calibration: compare ONNX predicted distance at base vs plane distance
+        if (settings.autoCalibrateDepth && onnxDepthMap) {
+          const onnxDist = estimateDistanceToPoint(
+            startPoint.x,
+            startPoint.y,
+            viewWidth,
+            viewHeight,
+            currentCameraParams,
+            onnxDepthMap,
+            {
+              depthKernelSize: (settings.depthKernelSize as 3|5|7) ?? 5,
+              depthUseBilinear: settings.depthUseBilinear ?? true,
+              depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold ?? 0.35,
+            }
+          );
+          if (onnxDist && distanceToBase) {
+            calibrationManager.addSample(onnxDist, distanceToBase);
+            const proposal = calibrationManager.computeScaleBias();
+            if (proposal) {
+              const scaleDelta = Math.abs((settings.depthScale ?? 1) - proposal.scale);
+              const biasDelta = Math.abs((settings.depthBias ?? 0) - proposal.bias);
+              const shouldPropose = scaleDelta > 0.02 || biasDelta > 0.05;
+              if (shouldPropose) {
+                // One-time confirmation per session
+                const confirmed = sessionStorage.getItem('autoCalConfirmed') === '1' || window.confirm(`Apply new depth calibration?\nScale: ${proposal.scale.toFixed(3)}  Bias: ${proposal.bias.toFixed(3)}`);
+                if (!confirmed) {
+                  // Remember decline only for this prompt occurrence
+                } else {
+                  sessionStorage.setItem('autoCalConfirmed', '1');
+                  if (applyCalTimerRef.current) {
+                    clearTimeout(applyCalTimerRef.current);
+                  }
+                  applyCalTimerRef.current = window.setTimeout(() => {
+                    updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
+                    const newSettings = { ...settings, depthScale: proposal.scale, depthBias: proposal.bias };
+                    window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
+                  }, 1500);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Fall back to ONNX depth for distance to base
+    if (distanceToBase === null && onnxDepthMap) {
+      distanceToBase = estimateDistanceToPoint(
+        startPoint.x,
+        startPoint.y,
+        viewWidth,
+        viewHeight,
+        currentCameraParams,
+        onnxDepthMap,
+        {
+          depthKernelSize: (settings.depthKernelSize as 3|5|7) ?? 5,
+          depthUseBilinear: settings.depthUseBilinear ?? true,
+          depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold ?? 0.35,
+        }
+      );
+      console.log('[measure] Depth map distance:', distanceToBase);
+      if (distanceToBase !== null) {
+        source = 'onnx';
+        const distOk = distanceToBase > 0.5 && distanceToBase < 200;
+        confidence = Math.max(confidence, distOk ? 0.6 : 0.4);
+      }
+    }
+
+    if (distanceToBase === null) {
+      // fallback to ground plane
+      const dir = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
+      const wp = estimateGroundPlaneIntersection(dir, currentCameraParams);
+      if (wp) {
+        distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
+        console.log('[measure] fallback ground-plane distance', distanceToBase);
+        source = 'ground';
+        confidence = Math.max(confidence, 0.3);
+      } else {
+        console.warn('[measure] unable to get ground-plane fallback');
+      }
+    } else {
+      console.log('[measure] kernel depth distance', distanceToBase);
+    }
+
+    if (distanceToBase === null && planeHeight === null) {
+      console.log('[measure] No distance calculated, resetting');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
+    }
+
+    // Height from ONNX depth
+    let estimatedHeight: number | null = null;
+    if (distanceToBase !== null) {
+      estimatedHeight = calculateEstimatedHeight(
+        startPoint.y,
+        coords.y,
+        viewHeight,
+        currentCameraParams,
+        distanceToBase
+      );
+      console.log('[measure] Estimated height:', estimatedHeight);
+    }
+
+    // Choose the most reliable height estimate
+    let finalHeight: number | null = null;
+    if (planeHeight !== null) {
+      // Depth planes succeeded; prefer this direct measurement
+      finalHeight = planeHeight;
+      source = source ?? 'planes';
+    } else {
+      finalHeight = estimatedHeight;
+    }
+
+    if (finalHeight === null) {
+      console.log('[measure] No height calculated, resetting');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
+    }
+
+    // Convert to imperial if needed
+    const finalDistance = defaultUnit === 'imperial'
+      ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
+      : finalHeight;
+
+    const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
+      label: 'Est. Height',
+      distance: finalDistance,
+      startPoint: startPoint,
+      endPoint: coords,
+      unit: defaultUnit,
+    };
+    (newMeasurement as any).source = source;
+    (newMeasurement as any).confidence = Math.min(1, Math.max(0, confidence));
+    console.log('[measure] Creating measurement:', newMeasurement);
+    addMeasurement(newMeasurement);
+
+    console.log('[measure] Resetting measurement state');
+    setStartPoint(null);
+    setCurrentMousePos(null);
+    setPhase('idle');
+  }, [currentCameraParams, onnxDepthMap, depthData, defaultUnit, addMeasurement]);
+
+  const handleOverlayClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    console.log('[measure] Click detected, phase:', phase);
+    if (phase === 'idle') {
+      const coords = getClickCoords(event);
+      console.log('[measure] Starting measurement, coords:', coords);
+      if (coords) {
+        setStartPoint(coords);
+        setPhase('placingEnd');
+      }
+    } else if (phase === 'placingStart') {
+      // Handle the first click when starting from button
+      const coords = getClickCoords(event);
+      console.log('[measure] First click (placingStart), coords:', coords);
+      if (coords) {
+        setStartPoint(coords);
+        setPhase('placingEnd');
+      }
+    } else if (phase === 'placingEnd') {
+      const coords = getClickCoords(event);
+      console.log('[measure] Completing measurement, coords:', coords, 'startPoint:', startPoint);
+      if (coords && startPoint) {
+        completeMeasurement(startPoint, coords);
+      } else if (coords && !startPoint) {
+        // If we're in placingEnd but no startPoint, this is the first click
+        console.log('[measure] First click in placingEnd, setting startPoint');
+        setStartPoint(coords);
+      }
+    }
+  }, [phase, startPoint, getClickCoords, completeMeasurement]);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (phase === 'placingEnd') {
+      const coords = getClickCoords(event);
+      setCurrentMousePos(coords);
+    }
+  }, [phase, getClickCoords]);
 
   const startMeasurement = useCallback(async () => {
     console.log('[measure] startMeasurement called');
-    if (!cameraParams) {
+    if (!currentCameraParams) {
       alert("Camera parameters not yet available. Please wait a moment.");
       return;
     }
@@ -303,7 +514,7 @@ const MeasurementTool: React.FC = () => {
     setPhase('placingEnd');
     setStartPoint(null);
     setCurrentMousePos(null);
-  }, [cameraParams, onnxDepthMap, depthData, onGenerateDepthMap]);
+  }, [currentCameraParams, onnxDepthMap, depthData, onGenerateDepthMap]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -322,63 +533,43 @@ const MeasurementTool: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [phase, startMeasurement]);
 
+  const overlayClassName = useMemo(() => 
+    `${styles.overlay} ${phase !== 'idle' ? styles.overlayActive : ''}`, 
+    [phase]
+  );
+
   return (
     <div 
       ref={overlayRef}
-      className={`${styles.overlay} ${phase !== 'idle' ? styles.overlayActive : ''}`}
+      className={overlayClassName}
       onClick={handleOverlayClick}
       onMouseMove={handleMouseMove}
       role="button"
       tabIndex={0}
       aria-label="Measurement overlay - click to place measurement points"
     >
-        {phase === 'idle' && (
-            <button 
-                onClick={(e) => { 
-                    e.preventDefault();
-                    e.stopPropagation(); 
-                    if (phase === 'idle') {
-                        startMeasurement(); 
-                    }
-                }}
-                disabled={!cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated}
-                title={!cameraParams ? "Waiting for camera parameters..." : (!onnxDepthMap && !depthData) ? "Generate Depth Map first!" : !isCalibrated ? "Calibrate horizon first!" : "Start Height Estimation (M)"}
-                style={{
-                    position: 'absolute',
-                    bottom: '20px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    zIndex: 10,
-                    padding: '10px 15px',
-                    cursor: (cameraParams && (onnxDepthMap || depthData) && isCalibrated) ? 'pointer' : 'not-allowed',
-                    pointerEvents: 'auto'
-                }}
-            >
-                {!cameraParams ? 'Waiting for Camera...' : (!onnxDepthMap && !depthData) ? 'Depth Data Needed' : !isCalibrated ? 'Calibrate Horizon First' : 'Estimate Height (M)'}
-            </button>
-        )}
-        {phase !== 'idle' && (
-            <div style={{ 
-                position: 'absolute', 
-                bottom: '20px', 
-                left: '10px', 
-                color: 'white', 
-                backgroundColor: 'rgba(0,0,0,0.6)', 
-                padding: '5px 10px',
-                borderRadius: '4px',
-                fontSize: '0.9em',
-                pointerEvents: 'none'
-             }}
-             role="status"
-             aria-live="polite"
-            >
-                {!startPoint ? 'Step 1: Click object BASE' : 'Step 2: Click object TOP'} (Esc to cancel)
-            </div>
-        )}
-        
-        <canvas ref={canvasRef} className={styles.measurementCanvas} />
+      <StartButton
+        phase={phase}
+        cameraParams={currentCameraParams}
+        onnxDepthMap={onnxDepthMap}
+        depthData={depthData}
+        isCalibrated={isCalibrated}
+        onStartMeasurement={startMeasurement}
+      />
+      <StatusIndicator phase={phase} startPoint={startPoint} />
+      <MeasurementCanvas
+        measurements={measurements}
+        phase={phase}
+        startPoint={startPoint}
+        currentMousePos={currentMousePos}
+        cameraParams={currentCameraParams}
+        onnxDepthMap={onnxDepthMap}
+        defaultUnit={defaultUnit}
+        canvasRef={canvasRef}
+        overlayRef={overlayRef}
+      />
     </div>
   );
 };
 
-export default MeasurementTool;
+export default React.memo(MeasurementTool);
