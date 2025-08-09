@@ -47,25 +47,31 @@ describe('Geometry Service', () => {
   describe('calculateFov', () => {
     it('should calculate correct FOV for zoom level 0', () => {
       const result = calculateFov(0, 1);
-      expect(result.hFov).toBe(180);
-      expect(result.vFov).toBe(180);
+      expect(result.hFov).toBeCloseTo(126.87, 2);
+      expect(result.vFov).toBeCloseTo(126.87, 2);
     });
 
     it('should calculate correct FOV for zoom level 1', () => {
       const result = calculateFov(1, 1);
-      expect(result.hFov).toBe(90);
-      expect(result.vFov).toBe(90);
+      expect(result.hFov).toBeCloseTo(90, 2);
+      expect(result.vFov).toBeCloseTo(90, 2);
+    });
+
+    it('should calculate correct FOV for zoom level 2', () => {
+      const result = calculateFov(2, 1);
+      expect(result.hFov).toBeCloseTo(53.13, 2);
+      expect(result.vFov).toBeCloseTo(53.13, 2);
     });
 
     it('should handle undefined zoom', () => {
       const result = calculateFov(undefined, 1);
-      expect(result.hFov).toBe(90);
-      expect(result.vFov).toBe(90);
+      expect(result.hFov).toBeCloseTo(90, 2);
+      expect(result.vFov).toBeCloseTo(90, 2);
     });
 
     it('should clamp zoom levels', () => {
       const result = calculateFov(5, 1);
-      expect(result.hFov).toBe(180 / Math.pow(2, 4));
+      expect(result.hFov).toBeCloseTo(14.25, 2);
     });
   });
 

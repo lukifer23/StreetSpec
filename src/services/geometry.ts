@@ -43,10 +43,24 @@ const undistortPoint = (
 };
 
 /**
+ * Calibrated horizontal field of view values (in degrees) taken from
+ * documented Street View camera parameters.  These values more closely
+ * match the true optics of the Street View rig than the simple
+ * mathematical approximation previously used.
+ */
+const CALIBRATED_HFOV_BY_ZOOM: Record<number, number> = {
+  0: 126.87,
+  1: 90,
+  2: 53.13,
+  3: 28.07,
+  4: 14.25,
+};
+
+/**
  * Calculates the horizontal and vertical field of view (FOV) based on the
- * Street View zoom level. Uses Google's documented relationship of
- * `hFov = 180 / 2^zoom` and derives the vertical FOV from the viewport aspect
- * ratio.
+ * Street View zoom level using calibrated values from Google Street View's
+ * published camera parameters.  The vertical FOV is derived from the
+ * horizontal FOV and the viewport's aspect ratio.
  *
  * @param zoom - The Street View zoom level (0 is widest).
  * @param aspectRatio - The viewport aspect ratio (width / height).
@@ -60,8 +74,8 @@ export function calculateFov(
   const effectiveZoom = zoom ?? 1;
   // Clamp zoom level for safety
   const clampedZoom = Math.max(0, Math.min(effectiveZoom, 4));
-  // Google Street View documented formula
-  const hFov = 180 / Math.pow(2, clampedZoom);
+  // Look up the calibrated horizontal FOV and fall back to zoom level 1
+  const hFov = CALIBRATED_HFOV_BY_ZOOM[clampedZoom as keyof typeof CALIBRATED_HFOV_BY_ZOOM] ?? CALIBRATED_HFOV_BY_ZOOM[1];
   // Derive vertical FOV from horizontal FOV and aspect ratio
   const hFovRad = degreesToRadians(hFov);
   const vFovRad = 2 * Math.atan(Math.tan(hFovRad / 2) / aspectRatio);
