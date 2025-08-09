@@ -190,7 +190,10 @@ export function screenToWorldWithDepth(
             const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
             const dotVN = dotProduct(directionVector, normal);
             if (Math.abs(dotVN) >= epsilon) {
-                const t = selectedPlane.d / dotVN;
+                // Google depth planes follow n·x + d = 0 with normals pointing
+                // toward the camera and positive d along that normal. The
+                // intersection distance is therefore -d / (n·v).
+                const t = -selectedPlane.d / dotVN;
                 if (t > epsilon) {
                     minDistance = t;
                 }
@@ -206,7 +209,7 @@ export function screenToWorldWithDepth(
             if (Math.abs(dotVN) < epsilon) {
                 continue;
             }
-            const t = plane.d / dotVN;
+            const t = -plane.d / dotVN;
             if (t > epsilon && t < minDistance) {
                 minDistance = t;
             }
