@@ -9,10 +9,9 @@ import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
 
-import { useMeasurementStore } from './stores/measurementStore';
-import { useSettingsStore } from './stores/settingsStore';
-import { useViewStore } from './stores/viewStore';
-import { useCameraStore } from './stores/cameraStore';
+import { useRootStore } from './stores/rootStore';
+import PolylineTool from './components/PolylineTool';
+import ProjectPanel from './components/ProjectPanel';
 
 // Tooltip component for better UX
 const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
@@ -84,11 +83,42 @@ function App() {
 
   const [isCalibrated, setIsCalibrated] = useState(false);
 
-  // Zustand store hooks
-  const { measurements, addMeasurement, deleteMeasurement, renameMeasurement, clearMeasurements, setMeasurements } = useMeasurementStore();
-  const { settings, setSettings, updateSettings, toggleUnit } = useSettingsStore();
-  const { isSettingsOpen, isGeneratingMap, calibrateMode, error, mapGenerationError, setIsSettingsOpen, setIsGeneratingMap, setCalibrateMode, setError, setMapGenerationError } = useViewStore();
-  const { targetCoords, currentCameraParams, onnxDepthMap, depthData, setCurrentCameraParams, setOnnxDepthMap, setDepthData } = useCameraStore();
+  // Use consolidated root store
+  const { 
+    measurements, 
+    addMeasurement, 
+    deleteMeasurement, 
+    renameMeasurement, 
+    clearMeasurements, 
+    setMeasurements,
+    settings,
+    setSettings,
+    updateSettings,
+    toggleUnit,
+    isSettingsOpen,
+    isGeneratingMap,
+    calibrateMode,
+    error,
+    mapGenerationError,
+    setIsSettingsOpen,
+    setIsGeneratingMap,
+    setCalibrateMode,
+    setError,
+    setMapGenerationError,
+    setIsPolylineToolActive,
+    setIsAreaToolActive,
+    setIsVolumeToolActive,
+    isProjectPanelOpen,
+    setIsProjectPanelOpen,
+    targetCoords,
+    currentCameraParams,
+    onnxDepthMap,
+    depthData,
+    setTargetCoords,
+    setCurrentCameraParams,
+    setOnnxDepthMap,
+    setDepthData
+  } = useRootStore();
 
   // Load settings and measurements on app start
   useEffect(() => {
@@ -297,7 +327,7 @@ function App() {
       setIsGeneratingMap(false);
     }
   }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap]);
-  const { setOnGenerateDepthMap } = useViewStore();
+  const { setOnGenerateDepthMap } = useRootStore();
 
   useEffect(() => {
     setOnGenerateDepthMap(handleGenerateDepthMap);
@@ -422,6 +452,11 @@ function App() {
       <div className={styles.header}>
         <button
           style={{ marginRight: 10 }}
+          onClick={() => setIsProjectPanelOpen(true)}
+          title="Projects"
+        >📁</button>
+        <button
+          style={{ marginRight: 10 }}
           onClick={() => setIsSettingsOpen(true)}
           title="Settings"
         >⚙️</button>
@@ -435,6 +470,21 @@ function App() {
             Calibrate Horizon
           </button>
         </Tooltip>
+        <Tooltip text="Measure distances along a path">
+          <button style={{marginRight:10}} onClick={() => setIsPolylineToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            Polyline Tool
+          </button>
+        </Tooltip>
+        <Tooltip text="Measure area on the ground plane">
+          <button style={{marginRight:10}} onClick={() => setIsAreaToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            Area Tool
+          </button>
+        </Tooltip>
+        <Tooltip text="Measure volume on the ground plane">
+          <button style={{marginRight:10}} onClick={() => setIsVolumeToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            Volume Tool
+          </button>
+        </Tooltip>
         {isApiLoaded ? (
           <SearchBox />
         ) : (
@@ -442,6 +492,7 @@ function App() {
         )}
       </div>
 
+      {isProjectPanelOpen && <ProjectPanel />}
       {isSettingsOpen && (
         <SettingsPanel
           initial={settings}
@@ -523,14 +574,8 @@ function App() {
                 calibrateMode={calibrateMode}
                 onCalibrateClick={handleCalibrateClick}
               />
-              <MeasurementTool
-                cameraParams={currentCameraParams}
-                onMeasurementComplete={handleMeasurementComplete}
-                measurements={measurements}
-                onnxDepthMap={onnxDepthMap}
-                depthData={depthData}
-                currentUnit={settings.defaultUnit}
-              />
+              <MeasurementTool />
+              <PolylineTool />
             </>
           ) : (
             <div className={styles.loadingPlaceholder}>Loading Map...</div>

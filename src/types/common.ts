@@ -42,6 +42,18 @@ export interface CameraParams {
   // Potentially add: altitude, exact camera position vector later
 }
 
+export interface Revision {
+  timestamp: number;
+  measurements: Measurement[];
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  measurements: Measurement[];
+  revisionHistory: Revision[];
+}
+
 // Represents a single measurement
 export interface Measurement {
   id: string;           // Unique ID (e.g., uuid)
@@ -109,14 +121,118 @@ export interface AppSettings {
   depthBias?: number;
 }
 
-// Error types for better error handling
+// Comprehensive error handling system
+export enum ErrorSeverity {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  CRITICAL = 'critical'
+}
+
+export enum ErrorCategory {
+  NETWORK = 'network',
+  MODEL = 'model',
+  GEOMETRY = 'geometry',
+  MEASUREMENT = 'measurement',
+  STORAGE = 'storage',
+  UI = 'ui',
+  SYSTEM = 'system',
+  UNKNOWN = 'unknown'
+}
+
 export interface AppError {
+  id: string;
   code: string;
   message: string;
+  userFriendlyMessage: string;
+  severity: ErrorSeverity;
+  category: ErrorCategory;
   details?: unknown;
   timestamp: number;
-  userFriendly?: string;
+  stack?: string;
+  recoverable: boolean;
+  retryCount?: number;
+  maxRetries?: number;
 }
+
+export interface ErrorContext {
+  component?: string;
+  action?: string;
+  data?: unknown;
+  userId?: string;
+  sessionId?: string;
+}
+
+export interface ErrorHandler {
+  handleError: (error: AppError, context?: ErrorContext) => Promise<void>;
+  logError: (error: AppError, context?: ErrorContext) => void;
+  showUserError: (error: AppError) => void;
+  isRecoverable: (error: AppError) => boolean;
+  retryOperation: <T>(operation: () => Promise<T>, error: AppError) => Promise<T>;
+}
+
+// Error codes for consistent error handling
+export const ERROR_CODES = {
+  // Network errors
+  NETWORK_TIMEOUT: 'NETWORK_TIMEOUT',
+  NETWORK_UNREACHABLE: 'NETWORK_UNREACHABLE',
+  API_RATE_LIMITED: 'API_RATE_LIMITED',
+  API_UNAUTHORIZED: 'API_UNAUTHORIZED',
+  
+  // Model errors
+  MODEL_LOAD_FAILED: 'MODEL_LOAD_FAILED',
+  MODEL_INFERENCE_FAILED: 'MODEL_INFERENCE_FAILED',
+  MODEL_MEMORY_ERROR: 'MODEL_MEMORY_ERROR',
+  
+  // Geometry errors
+  GEOMETRY_INVALID_POINT: 'GEOMETRY_INVALID_POINT',
+  GEOMETRY_CALCULATION_FAILED: 'GEOMETRY_CALCULATION_FAILED',
+  GEOMETRY_DEPTH_INTERSECTION_FAILED: 'GEOMETRY_DEPTH_INTERSECTION_FAILED',
+  
+  // Measurement errors
+  MEASUREMENT_INVALID_CAMERA: 'MEASUREMENT_INVALID_CAMERA',
+  MEASUREMENT_NO_DEPTH_DATA: 'MEASUREMENT_NO_DEPTH_DATA',
+  MEASUREMENT_CALCULATION_FAILED: 'MEASUREMENT_CALCULATION_FAILED',
+  
+  // Storage errors
+  STORAGE_SAVE_FAILED: 'STORAGE_SAVE_FAILED',
+  STORAGE_LOAD_FAILED: 'STORAGE_LOAD_FAILED',
+  STORAGE_CORRUPTED: 'STORAGE_CORRUPTED',
+  
+  // UI errors
+  UI_RENDER_FAILED: 'UI_RENDER_FAILED',
+  UI_INTERACTION_FAILED: 'UI_INTERACTION_FAILED',
+  
+  // System errors
+  SYSTEM_MEMORY_LOW: 'SYSTEM_MEMORY_LOW',
+  SYSTEM_RESOURCE_UNAVAILABLE: 'SYSTEM_RESOURCE_UNAVAILABLE',
+  SYSTEM_UNKNOWN: 'SYSTEM_UNKNOWN'
+} as const;
+
+// Error factory functions
+export const createError = (
+  code: keyof typeof ERROR_CODES,
+  message: string,
+  userFriendlyMessage: string,
+  severity: ErrorSeverity,
+  category: ErrorCategory,
+  details?: unknown,
+  recoverable = true,
+  maxRetries = 3
+): AppError => ({
+  id: `${code}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+  code: ERROR_CODES[code],
+  message,
+  userFriendlyMessage,
+  severity,
+  category,
+  details,
+  timestamp: Date.now(),
+  stack: new Error().stack,
+  recoverable,
+  retryCount: 0,
+  maxRetries
+});
 
 // Measurement validation result
 export interface ValidationResult {
