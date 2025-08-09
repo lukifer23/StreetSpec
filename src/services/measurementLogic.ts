@@ -1,19 +1,20 @@
-import { CameraParams, OnnxDepthMap, Point, DecodedDepthData } from '../types/common';
+import { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings } from '../types/common';
 import { screenToWorldWithDepth } from './geometry';
 
 // Size of square kernel (odd number)
-const KERNEL_SIZE = 5; // 5×5 neighborhood
-
-const USE_BILINEAR = true;
+const DEFAULT_KERNEL_SIZE = 5 as 3 | 5 | 7;
+const DEFAULT_USE_BILINEAR = true;
+const DEFAULT_EDGE_REJECT_THRESHOLD = 0.35; // 0..1 normalized gradient magnitude
 
 // Gather a neighbourhood of depth values around (x,y) and return a robust estimate (median)
 function getRobustDepthSample(
   mapX: number,
   mapY: number,
   depthMap: OnnxDepthMap,
+  kernelSize: 3 | 5 | 7,
   debug = false,
 ): number | null {
-  const half = Math.floor(KERNEL_SIZE / 2);
+  const half = Math.floor(kernelSize / 2);
   const vals: number[] = [];
 
   for (let dy = -half; dy <= half; dy++) {
@@ -105,7 +106,8 @@ export function estimateDistanceToPoint(
     viewportWidth: number,
     viewportHeight: number,
     cameraParams: CameraParams | null,
-    depthMap: OnnxDepthMap | null
+    depthMap: OnnxDepthMap | null,
+    settings?: Pick<AppSettings,'depthKernelSize'|'depthUseBilinear'|'depthEdgeRejectThreshold'>
 ): number | null {
     if (!depthMap || !depthMap.data || !depthMap.width || !depthMap.height) {
         return null;
@@ -132,14 +134,16 @@ export function estimateDistanceToPoint(
     mappedX = Math.max(0, Math.min(depthMap.width - 1, mappedX));
     mappedY = Math.max(0, Math.min(depthMap.height - 1, mappedY));
 
-    if (USE_BILINEAR) {
+    const useBilinear = settings?.depthUseBilinear ?? DEFAULT_USE_BILINEAR;
+    const kernelSize = settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE;
+    if (useBilinear) {
         const depth = getBilinearDepthSample(mappedX, mappedY, depthMap);
         if (depth !== null) return depth;
     }
 
     const clampedX = Math.round(mappedX);
     const clampedY = Math.round(mappedY);
-    return getRobustDepthSample(clampedX, clampedY, depthMap, true);
+    return getRobustDepthSample(clampedX, clampedY, depthMap, kernelSize, true);
 }
 
 /**
@@ -191,6 +195,11 @@ export function calculateEstimatedHeight(
     const angleToBase = pitchRadians + Math.atan(((basePoint.y - centerPixelY) / halfViewport) * tanHalfFov);
     const angleToTop = pitchRadians + Math.atan(((topPoint.y - centerPixelY) / halfViewport) * tanHalfFov);
 
+    // Harden against near-vertical angles
+    const EPS = 1e-3;
+    if (Math.abs(angleToBase) > Math.PI/2 - EPS || Math.abs(angleToTop) > Math.PI/2 - EPS) {
+        return null;
+    }
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
     const heightAtTop = distanceToBase * Math.tan(angleToTop);
     return heightAtBase - heightAtTop;

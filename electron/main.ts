@@ -94,7 +94,10 @@ const store = new Store({
         useGPU: { type: 'boolean' },
         calibrationPitchOffsetDeg: { type: 'number' },
         depthScale: { type: 'number' },
-        depthBias: { type: 'number' }
+        depthBias: { type: 'number' },
+        depthKernelSize: { type: 'number', enum: [3,5,7] },
+        depthUseBilinear: { type: 'boolean' },
+        depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 }
       }
     }
   }

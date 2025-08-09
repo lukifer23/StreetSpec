@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import { Point, Measurement, UNIT_CONVERSIONS, AppSettings } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './MeasurementTool.module.css';
@@ -298,6 +298,8 @@ const MeasurementTool: React.FC = () => {
     let distanceToBase: number | null = null;
     // Vertical height derived from Street View depth planes
     let planeHeight: number | null = null;
+    let source: 'planes' | 'onnx' | 'ground' | undefined;
+    let confidence = 0.0;
 
     // When Street View depth planes are available, compute world points directly
     if (depthData) {
@@ -308,6 +310,10 @@ const MeasurementTool: React.FC = () => {
         planeHeight = Math.abs(worldEnd.y - worldStart.y);
         distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
         console.log('[measure] plane vertical height:', planeHeight, 'base distance from planes:', distanceToBase);
+        source = 'planes';
+        // Higher confidence when planes succeed and distance is reasonable
+        const distOk = distanceToBase > 0.5 && distanceToBase < 200;
+        confidence = distOk ? 0.9 : 0.7;
       }
     }
 
@@ -319,9 +325,19 @@ const MeasurementTool: React.FC = () => {
         viewWidth,
         viewHeight,
         currentCameraParams,
-        onnxDepthMap
+        onnxDepthMap,
+        {
+          depthKernelSize: (settings.depthKernelSize as 3|5|7) ?? 5,
+          depthUseBilinear: settings.depthUseBilinear ?? true,
+          depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold ?? 0.35,
+        }
       );
       console.log('[measure] Depth map distance:', distanceToBase);
+      if (distanceToBase !== null) {
+        source = 'onnx';
+        const distOk = distanceToBase > 0.5 && distanceToBase < 200;
+        confidence = Math.max(confidence, distOk ? 0.6 : 0.4);
+      }
     }
 
     if (distanceToBase === null) {
@@ -331,6 +347,8 @@ const MeasurementTool: React.FC = () => {
       if (wp) {
         distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
         console.log('[measure] fallback ground-plane distance', distanceToBase);
+        source = 'ground';
+        confidence = Math.max(confidence, 0.3);
       } else {
         console.warn('[measure] unable to get ground-plane fallback');
       }
@@ -363,6 +381,7 @@ const MeasurementTool: React.FC = () => {
     if (planeHeight !== null) {
       // Depth planes succeeded; prefer this direct measurement
       finalHeight = planeHeight;
+      source = source ?? 'planes';
     } else {
       finalHeight = estimatedHeight;
     }
@@ -386,6 +405,8 @@ const MeasurementTool: React.FC = () => {
       endPoint: coords,
       unit: defaultUnit,
     };
+    (newMeasurement as any).source = source;
+    (newMeasurement as any).confidence = Math.min(1, Math.max(0, confidence));
     console.log('[measure] Creating measurement:', newMeasurement);
     addMeasurement(newMeasurement);
 

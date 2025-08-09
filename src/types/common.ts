@@ -67,6 +67,9 @@ export interface Measurement {
   panoId?: string;       // Pano ID where measurement was taken
   cameraParams?: CameraParams; // Camera state when taken (optional, for context)
   error?: string; // Optional field for storing errors
+  source?: 'planes' | 'onnx' | 'ground';
+  confidence?: number; // 0..1 confidence score
+  metadata?: Record<string, unknown>;
 }
 
 // Structure for the returned ONNX depth map
@@ -119,6 +122,9 @@ export interface AppSettings {
   cameraHeight?: number;
   depthScale?: number;
   depthBias?: number;
+  depthKernelSize?: 3 | 5 | 7;
+  depthUseBilinear?: boolean;
+  depthEdgeRejectThreshold?: number; // normalized gradient threshold 0..1
 }
 
 // Comprehensive error handling system

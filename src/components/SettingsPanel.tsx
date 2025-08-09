@@ -100,6 +100,45 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         </div>
 
         <div className={styles.field}>
+          <label htmlFor="kernel">Depth Kernel Size</label>
+          <select
+            id="kernel"
+            value={form.depthKernelSize ?? 5}
+            onChange={e => handleChange('depthKernelSize', parseInt(e.target.value, 10) as 3|5|7)}
+            title="Neighborhood size for robust depth sampling"
+          >
+            <option value={3}>3</option>
+            <option value={5}>5</option>
+            <option value={7}>7</option>
+          </select>
+        </div>
+
+        <div className={styles.field}>
+          <label htmlFor="bilinear">Use Bilinear Sampling</label>
+          <input
+            id="bilinear"
+            type="checkbox"
+            checked={form.depthUseBilinear ?? true}
+            onChange={e => handleChange('depthUseBilinear', e.target.checked)}
+            title="Use bilinear interpolation for sub-pixel depth"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label htmlFor="edgeThresh">Depth Edge Reject Threshold</label>
+          <input
+            id="edgeThresh"
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={form.depthEdgeRejectThreshold ?? 0.35}
+            onChange={e => handleChange('depthEdgeRejectThreshold', parseFloat(e.target.value))}
+            title="Reject samples with strong depth gradients (0..1)"
+          />
+        </div>
+
+        <div className={styles.field}>
           <label htmlFor="history">Measurement History Limit</label>
           <input
             id="history"
