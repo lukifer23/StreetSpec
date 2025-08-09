@@ -138,6 +138,41 @@ const CalibrationOverlay = React.memo<{
 
 CalibrationOverlay.displayName = 'CalibrationOverlay';
 
+const CameraHUD = React.memo(() => {
+  const { currentCameraParams } = useRootStore();
+  const { settings } = useRootStore();
+
+  const hudStyle = useMemo(() => ({
+    position: 'absolute' as const,
+    top: '10px',
+    left: '10px',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    color: '#fff',
+    padding: '6px 8px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    zIndex: 101,
+    lineHeight: 1.4
+  }), []);
+
+  if (!currentCameraParams) return null;
+  const { fov, vFov, pitch } = currentCameraParams;
+  const offset = settings.calibrationPitchOffsetDeg ?? 0;
+  const camH = currentCameraParams.cameraHeight ?? settings.cameraHeight ?? 2.5;
+  const scale = settings.depthScale ?? 1;
+  const bias = settings.depthBias ?? 0;
+
+  return (
+    <div style={hudStyle} aria-label="Camera HUD">
+      <div>hFOV: {fov?.toFixed(1) ?? '--'}°  vFOV: {vFov?.toFixed(1) ?? '--'}°</div>
+      <div>Pitch: {pitch?.toFixed(2) ?? '--'}°  ΔCal: {offset.toFixed(2)}°</div>
+      <div>CamH: {camH.toFixed(2)} m  Depth: scale {scale.toFixed(3)} bias {bias.toFixed(3)}</div>
+    </div>
+  );
+});
+
+CameraHUD.displayName = 'CameraHUD';
+
 const MapView: React.FC<{
   onCameraParamsChange: (params: CameraParams) => void;
   onGenerateDepthMap: () => void;
@@ -282,6 +317,7 @@ const MapView: React.FC<{
   return (
     <div style={containerStyle}>
       <div ref={mapContainerRef} style={mapContainerStyle} />
+      <CameraHUD />
       <CalibrationOverlay
         calibrateMode={calibrateMode}
         onCalibrateClick={onCalibrateClick}

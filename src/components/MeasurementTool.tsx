@@ -32,7 +32,6 @@ const MeasurementCanvas = React.memo<{
   overlayRef
 }) => {
   const drawCanvas = useCallback(() => {
->>>>>>> Stashed changes
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     const overlay = overlayRef.current;
@@ -263,6 +262,7 @@ StartButton.displayName = 'StartButton';
 const MeasurementTool: React.FC = () => {
   const { measurements, addMeasurement } = useRootStore();
   const { settings, currentCameraParams, onnxDepthMap, depthData } = useRootStore();
+  const { updateSettings } = useRootStore();
   const { isCalibrated, onGenerateDepthMap } = useRootStore();
   const { defaultUnit } = settings;
 
@@ -271,6 +271,7 @@ const MeasurementTool: React.FC = () => {
   const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const applyCalTimerRef = useRef<number | null>(null);
 
   const getClickCoords = useCallback((event: React.MouseEvent<HTMLDivElement>): Point | null => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -333,6 +334,29 @@ const MeasurementTool: React.FC = () => {
           );
           if (onnxDist && distanceToBase) {
             calibrationManager.addSample(onnxDist, distanceToBase);
+            const proposal = calibrationManager.computeScaleBias();
+            if (proposal) {
+              const scaleDelta = Math.abs((settings.depthScale ?? 1) - proposal.scale);
+              const biasDelta = Math.abs((settings.depthBias ?? 0) - proposal.bias);
+              const shouldPropose = scaleDelta > 0.02 || biasDelta > 0.05;
+              if (shouldPropose) {
+                // One-time confirmation per session
+                const confirmed = sessionStorage.getItem('autoCalConfirmed') === '1' || window.confirm(`Apply new depth calibration?\nScale: ${proposal.scale.toFixed(3)}  Bias: ${proposal.bias.toFixed(3)}`);
+                if (!confirmed) {
+                  // Remember decline only for this prompt occurrence
+                } else {
+                  sessionStorage.setItem('autoCalConfirmed', '1');
+                  if (applyCalTimerRef.current) {
+                    clearTimeout(applyCalTimerRef.current);
+                  }
+                  applyCalTimerRef.current = window.setTimeout(() => {
+                    updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
+                    const newSettings = { ...settings, depthScale: proposal.scale, depthBias: proposal.bias };
+                    window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
+                  }, 1500);
+                }
+              }
+            }
           }
         }
       }

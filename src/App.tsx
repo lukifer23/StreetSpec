@@ -362,9 +362,9 @@ function App() {
       return;
     }
     
-    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y";
+    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y,Source,Confidence";
     const rows = measurements.map(m => 
-      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y}`
+      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y},${m.source ?? ''},${m.confidence !== undefined ? Math.round((m.confidence || 0) * 100) + '%' : ''}`
     );
     const csvContent = `${header}\n${rows.join('\n')}`;
 
@@ -513,7 +513,7 @@ function App() {
                 No measurements yet.
              </div> 
           ) : (
-             <ul className={styles.measurementList}>
+              <ul className={styles.measurementList}>
                 {measurements.map(m => (
                     <li key={m.id} className={styles.measurementItem}>
                        <input 
@@ -524,9 +524,11 @@ function App() {
                          className={styles.nameInput}
                          title="Rename Measurement"
                        />
-                       <span className={styles.measurementDetails}>
-                           {m.label}: {m.distance.toFixed(2)}{m.unit === 'metric' ? 'm' : 'ft'}
-                       </span>
+                        <span className={styles.measurementDetails}>
+                            {m.label}: {m.distance.toFixed(2)}{m.unit === 'metric' ? 'm' : 'ft'}
+                            {m.source ? ` · ${m.source}` : ''}
+                            {m.confidence !== undefined ? ` · conf ${Math.round((m.confidence || 0) * 100)}%` : ''}
+                        </span>
                        <button 
                          onClick={() => deleteMeasurement(m.id)}
                          className={styles.deleteButton}

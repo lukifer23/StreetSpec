@@ -99,6 +99,14 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
+        {form.autoCalibrateDepth && (
+          <div className={styles.field}>
+            <div className={styles.hint}>
+              Auto-calibration will continuously fit ONNX depth to plane-based distances when available and may adjust scale/bias.
+            </div>
+          </div>
+        )}
+
         <div className={styles.field}>
           <label htmlFor="kernel">Depth Kernel Size</label>
           <select
