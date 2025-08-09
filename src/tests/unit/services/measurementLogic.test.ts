@@ -413,5 +413,15 @@ describe('Measurement Logic Service', () => {
         expect(distance).toBeDefined();
       });
     });
+
+    it('angle-based height returns null near horizon singularity', () => {
+      const params = { ...mockCameraParams, vFov: 90, pitch: 0 };
+      const basePoint: Point = { x: 320, y: 239 }; // near center
+      const topPoint: Point = { x: 320, y: 241 };  // tiny offset
+      const result = calculateEstimatedHeight(
+        basePoint, topPoint, 640, 480, params, null, 1000000
+      );
+      expect(result).toBeNull();
+    });
   });
 });

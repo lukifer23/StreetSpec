@@ -155,7 +155,7 @@ const CameraHUD = React.memo(() => {
     lineHeight: 1.4
   }), []);
 
-  if (!currentCameraParams) return null;
+  if (!currentCameraParams || !settings.showDebugOverlay) return null;
   const { fov, vFov, pitch } = currentCameraParams;
   const offset = settings.calibrationPitchOffsetDeg ?? 0;
   const camH = currentCameraParams.cameraHeight ?? settings.cameraHeight ?? 2.5;

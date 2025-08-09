@@ -98,7 +98,8 @@ const store = new Store({
         depthKernelSize: { type: 'number', enum: [3,5,7] },
         depthUseBilinear: { type: 'boolean' },
         depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
-        autoCalibrateDepth: { type: 'boolean' }
+        autoCalibrateDepth: { type: 'boolean' },
+        showDebugOverlay: { type: 'boolean' }
       }
     }
   }

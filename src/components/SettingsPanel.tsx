@@ -170,6 +170,17 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
+        <div className={styles.field}>
+          <label htmlFor="debugOverlay">Show Debug Overlay</label>
+          <input
+            id="debugOverlay"
+            type="checkbox"
+            checked={!!form.showDebugOverlay}
+            onChange={e => handleChange('showDebugOverlay', e.target.checked)}
+            title="Display camera and calibration HUD"
+          />
+        </div>
+
         <div className={styles.actions}>
           <button className={styles.secondary} onClick={onClose}>Cancel</button>
           <button className={styles.primary} onClick={handleSubmit}>Save</button>

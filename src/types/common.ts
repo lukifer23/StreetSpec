@@ -126,6 +126,7 @@ export interface AppSettings {
   depthUseBilinear?: boolean;
   depthEdgeRejectThreshold?: number; // normalized gradient threshold 0..1
   autoCalibrateDepth?: boolean;
+  showDebugOverlay?: boolean;
 }
 
 // Comprehensive error handling system
