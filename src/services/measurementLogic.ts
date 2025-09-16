@@ -6,16 +6,85 @@ const DEFAULT_KERNEL_SIZE = 5 as 3 | 5 | 7;
 const DEFAULT_USE_BILINEAR = true;
 const DEFAULT_EDGE_REJECT_THRESHOLD = 0.35; // 0..1 normalized gradient magnitude
 
+const SOBEL_X = [
+  [-1, 0, 1],
+  [-2, 0, 2],
+  [-1, 0, 1],
+] as const;
+
+const SOBEL_Y = [
+  [-1, -2, -1],
+  [0, 0, 0],
+  [1, 2, 1],
+] as const;
+
+const EPSILON = 1e-6;
+
+function computeNormalizedSobelGradient(mapX: number, mapY: number, depthMap: OnnxDepthMap): number | null {
+  const idx = mapY * depthMap.width + mapX;
+  const center = depthMap.data[idx];
+  if (!center || center <= 0 || !Number.isFinite(center)) {
+    return null;
+  }
+
+  let gx = 0;
+  let gy = 0;
+  let validNeighbors = 0;
+  let localMin = Number.POSITIVE_INFINITY;
+  let localMax = Number.NEGATIVE_INFINITY;
+
+  for (let ky = -1; ky <= 1; ky++) {
+    const yy = mapY + ky;
+    if (yy < 0 || yy >= depthMap.height) continue;
+
+    for (let kx = -1; kx <= 1; kx++) {
+      const xx = mapX + kx;
+      if (xx < 0 || xx >= depthMap.width) continue;
+
+      const neighbor = depthMap.data[yy * depthMap.width + xx];
+      if (!neighbor || neighbor <= 0 || !Number.isFinite(neighbor)) continue;
+
+      const weightX = SOBEL_X[ky + 1][kx + 1];
+      const weightY = SOBEL_Y[ky + 1][kx + 1];
+      gx += neighbor * weightX;
+      gy += neighbor * weightY;
+      validNeighbors++;
+
+      if (neighbor < localMin) localMin = neighbor;
+      if (neighbor > localMax) localMax = neighbor;
+    }
+  }
+
+  if (validNeighbors < 3) {
+    return null;
+  }
+
+  const magnitude = Math.sqrt(gx * gx + gy * gy);
+  if (!Number.isFinite(magnitude)) {
+    return null;
+  }
+
+  const normalization = Math.max(Math.abs(center), localMax - localMin, EPSILON);
+  const normalized = magnitude / normalization;
+
+  return Math.min(Math.max(normalized, 0), 1);
+}
+
 // Gather a neighbourhood of depth values around (x,y) and return a robust estimate (median)
 function getRobustDepthSample(
   mapX: number,
   mapY: number,
   depthMap: OnnxDepthMap,
   kernelSize: 3 | 5 | 7,
+  edgeRejectThreshold = DEFAULT_EDGE_REJECT_THRESHOLD,
   debug = false,
 ): number | null {
   const half = Math.floor(kernelSize / 2);
-  const vals: number[] = [];
+  const filteredVals: number[] = [];
+  const fallbackVals: number[] = [];
+  const gradients: number[] = [];
+
+  const threshold = Math.max(0, Math.min(1, edgeRejectThreshold));
 
   for (let dy = -half; dy <= half; dy++) {
     const yy = mapY + dy;
@@ -25,17 +94,51 @@ function getRobustDepthSample(
       if (xx < 0 || xx >= depthMap.width) continue;
       const idx = yy * depthMap.width + xx;
       const v = depthMap.data[idx];
-      if (v && v > 0 && Number.isFinite(v)) vals.push(v);
+      if (v && v > 0 && Number.isFinite(v)) {
+        const grad = computeNormalizedSobelGradient(xx, yy, depthMap);
+        if (grad !== null) {
+          gradients.push(grad);
+        }
+        if (grad === null || grad <= threshold) {
+          filteredVals.push(v);
+        } else {
+          fallbackVals.push(v);
+        }
+      }
     }
   }
 
-  if (vals.length === 0) return null;
-  // median
-  vals.sort((a, b) => a - b);
-  const mid = Math.floor(vals.length / 2);
-  const depth = vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+  const totalSamples = filteredVals.length + fallbackVals.length;
+  if (totalSamples === 0) return null;
+
+  const workingValues = filteredVals.length > 0 ? filteredVals : fallbackVals;
+  const sorted = [...workingValues].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const depth = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   if (debug) {
-    console.log('[depth] samples', vals.length, 'median', depth);
+    const source = filteredVals.length > 0 ? 'filtered' : 'fallback';
+    const gradStats = gradients.length
+      ? {
+          min: Math.min(...gradients),
+          max: Math.max(...gradients),
+          mean: gradients.reduce((sum, g) => sum + g, 0) / gradients.length,
+        }
+      : null;
+    console.log(
+      '[depth] samples',
+      workingValues.length,
+      '/',
+      totalSamples,
+      'source',
+      source,
+      'threshold',
+      threshold.toFixed(2),
+      'median',
+      depth,
+      gradStats
+        ? `grad[min=${gradStats.min.toFixed(3)} max=${gradStats.max.toFixed(3)} mean=${gradStats.mean.toFixed(3)}]`
+        : 'grad[none]',
+    );
   }
   return depth;
 }
@@ -136,6 +239,10 @@ export function estimateDistanceToPoint(
 
     const useBilinear = settings?.depthUseBilinear ?? DEFAULT_USE_BILINEAR;
     const kernelSize = settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE;
+    const edgeRejectThreshold = Math.max(
+        0,
+        Math.min(1, settings?.depthEdgeRejectThreshold ?? DEFAULT_EDGE_REJECT_THRESHOLD),
+    );
     if (useBilinear) {
         const depth = getBilinearDepthSample(mappedX, mappedY, depthMap);
         if (depth !== null) return depth;
@@ -143,7 +250,7 @@ export function estimateDistanceToPoint(
 
     const clampedX = Math.round(mappedX);
     const clampedY = Math.round(mappedY);
-    return getRobustDepthSample(clampedX, clampedY, depthMap, kernelSize, true);
+    return getRobustDepthSample(clampedX, clampedY, depthMap, kernelSize, edgeRejectThreshold, true);
 }
 
 /**

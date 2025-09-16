@@ -146,6 +146,54 @@ describe('Measurement Logic Service', () => {
 
       expect(result).toBeDefined();
     });
+
+    it('respects depthEdgeRejectThreshold when filtering edge gradients', () => {
+      const width = 7;
+      const height = 7;
+      const data = new Array(width * height).fill(100);
+      for (let y = 2; y <= 4; y++) {
+        for (let x = 2; x <= 4; x++) {
+          data[y * width + x] = 5;
+        }
+      }
+
+      const sharpEdgeDepthMap: OnnxDepthMap = {
+        data,
+        width,
+        height,
+      };
+
+      const highThreshold = estimateDistanceToPoint(
+        3,
+        3,
+        width,
+        height,
+        mockCameraParams,
+        sharpEdgeDepthMap,
+        {
+          depthKernelSize: 5,
+          depthUseBilinear: false,
+          depthEdgeRejectThreshold: 1,
+        }
+      );
+
+      const lowThreshold = estimateDistanceToPoint(
+        3,
+        3,
+        width,
+        height,
+        mockCameraParams,
+        sharpEdgeDepthMap,
+        {
+          depthKernelSize: 5,
+          depthUseBilinear: false,
+          depthEdgeRejectThreshold: 0.05,
+        }
+      );
+
+      expect(highThreshold).toBeCloseTo(100, 1);
+      expect(lowThreshold).toBeCloseTo(5, 1);
+    });
   });
 
   describe('calculateEstimatedHeight', () => {
