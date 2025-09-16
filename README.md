@@ -95,9 +95,10 @@ Review [docs/roadmap.md](./docs/roadmap.md) for the full improvement plan, inclu
    ```
 
 3. **Configure environment variables**
-   Create a `.env` file in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, and Street View Static API enabled:
+   Create a `.env` file in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer (`VITE_…`) and Electron main process (`GOOGLE_…`) so depth requests work everywhere:
    ```env
    VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
+   GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
    ```
 
 4. **Run the application in development mode**
@@ -133,6 +134,7 @@ This command will:
 ### Basic Workflow
 1. **Search for a location** using the search bar or enter coordinates directly
 2. **Generate a depth map** for the current Street View location (required for measurements)
+   - PoleCheck now requests Street View depth planes directly from Google's depth API. The app retries a limited number of times (configurable under **Settings → Street View Depth Retries**) and surfaces a banner if the request is rate-limited or depth is unavailable, falling back to ONNX depth in the meantime.
 3. **Calibrate the horizon** by clicking on the flat horizontal line where sky meets ground
 4. **Click "Estimate Height"** or press 'M' to start a measurement
 5. **Click the base** of the object you want to measure
@@ -153,6 +155,7 @@ Access settings via the gear icon (⚙️) in the header:
 - **GPU Acceleration**: Toggle for ONNX inference
 - **Measurement History Limit**: Maximum number of measurements to keep
 - **Depth Scale / Bias**: Adjust calibration applied to depth maps
+- **Street View Depth Retries**: Maximum number of API retries before skipping Street View depth for the active panorama
 
 ## Depth Calibration & Pixel-to-World Conversion
 
@@ -227,7 +230,8 @@ Run `npm run validate` to execute strict type-checking, linting, and the aggrega
 - **"Git LFS not found"**: Install Git LFS from [git-lfs.com](https://git-lfs.com/) or run `git lfs install` after installing the extension.
 - **"Permission denied" when running `setup.sh`**: Make the script executable with `chmod +x setup.sh` (use `sudo` if required by your environment).
 - **Model files did not download**: Run `git lfs pull` manually or fetch them from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small) and place them in the paths listed above.
-- **Google Maps API key missing or invalid**: Ensure your `.env` file includes `VITE_GOOGLE_MAPS_API_KEY` with the Maps JavaScript API, Places API, and Street View Static API enabled.
+- **Google Maps API key missing or invalid**: Ensure your `.env` file includes both `VITE_GOOGLE_MAPS_API_KEY` and `GOOGLE_MAPS_API_KEY` with the Maps JavaScript, Places, Street View Static, and Street View Depth APIs enabled.
+- **Street View depth rate limits**: If you see a "Street View depth API rate limit" banner, wait for the indicated time or increase the retry interval sparingly. Measurements will continue using ONNX depth until a fresh Street View depth response is available.
 
 ### Application Issues
 1. **"ONNX model file not found"**: Confirm the ONNX file exists in `src/assets/models/` and that Git LFS completed successfully.

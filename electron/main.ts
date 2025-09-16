@@ -7,13 +7,20 @@ import sharp from 'sharp';
 import { existsSync } from 'node:fs';
 import * as fs from 'fs';
 import Store from 'electron-store';
+import { inflateSync } from 'node:zlib';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { parse as parseProto } from 'protobufjs';
 import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
+import type { DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
 
 // --- Add ESM __dirname equivalent --- 
 import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // --- End ESM __dirname equivalent ---
+
+const DEFAULT_DEPTH_API_MAX_RETRIES = 5;
+const DEFAULT_DEPTH_API_RETRY_DELAY_MS = 1000;
 
 // Initialize electron-store for persistence
 const store = new Store({
@@ -29,7 +36,8 @@ const store = new Store({
       useGPU: false,
       calibrationPitchOffsetDeg: 0,
       depthScale: 1,
-      depthBias: 0
+      depthBias: 0,
+      depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
     }
   },
   schema: {
@@ -99,7 +107,8 @@ const store = new Store({
         depthUseBilinear: { type: 'boolean' },
         depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
         autoCalibrateDepth: { type: 'boolean' },
-        showDebugOverlay: { type: 'boolean' }
+        showDebugOverlay: { type: 'boolean' },
+        depthApiMaxRetries: { type: 'number', minimum: 1, maximum: 10 }
       }
     }
   }
@@ -142,8 +151,8 @@ const MEMORY_CHECK_INTERVAL = 30000; // 30 seconds
 
 // Add rate limiting configuration
 const RATE_LIMIT = {
-  maxRetries: 5,
-  delayMs: 1000,
+  maxRetries: DEFAULT_DEPTH_API_MAX_RETRIES,
+  delayMs: DEFAULT_DEPTH_API_RETRY_DELAY_MS,
   tooManyRequestsCode: 429
 };
 
@@ -197,32 +206,498 @@ async function reloadModelSession(): Promise<boolean> {
 }
 
 // === Helper Function for Depth Data ===
-async function getRawDepthData(panoId: string): Promise<Uint8Array | null> {
-  const apiUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?pano=${panoId}&key=${process.env.GOOGLE_MAPS_API_KEY}`;
-  
-  try {
-    const response = await fetch(apiUrl);
-    if (!response.ok) {
-      if (response.status === RATE_LIMIT.tooManyRequestsCode) {
-        console.warn('[depth] Rate limited, retrying...');
-        await new Promise(resolve => setTimeout(resolve, RATE_LIMIT.delayMs));
-        return getRawDepthData(panoId);
-      }
+type DepthFetchOptions = {
+  maxRetries?: number;
+  retryDelayMs?: number;
+};
+
+type DepthDataSource = 'json' | 'protobuf' | 'legacy';
+
+class StreetViewDepthError extends Error {
+  constructor(
+    message: string,
+    public code: DepthDataErrorCode | 'RATE_LIMIT',
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'StreetViewDepthError';
+  }
+}
+
+const depthProto = parseProto(`
+syntax = "proto3";
+
+message DepthPlane {
+  float nx = 1;
+  float ny = 2;
+  float nz = 3;
+  float d = 4;
+}
+
+message DepthMap {
+  int32 width = 1;
+  int32 height = 2;
+  repeated DepthPlane planes = 3;
+  bytes indices = 4;
+}
+`);
+
+const DepthMapMessage = depthProto.root.lookupType('DepthMap');
+
+function mapHttpStatusToErrorCode(status: number): DepthDataErrorCode {
+  if (status === 404) {
+    return 'NOT_FOUND';
+  }
+  if (status >= 500) {
+    return 'SERVER_ERROR';
+  }
+  if (status >= 400) {
+    return 'NETWORK_ERROR';
+  }
+  return 'UNKNOWN_ERROR';
+}
+
+function parseRetryAfter(headers: Headers): number | undefined {
+  const header = headers.get('retry-after');
+  if (!header) return undefined;
+  const seconds = Number(header);
+  if (!Number.isNaN(seconds)) {
+    return seconds * 1000;
+  }
+  const date = Date.parse(header);
+  if (!Number.isNaN(date)) {
+    return Math.max(0, date - Date.now());
+  }
+  return undefined;
+}
+
+function normalizePlane(plane: any): DepthPlane {
+  return {
+    nx: Number(plane?.nx ?? plane?.x ?? plane?.[0] ?? 0),
+    ny: Number(plane?.ny ?? plane?.y ?? plane?.[1] ?? 0),
+    nz: Number(plane?.nz ?? plane?.z ?? plane?.[2] ?? 0),
+    d: Number(plane?.d ?? plane?.w ?? plane?.distance ?? plane?.[3] ?? 0)
+  };
+}
+
+function coerceToUint8Array(value: any): Uint8Array | null {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (Array.isArray(value)) {
+    return Uint8Array.from(value);
+  }
+  if (typeof value === 'string') {
+    try {
+      return new Uint8Array(Buffer.from(value, 'base64'));
+    } catch (_error) {
       return null;
     }
-    
-    const data = await response.json() as any;
-    if (data.status !== 'OK') {
-      return null;
-    }
-    
-    // This is a placeholder - actual depth data would need to be fetched from Google's depth API
-    // For now, we'll return null as the depth API is not publicly available
-    return null;
-  } catch (error) {
-    console.error('[depth] Error fetching depth data:', error);
+  }
+  if (value?.type === 'Buffer' && Array.isArray(value?.data)) {
+    return Uint8Array.from(value.data);
+  }
+  return null;
+}
+
+function decodeLegacyDepthMapBuffer(buffer: Uint8Array): DecodedDepthData | null {
+  if (!buffer || buffer.length < 8) {
     return null;
   }
+
+  const raw = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  let data = raw;
+
+  try {
+    const inflated = inflateSync(raw);
+    if (inflated && inflated.length > 0) {
+      data = inflated;
+    }
+  } catch (_error) {
+    // Buffer was not compressed; continue with original data
+  }
+
+  if (data.length < 8) {
+    return null;
+  }
+
+  const headerSize = data.readUInt8(0);
+  const planeCount = data.readUInt8(1);
+  const width = data.readUInt16LE(2);
+  const height = data.readUInt16LE(4);
+  const offset = data.readUInt16LE(6);
+
+  if (!width || !height || headerSize < 8 || offset > data.length) {
+    return null;
+  }
+
+  const planes: DepthPlane[] = [];
+  let cursor = headerSize;
+
+  for (let i = 0; i < planeCount; i++) {
+    if (cursor + 16 > data.length) break;
+    planes.push({
+      nx: data.readFloatLE(cursor),
+      ny: data.readFloatLE(cursor + 4),
+      nz: data.readFloatLE(cursor + 8),
+      d: data.readFloatLE(cursor + 12)
+    });
+    cursor += 16;
+  }
+
+  const expectedLength = width * height;
+  if (offset + expectedLength > data.length) {
+    return null;
+  }
+
+  const indices = new Uint8Array(data.subarray(offset, offset + expectedLength));
+
+  return {
+    planes,
+    indices,
+    width,
+    height
+  };
+}
+
+function decodeLegacyDepthMapBase64(encoded: string): DecodedDepthData | null {
+  try {
+    const buffer = Buffer.from(encoded, 'base64');
+    return decodeLegacyDepthMapBuffer(buffer);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function tryDecodeProtobuf(buffer: Uint8Array): DecodedDepthData | null {
+  try {
+    const decoded = DepthMapMessage.decode(buffer) as any;
+    const width = decoded?.width ?? decoded?.imageWidth;
+    const height = decoded?.height ?? decoded?.imageHeight;
+
+    if (!width || !height) {
+      return null;
+    }
+
+    const planeArray: DepthPlane[] = Array.isArray(decoded?.planes)
+      ? decoded.planes.map((plane: any) => normalizePlane(plane))
+      : [];
+
+    const indices = coerceToUint8Array(decoded?.indices);
+    if (!indices || indices.length === 0) {
+      return null;
+    }
+
+    return {
+      planes: planeArray,
+      indices: new Uint8Array(indices),
+      width,
+      height
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function parseDepthDataFromBinary(buffer: Uint8Array): { data: DecodedDepthData; source: DepthDataSource } {
+  const proto = tryDecodeProtobuf(buffer);
+  if (proto) {
+    return { data: proto, source: 'protobuf' };
+  }
+
+  let inflated: Buffer | null = null;
+  try {
+    inflated = inflateSync(Buffer.from(buffer));
+  } catch (_error) {
+    inflated = null;
+  }
+
+  if (inflated && inflated.length > 0) {
+    const protoInflated = tryDecodeProtobuf(inflated);
+    if (protoInflated) {
+      return { data: protoInflated, source: 'protobuf' };
+    }
+
+    const legacyInflated = decodeLegacyDepthMapBuffer(inflated);
+    if (legacyInflated) {
+      return { data: legacyInflated, source: 'legacy' };
+    }
+  }
+
+  const legacy = decodeLegacyDepthMapBuffer(buffer);
+  if (legacy) {
+    return { data: legacy, source: 'legacy' };
+  }
+
+  throw new StreetViewDepthError('Unrecognized Street View depth binary payload', 'INVALID_RESPONSE', { length: buffer.length });
+}
+
+function parseDepthDataFromJson(payload: any): { data: DecodedDepthData; source: DepthDataSource } {
+  if (!payload) {
+    throw new StreetViewDepthError('Empty Street View depth response', 'INVALID_RESPONSE');
+  }
+
+  if (payload.error) {
+    const errorStatus = typeof payload.error.status === 'string' ? payload.error.status.toUpperCase() : undefined;
+    const errorCodeString = typeof payload.error.code === 'string' ? payload.error.code.toUpperCase() : undefined;
+    if (payload.error.code === 429 || errorStatus === 'RESOURCE_EXHAUSTED' || errorCodeString === 'RESOURCE_EXHAUSTED') {
+      throw new StreetViewDepthError(payload.error.message ?? 'Street View depth API rate limit exceeded', 'RATE_LIMIT', payload.error);
+    }
+    throw new StreetViewDepthError(payload.error.message ?? 'Street View depth API error', mapHttpStatusToErrorCode(Number(payload.error.code)), payload.error);
+  }
+
+  const status = typeof payload.status === 'string' ? payload.status.toUpperCase() : undefined;
+  if (status && status !== 'OK') {
+    if (status === 'RESOURCE_EXHAUSTED' || status === 'OVER_QUERY_LIMIT' || status === 'RATE_LIMIT_EXCEEDED') {
+      throw new StreetViewDepthError(payload.error_message ?? 'Street View depth API rate limit exceeded', 'RATE_LIMIT', payload);
+    }
+    if (status === 'NOT_FOUND' || status === 'ZERO_RESULTS') {
+      throw new StreetViewDepthError(payload.error_message ?? 'No Street View depth data available for this panorama', 'NOT_FOUND', payload);
+    }
+  }
+
+  const depthNode = payload.depthMap ?? payload.depth_map ?? payload.depth ?? payload.result ?? payload;
+
+  if (depthNode?.error) {
+    return parseDepthDataFromJson(depthNode);
+  }
+
+  if (typeof depthNode === 'string') {
+    const legacyFromString = decodeLegacyDepthMapBase64(depthNode);
+    if (legacyFromString) {
+      return { data: legacyFromString, source: 'legacy' };
+    }
+  }
+
+  const base64Data = depthNode?.data ?? payload.depthMapData ?? payload.depth_data;
+  if (typeof base64Data === 'string') {
+    const legacyFromData = decodeLegacyDepthMapBase64(base64Data);
+    if (legacyFromData) {
+      return { data: legacyFromData, source: 'legacy' };
+    }
+  }
+
+  if (depthNode?.planes && depthNode?.indices !== undefined) {
+    const width = Number(depthNode.width ?? payload.width ?? 0);
+    const height = Number(depthNode.height ?? payload.height ?? 0);
+
+    if (!width || !height) {
+      throw new StreetViewDepthError('Street View depth payload missing dimensions', 'INVALID_RESPONSE', depthNode);
+    }
+
+    const indices = coerceToUint8Array(depthNode.indices);
+    if (!indices) {
+      throw new StreetViewDepthError('Street View depth payload missing indices', 'INVALID_RESPONSE', depthNode);
+    }
+
+    const planes = Array.isArray(depthNode.planes)
+      ? depthNode.planes.map((plane: any) => normalizePlane(plane))
+      : [];
+
+    return {
+      data: {
+        planes,
+        indices,
+        width,
+        height
+      },
+      source: 'json'
+    };
+  }
+
+  throw new StreetViewDepthError('Street View depth response did not include recognizable depth data', 'INVALID_RESPONSE', payload);
+}
+
+async function extractErrorMessage(response: Response): Promise<string | undefined> {
+  try {
+    const text = await response.text();
+    if (!text) return undefined;
+    try {
+      const json = JSON.parse(text);
+      if (json?.error?.message) {
+        return json.error.message;
+      }
+      if (typeof json?.message === 'string') {
+        return json.message;
+      }
+      if (typeof json?.status === 'string' && json?.status !== 'OK' && typeof json?.error_message === 'string') {
+        return json.error_message;
+      }
+      return text;
+    } catch (_jsonError) {
+      return text;
+    }
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+async function getRawDepthData(panoId: string, options: DepthFetchOptions = {}): Promise<DepthDataFetchResult> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    return {
+      status: 'error',
+      code: 'NO_API_KEY',
+      message: 'Google Maps API key is not configured for Street View depth requests.',
+      attempts: 0
+    };
+  }
+
+  const sanitizedMaxRetries = Math.max(1, Math.floor(options.maxRetries ?? RATE_LIMIT.maxRetries));
+  const sanitizedDelay = Math.max(0, Math.floor(options.retryDelayMs ?? RATE_LIMIT.delayMs));
+
+  const depthUrl = new URL('https://streetviewpixels.googleapis.com/v1/depthmap');
+  depthUrl.searchParams.set('pano_id', panoId);
+  depthUrl.searchParams.set('output_type', 'depth');
+  depthUrl.searchParams.set('key', apiKey);
+
+  let attempt = 0;
+  let lastError: { code: DepthDataErrorCode; message: string; details?: unknown } | null = null;
+
+  while (attempt < sanitizedMaxRetries) {
+    attempt++;
+    try {
+      const response = await fetch(depthUrl.toString(), {
+        headers: {
+          Accept: 'application/x-protobuf, application/json'
+        }
+      });
+
+      if (response.status === RATE_LIMIT.tooManyRequestsCode) {
+        const retryAfter = parseRetryAfter(response.headers) ?? sanitizedDelay;
+        console.warn(`[depth] Rate limited fetching pano ${panoId}. Attempt ${attempt}/${sanitizedMaxRetries}.`);
+        if (attempt >= sanitizedMaxRetries) {
+          return {
+            status: 'rate-limit',
+            code: 'RATE_LIMIT',
+            message: 'Street View depth API rate limit exceeded.',
+            retryAfterMs: retryAfter,
+            attempts: attempt
+          };
+        }
+        await sleep(retryAfter);
+        continue;
+      }
+
+      if (!response.ok) {
+        const message = (await extractErrorMessage(response)) ?? `Street View depth API returned status ${response.status}`;
+        const errorCode = mapHttpStatusToErrorCode(response.status);
+        lastError = { code: errorCode, message, details: { status: response.status } };
+
+        if (errorCode === 'NOT_FOUND') {
+          return {
+            status: 'error',
+            code: errorCode,
+            message,
+            details: { status: response.status },
+            attempts: attempt
+          };
+        }
+
+        if (attempt >= sanitizedMaxRetries) {
+          break;
+        }
+
+        await sleep(sanitizedDelay);
+        continue;
+      }
+
+      const contentType = response.headers.get('content-type') ?? '';
+
+      try {
+        const result = contentType.includes('application/json')
+          ? parseDepthDataFromJson(await response.json())
+          : parseDepthDataFromBinary(new Uint8Array(await response.arrayBuffer()));
+
+        console.log(`[depth] Retrieved Street View depth data (${result.source}) for pano ${panoId} on attempt ${attempt}.`);
+        return {
+          status: 'success',
+          data: result.data,
+          source: result.source,
+          fetchedAt: Date.now(),
+          attempts: attempt
+        };
+      } catch (parseError) {
+        if (parseError instanceof StreetViewDepthError) {
+          if (parseError.code === 'RATE_LIMIT') {
+            console.warn(`[depth] Street View depth API signaled rate limit on attempt ${attempt}.`);
+            if (attempt >= sanitizedMaxRetries) {
+              return {
+                status: 'rate-limit',
+                code: 'RATE_LIMIT',
+                message: parseError.message,
+                attempts: attempt,
+                retryAfterMs: sanitizedDelay
+              };
+            }
+            await sleep(sanitizedDelay);
+            continue;
+          }
+
+          if (parseError.code === 'NOT_FOUND') {
+            return {
+              status: 'error',
+              code: 'NOT_FOUND',
+              message: parseError.message,
+              details: parseError.details,
+              attempts: attempt
+            };
+          }
+
+          lastError = {
+            code: parseError.code as DepthDataErrorCode,
+            message: parseError.message,
+            details: parseError.details
+          };
+        } else {
+          lastError = {
+            code: 'INVALID_RESPONSE',
+            message: 'Failed to parse Street View depth response payload.',
+            details: parseError instanceof Error ? { message: parseError.message } : parseError
+          };
+        }
+
+        if (attempt >= sanitizedMaxRetries) {
+          break;
+        }
+
+        await sleep(sanitizedDelay);
+      }
+    } catch (error) {
+      console.error(`[depth] Network error fetching Street View depth data (attempt ${attempt}/${sanitizedMaxRetries}):`, error);
+      lastError = {
+        code: 'NETWORK_ERROR',
+        message: 'Network error while requesting Street View depth data.',
+        details: error instanceof Error ? { message: error.message } : error
+      };
+
+      if (attempt >= sanitizedMaxRetries) {
+        break;
+      }
+
+      await sleep(sanitizedDelay);
+    }
+  }
+
+  if (lastError) {
+    return {
+      status: 'error',
+      code: lastError.code,
+      message: lastError.message,
+      details: lastError.details,
+      attempts: attempt
+    };
+  }
+
+  return {
+    status: 'error',
+    code: 'UNKNOWN_ERROR',
+    message: 'Street View depth data could not be retrieved.',
+    attempts: attempt
+  };
 }
 
 let win: BrowserWindow | null = null;
@@ -512,11 +987,39 @@ async function createWindow() {
   });
 
   // Depth data fetch handler
-  ipcMain.handle('fetch-depth-data', async (event: IpcMainInvokeEvent, panoId: string) => {
+  ipcMain.handle('fetch-depth-data', async (_event: IpcMainInvokeEvent, payload: string | { panoId: string; maxRetries?: number; retryDelayMs?: number }) => {
+    const request = typeof payload === 'string' ? { panoId: payload } : payload ?? { panoId: '' };
+
+    if (!request.panoId) {
+      const invalidRequest: DepthDataFetchResult = {
+        status: 'error',
+        code: 'INVALID_RESPONSE',
+        message: 'Panorama ID is required to fetch Street View depth data.',
+        attempts: 0
+      };
+      return invalidRequest;
+    }
+
     try {
-      return await getRawDepthData(panoId);
+      const settings = store.get('settings', {}) as { depthApiMaxRetries?: number };
+      const requestedRetries = Number.isFinite(Number(request.maxRetries)) ? Number(request.maxRetries) : undefined;
+      const persistedRetries = Number.isFinite(Number(settings?.depthApiMaxRetries)) ? Number(settings?.depthApiMaxRetries) : undefined;
+      const effectiveMaxRetries = requestedRetries ?? persistedRetries ?? RATE_LIMIT.maxRetries;
+      const result = await getRawDepthData(request.panoId, {
+        maxRetries: effectiveMaxRetries,
+        retryDelayMs: Number.isFinite(Number(request.retryDelayMs)) ? Number(request.retryDelayMs) : RATE_LIMIT.delayMs
+      });
+      return result;
     } catch (error) {
-      return null;
+      console.error('[depth] Unexpected error while fetching Street View depth data:', error);
+      const fallback: DepthDataFetchResult = {
+        status: 'error',
+        code: 'UNKNOWN_ERROR',
+        message: 'Unexpected error while requesting Street View depth data.',
+        details: error instanceof Error ? { message: error.message, stack: error.stack } : error,
+        attempts: 0
+      };
+      return fallback;
     }
   });
 
@@ -580,7 +1083,8 @@ async function createWindow() {
         useGPU: false,
         calibrationPitchOffsetDeg: 0,
         depthScale: 1,
-        depthBias: 0
+        depthBias: 0,
+        depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
       });
     } catch (_error) {
       return {
@@ -592,7 +1096,8 @@ async function createWindow() {
         useGPU: false,
         calibrationPitchOffsetDeg: 0,
         depthScale: 1,
-        depthBias: 0
+        depthBias: 0,
+        depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
       };
     }
   });

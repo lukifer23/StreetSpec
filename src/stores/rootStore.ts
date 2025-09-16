@@ -102,6 +102,7 @@ const defaultSettings: AppSettings = {
   measurementHistoryLimit: 1000,
   cameraHeight: 2.5,
   calibrationPitchOffsetDeg: 0,
+  depthApiMaxRetries: 5,
 };
 
 // Create the root store with middleware
