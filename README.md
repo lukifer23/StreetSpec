@@ -207,10 +207,17 @@ PoleCheck combines Street View camera metadata with the Depth Anything model to 
 - **Prettier**: Code formatting (configured in ESLint)
 
 ### Testing
+[![CI/CD Pipeline](https://github.com/lukifer23/PoleCheck-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/lukifer23/PoleCheck-Desktop/actions/workflows/ci.yml)
+
+Use the following commands to exercise the primary test suites locally:
+
 ```bash
-npm run lint        # Run ESLint
-npm run typecheck   # Run TypeScript type checking
+npm run test:unit        # Unit tests
+npm run test:integration # Integration tests
+npm run test:e2e         # Playwright e2e tests
 ```
+
+Run `npm run validate` to execute strict type-checking, linting, and the aggregated test suites in one step.
 
 ## Troubleshooting
 
