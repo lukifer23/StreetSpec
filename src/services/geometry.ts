@@ -105,6 +105,66 @@ function getDepthDataSignature(depthData: DecodedDepthData): string {
   return signature;
 }
 
+function samplePlaneIndexBilinear(
+  mapX: number,
+  mapY: number,
+  depthData: DecodedDepthData
+): number | null {
+  const { width, height, indices, planes } = depthData;
+  if (!indices || indices.length === 0 || !planes || planes.length === 0) {
+    return null;
+  }
+
+  const x0 = Math.floor(mapX);
+  const y0 = Math.floor(mapY);
+  const x1 = Math.min(x0 + 1, width - 1);
+  const y1 = Math.min(y0 + 1, height - 1);
+  const dx = mapX - x0;
+  const dy = mapY - y0;
+
+  const neighbors = [
+    { planeIndex: Number(indices[y0 * width + x0]), weight: (1 - dx) * (1 - dy) },
+    { planeIndex: Number(indices[y0 * width + x1]), weight: dx * (1 - dy) },
+    { planeIndex: Number(indices[y1 * width + x0]), weight: (1 - dx) * dy },
+    { planeIndex: Number(indices[y1 * width + x1]), weight: dx * dy },
+  ];
+
+  let bestPlane: number | null = null;
+  let bestWeight = -Infinity;
+  const weightAccumulator = new Map<number, number>();
+
+  for (const { planeIndex, weight } of neighbors) {
+    if (weight <= 0) {
+      continue;
+    }
+    if (!Number.isFinite(planeIndex) || planeIndex === 255 || planeIndex >= planes.length) {
+      continue;
+    }
+    const totalWeight = (weightAccumulator.get(planeIndex) ?? 0) + weight;
+    weightAccumulator.set(planeIndex, totalWeight);
+    if (totalWeight > bestWeight) {
+      bestWeight = totalWeight;
+      bestPlane = planeIndex;
+    }
+  }
+
+  if (bestPlane !== null) {
+    return bestPlane;
+  }
+
+  for (const { planeIndex, weight } of neighbors) {
+    if (!Number.isFinite(planeIndex) || planeIndex === 255 || planeIndex >= planes.length) {
+      continue;
+    }
+    if (weight > bestWeight) {
+      bestWeight = weight;
+      bestPlane = planeIndex;
+    }
+  }
+
+  return bestPlane;
+}
+
 // Iteratively undistort a normalized point given distortion coefficients
 const undistortPoint = (
     x: number,
@@ -304,13 +364,33 @@ export function screenToWorldWithDepth(
     viewHeight: number,
     depthData: DecodedDepthData
 ): Vector3 | null {
+    if (
+        !depthData ||
+        depthData.width <= 0 ||
+        depthData.height <= 0 ||
+        !depthData.indices ||
+        depthData.indices.length === 0 ||
+        !depthData.planes ||
+        depthData.planes.length === 0
+    ) {
+        return null;
+    }
+
     // 1. Map the screen pixel to a depth-map index
-    const mapX = Math.round((screenPoint.x / viewWidth) * depthData.width);
-    const mapY = Math.round((screenPoint.y / viewHeight) * depthData.height);
-    const clampedX = Math.max(0, Math.min(depthData.width - 1, mapX));
-    const clampedY = Math.max(0, Math.min(depthData.height - 1, mapY));
-    const pixelIndex = clampedY * depthData.width + clampedX;
-    const planeIndex = depthData.indices[pixelIndex];
+    const depthWidthMax = depthData.width - 1;
+    const depthHeightMax = depthData.height - 1;
+    const viewWidthRange = Math.max(viewWidth - 1, 1);
+    const viewHeightRange = Math.max(viewHeight - 1, 1);
+    const mappedX = (screenPoint.x / viewWidthRange) * depthWidthMax;
+    const mappedY = (screenPoint.y / viewHeightRange) * depthHeightMax;
+    const clampedMapX = Math.max(0, Math.min(depthWidthMax, mappedX));
+    const clampedMapY = Math.max(0, Math.min(depthHeightMax, mappedY));
+    const sampledPlaneIndex = samplePlaneIndexBilinear(clampedMapX, clampedMapY, depthData);
+    const nearestX = Math.round(clampedMapX);
+    const nearestY = Math.round(clampedMapY);
+    const nearestIndex = nearestY * depthData.width + nearestX;
+    const fallbackPlaneIndex = depthData.indices[nearestIndex];
+    const planeIndex = sampledPlaneIndex ?? fallbackPlaneIndex;
 
     const normalizedHeading = Number((cameraParams.heading ?? 0).toFixed(6));
     const normalizedPitch = Number((cameraParams.pitch ?? 0).toFixed(6));
@@ -330,9 +410,9 @@ export function screenToWorldWithDepth(
         x: Number(screenPoint.x.toFixed(3)),
         y: Number(screenPoint.y.toFixed(3)),
       },
-      clampedX,
-      clampedY,
-      planeIndex,
+      mapX: Number(clampedMapX.toFixed(4)),
+      mapY: Number(clampedMapY.toFixed(4)),
+      planeIndex: planeIndex ?? -1,
       heading: normalizedHeading,
       pitch: normalizedPitch,
       vFov: normalizedVFov,

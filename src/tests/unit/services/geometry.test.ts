@@ -256,5 +256,76 @@ describe('Geometry Service', () => {
         expect(result.z).toBeCloseTo(5);
       }
     });
+
+    it('should use bilinear sampling for sub-pixel horizontal coordinates', () => {
+      const depthData: DecodedDepthData = {
+        planes: [
+          { nx: 0, ny: 0, nz: -1, d: 5 },
+          { nx: 0, ny: 0, nz: -1, d: 10 },
+        ],
+        indices: new Uint8Array([0, 1]),
+        width: 2,
+        height: 1,
+      };
+      const viewWidth = 4;
+      const viewHeight = 4;
+      const leftPoint = { x: 1, y: viewHeight / 2 };
+      const rightPoint = { x: 2, y: viewHeight / 2 };
+
+      const left = screenToWorldWithDepth(leftPoint, mockCameraParams, viewWidth, viewHeight, depthData);
+      const right = screenToWorldWithDepth(rightPoint, mockCameraParams, viewWidth, viewHeight, depthData);
+
+      expect(left).not.toBeNull();
+      expect(right).not.toBeNull();
+      if (left && right) {
+        expect(left.z).toBeCloseTo(5, 1);
+        expect(right.z).toBeCloseTo(10, 1);
+        expect(left.z).toBeLessThan(right.z);
+      }
+    });
+
+    it('should map right edge to last depth column without off-by-one', () => {
+      const depthData: DecodedDepthData = {
+        planes: [
+          { nx: 0, ny: 0, nz: -1, d: 5 },
+          { nx: 0, ny: 0, nz: -1, d: 15 },
+        ],
+        indices: new Uint8Array([0, 1]),
+        width: 2,
+        height: 1,
+      };
+      const viewWidth = 4;
+      const viewHeight = 4;
+      const edgePoint = { x: viewWidth - 1, y: viewHeight / 2 };
+
+      const result = screenToWorldWithDepth(edgePoint, mockCameraParams, viewWidth, viewHeight, depthData);
+
+      expect(result).not.toBeNull();
+      if (result) {
+        expect(result.z).toBeCloseTo(15, 1);
+      }
+    });
+
+    it('should map bottom edge to last depth row without off-by-one', () => {
+      const depthData: DecodedDepthData = {
+        planes: [
+          { nx: 0, ny: 0, nz: -1, d: 5 },
+          { nx: 0, ny: 0, nz: -1, d: 20 },
+        ],
+        indices: new Uint8Array([0, 0, 1, 1]),
+        width: 2,
+        height: 2,
+      };
+      const viewWidth = 4;
+      const viewHeight = 4;
+      const edgePoint = { x: viewWidth / 2, y: viewHeight - 1 };
+
+      const result = screenToWorldWithDepth(edgePoint, mockCameraParams, viewWidth, viewHeight, depthData);
+
+      expect(result).not.toBeNull();
+      if (result) {
+        expect(result.z).toBeCloseTo(20, 1);
+      }
+    });
   });
 });
