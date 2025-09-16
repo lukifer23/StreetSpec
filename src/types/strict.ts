@@ -35,6 +35,7 @@ export const MeasurementSchema = z.object({
   id: z.string().uuid().transform((val): MeasurementId => val as MeasurementId),
   name: z.string().min(1).max(100),
   label: z.string().min(1).max(50),
+  distanceMeters: z.number().nonnegative().transform((val): Distance => val as Distance),
   distance: z.number().positive().transform((val): Distance => val as Distance),
   unit: z.enum(['metric', 'imperial']),
   startPoint: z.object({
