@@ -110,6 +110,37 @@ export interface DecodedDepthData {
   height: number;           // Height of the depth map
 }
 
+export type DepthDataErrorCode =
+  | 'NO_API_KEY'
+  | 'NOT_FOUND'
+  | 'INVALID_RESPONSE'
+  | 'NETWORK_ERROR'
+  | 'SERVER_ERROR'
+  | 'UNKNOWN_ERROR';
+
+export type DepthDataFetchResult =
+  | {
+      status: 'success';
+      data: DecodedDepthData;
+      source: 'json' | 'protobuf' | 'legacy';
+      fetchedAt: number;
+      attempts: number;
+    }
+  | {
+      status: 'rate-limit';
+      code: 'RATE_LIMIT';
+      message: string;
+      retryAfterMs?: number;
+      attempts: number;
+    }
+  | {
+      status: 'error';
+      code: DepthDataErrorCode;
+      message: string;
+      details?: unknown;
+      attempts: number;
+    };
+
 // Application settings interface
 export interface AppSettings {
   defaultUnit: 'metric' | 'imperial';
@@ -127,6 +158,7 @@ export interface AppSettings {
   depthEdgeRejectThreshold?: number; // normalized gradient threshold 0..1
   autoCalibrateDepth?: boolean;
   showDebugOverlay?: boolean;
+  depthApiMaxRetries?: number;
 }
 
 // Comprehensive error handling system

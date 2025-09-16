@@ -99,6 +99,27 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
+        <div className={styles.field}>
+          <label htmlFor="depthApiMaxRetries">Street View Depth Retries</label>
+          <input
+            id="depthApiMaxRetries"
+            type="number"
+            min={1}
+            max={10}
+            step={1}
+            value={form.depthApiMaxRetries ?? 5}
+            onChange={e => {
+              const parsed = parseInt(e.target.value, 10);
+              const clamped = Number.isNaN(parsed) ? 1 : Math.min(10, Math.max(1, parsed));
+              handleChange('depthApiMaxRetries', clamped);
+            }}
+            title="Maximum Street View depth API retry attempts before failing"
+          />
+        </div>
+        <div className={styles.hint}>
+          The app stops requesting Street View depth data after the configured number of retries to avoid exceeding Google API limits.
+        </div>
+
         {form.autoCalibrateDepth && (
           <div className={styles.field}>
             <div className={styles.hint}>

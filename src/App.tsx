@@ -4,7 +4,7 @@ import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
-import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DecodedDepthData } from './types/common';
+import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DepthDataFetchResult } from './types/common';
 import { calibrationManager } from './services/depthCalibration';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import styles from './App.module.css';
@@ -64,6 +64,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isCalibrated, setIsCalibrated] = useState(false);
+  const [depthFetchStatus, setDepthFetchStatus] = useState<{ type: 'info' | 'warning' | 'error'; message: string } | null>(null);
 
   // Use consolidated root store
   const { 
@@ -220,20 +221,82 @@ function App() {
 
   // Fetch Street View depth data when pano changes
   useEffect(() => {
+    let cancelled = false;
+
     const fetchDepthData = async () => {
       if (!currentCameraParams?.panoId || !window.electronAPI?.invoke) {
-        setDepthData(null);
+        if (!cancelled) {
+          setDepthData(null);
+          setDepthFetchStatus(null);
+        }
         return;
       }
+
       try {
-        const data = await window.electronAPI.invoke('fetch-depth-data', currentCameraParams.panoId) as DecodedDepthData | null;
-        setDepthData(data);
-      } catch (err) {
+        const result = await window.electronAPI.invoke('fetch-depth-data', {
+          panoId: currentCameraParams.panoId,
+          maxRetries: settings.depthApiMaxRetries
+        }) as DepthDataFetchResult;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!result) {
+          setDepthData(null);
+          setDepthFetchStatus(null);
+          return;
+        }
+
+        if (result.status === 'success') {
+          setDepthData(result.data);
+          setDepthFetchStatus(null);
+          return;
+        }
+
         setDepthData(null);
+
+        if (result.status === 'rate-limit') {
+          const waitSeconds = result.retryAfterMs ? Math.ceil(result.retryAfterMs / 1000) : undefined;
+          const message = waitSeconds && Number.isFinite(waitSeconds)
+            ? `Street View depth API rate limit reached. Try again in about ${waitSeconds} second${waitSeconds === 1 ? '' : 's'}.`
+            : 'Street View depth API rate limit reached. Please wait before retrying.';
+          setDepthFetchStatus({ type: 'error', message });
+          return;
+        }
+
+        if (result.code === 'NOT_FOUND') {
+          setDepthFetchStatus({ type: 'warning', message: 'No Street View depth data is available for this panorama.' });
+          return;
+        }
+
+        if (result.code === 'NO_API_KEY') {
+          setDepthFetchStatus({ type: 'error', message: 'Street View depth requests require GOOGLE_MAPS_API_KEY to be configured.' });
+          return;
+        }
+
+        if (result.code === 'NETWORK_ERROR') {
+          setDepthFetchStatus({ type: 'warning', message: 'Network issue while requesting Street View depth data. Measurements will use ONNX depth only until retry succeeds.' });
+          return;
+        }
+
+        setDepthFetchStatus({ type: 'error', message: 'Unable to fetch Street View depth data. Falling back to ONNX depth only.' });
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        console.warn('[depth] Failed to fetch Street View depth data:', err);
+        setDepthData(null);
+        setDepthFetchStatus({ type: 'error', message: 'Unexpected error requesting Street View depth data.' });
       }
     };
+
     fetchDepthData();
-  }, [currentCameraParams?.panoId, setDepthData]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCameraParams?.panoId, settings.depthApiMaxRetries, setDepthData, setDepthFetchStatus]);
 
   // --- Depth Map Generation Logic (Lifted from MapView) ---
   const handleGenerateDepthMap = useCallback(async () => {
@@ -485,6 +548,21 @@ function App() {
           onSave={handleSaveSettingsPanel}
           onClose={() => setIsSettingsOpen(false)}
         />
+      )}
+
+      {depthFetchStatus && (
+        <div
+          className={`${styles.statusBanner} ${
+            depthFetchStatus.type === 'error'
+              ? styles.statusBannerError
+              : depthFetchStatus.type === 'warning'
+                ? styles.statusBannerWarning
+                : styles.statusBannerInfo
+          }`}
+          role={depthFetchStatus.type === 'error' ? 'alert' : 'status'}
+        >
+          {depthFetchStatus.message}
+        </div>
       )}
 
       <div className={styles.mainContent}>
