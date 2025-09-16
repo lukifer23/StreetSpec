@@ -24,11 +24,14 @@ if (!ipcRenderer) {
 // Define valid channels
 const validChannels = {
   invoke: [
-    'fetch-depth-data', 
-    'csv-export', 
+    'fetch-depth-data',
+    'csv-export',
     'infer-depth',
+    'get-projects',
     'get-measurements',
     'save-measurements',
+    'save-project',
+    'delete-project',
     'get-settings',
     'save-settings',
     'clear-data'

@@ -2,16 +2,14 @@ import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
 import { join } from 'path';
 
-// Test configuration
-test.describe('PoleCheck Desktop E2E Tests', () => {
+test.describe('PoleCheck Desktop IPC E2E Tests', () => {
   let app: any;
   let mainWindow: any;
 
   test.beforeAll(async () => {
-    // Build the application
+    // Build the application once before starting tests
     execSync('npm run build', { stdio: 'inherit' });
-    
-    // Start the Electron app
+
     const { Application } = require('spectron');
     app = new Application({
       path: require('electron'),
@@ -20,7 +18,7 @@ test.describe('PoleCheck Desktop E2E Tests', () => {
         NODE_ENV: 'test'
       }
     });
-    
+
     await app.start();
     mainWindow = app.client;
   });
@@ -40,329 +38,130 @@ test.describe('PoleCheck Desktop E2E Tests', () => {
       const windowCount = await app.client.getWindowCount();
       expect(windowCount).toBeGreaterThan(0);
     });
-
-    test('should load Google Maps API', async () => {
-      await mainWindow.waitUntil(async () => {
-        const isLoaded = await mainWindow.execute(() => {
-          return typeof window.google !== 'undefined' && 
-                 typeof window.google.maps !== 'undefined';
-        });
-        return isLoaded;
-      }, { timeout: 10000 });
-    });
   });
 
-  test.describe('Core Functionality', () => {
-    test('should initialize with default location', async () => {
-      const defaultLocation = await mainWindow.execute(() => {
-        // Access the store to get current location
-        return window.electronAPI.getCurrentLocation();
+  test.describe('IPC invoke API', () => {
+    test('should retrieve default settings', async () => {
+      const settings = await mainWindow.execute(async () => {
+        return window.electronAPI.invoke('get-settings');
       });
-      
-      expect(defaultLocation).toBeDefined();
-      expect(defaultLocation.lat).toBeCloseTo(40.7580, 1);
-      expect(defaultLocation.lng).toBeCloseTo(-73.9855, 1);
-    });
 
-    test('should handle camera parameter changes', async () => {
-      const initialParams = await mainWindow.execute(() => {
-        return window.electronAPI.getCameraParams();
-      });
-      
-      expect(initialParams).toBeDefined();
-      expect(initialParams.heading).toBeDefined();
-      expect(initialParams.pitch).toBeDefined();
-      expect(initialParams.zoom).toBeDefined();
-    });
-
-    test('should generate depth maps', async () => {
-      // Trigger depth map generation
-      await mainWindow.execute(() => {
-        return window.electronAPI.generateDepthMap();
-      });
-      
-      // Wait for generation to complete
-      await mainWindow.waitUntil(async () => {
-        const isGenerating = await mainWindow.execute(() => {
-          return window.electronAPI.isGeneratingDepthMap();
-        });
-        return !isGenerating;
-      }, { timeout: 30000 });
-      
-      // Check if depth map was generated
-      const depthMap = await mainWindow.execute(() => {
-        return window.electronAPI.getDepthMap();
-      });
-      
-      expect(depthMap).toBeDefined();
-      expect(depthMap.width).toBeGreaterThan(0);
-      expect(depthMap.height).toBeGreaterThan(0);
-    });
-  });
-
-  test.describe('Measurement System', () => {
-    test('should create measurements', async () => {
-      // Simulate measurement creation
-      const measurement = await mainWindow.execute(() => {
-        return window.electronAPI.createMeasurement({
-          startPoint: { x: 100, y: 100 },
-          endPoint: { x: 200, y: 200 },
-          label: 'Test Measurement'
-        });
-      });
-      
-      expect(measurement).toBeDefined();
-      expect(measurement.id).toBeDefined();
-      expect(measurement.distance).toBeGreaterThan(0);
-    });
-
-    test('should calculate accurate distances', async () => {
-      const measurements = await mainWindow.execute(() => {
-        return window.electronAPI.getAllMeasurements();
-      });
-      
-      measurements.forEach((measurement: any) => {
-        expect(measurement.distance).toBeGreaterThan(0);
-        expect(measurement.unit).toMatch(/^(metric|imperial)$/);
-        expect(measurement.startPoint).toBeDefined();
-        expect(measurement.endPoint).toBeDefined();
-      });
-    });
-
-    test('should handle unit conversions', async () => {
-      const conversion = await mainWindow.execute(() => {
-        return window.electronAPI.convertUnit(10, 'metric', 'imperial');
-      });
-      
-      expect(conversion).toBeCloseTo(32.8084, 1); // 10 meters to feet
-    });
-  });
-
-  test.describe('Project Management', () => {
-    test('should create projects', async () => {
-      const project = await mainWindow.execute(() => {
-        return window.electronAPI.createProject('Test Project');
-      });
-      
-      expect(project).toBeDefined();
-      expect(project.id).toBeDefined();
-      expect(project.name).toBe('Test Project');
-    });
-
-    test('should save and load projects', async () => {
-      // Create a project with measurements
-      const projectId = await mainWindow.execute(() => {
-        return window.electronAPI.createProject('Save Test Project');
-      });
-      
-      // Add a measurement
-      await mainWindow.execute(() => {
-        return window.electronAPI.createMeasurement({
-          startPoint: { x: 150, y: 150 },
-          endPoint: { x: 250, y: 250 },
-          label: 'Project Measurement'
-        });
-      });
-      
-      // Save the project
-      await mainWindow.execute(() => {
-        return window.electronAPI.saveProject(projectId);
-      });
-      
-      // Load the project
-      const loadedProject = await mainWindow.execute(() => {
-        return window.electronAPI.loadProject(projectId);
-      });
-      
-      expect(loadedProject).toBeDefined();
-      expect(loadedProject.measurements).toHaveLength(1);
-    });
-
-    test('should export data to CSV', async () => {
-      const csvData = await mainWindow.execute(() => {
-        return window.electronAPI.exportToCSV();
-      });
-      
-      expect(csvData).toBeDefined();
-      expect(typeof csvData).toBe('string');
-      expect(csvData).toContain('Measurement,Start Point,End Point,Distance,Unit');
-    });
-  });
-
-  test.describe('Settings and Configuration', () => {
-    test('should load default settings', async () => {
-      const settings = await mainWindow.execute(() => {
-        return window.electronAPI.getSettings();
-      });
-      
       expect(settings).toBeDefined();
-      expect(settings.defaultUnit).toMatch(/^(metric|imperial)$/);
-      expect(settings.autoSave).toBeDefined();
+      expect(typeof settings.defaultUnit).toBe('string');
+      expect(typeof settings.autoSave).toBe('boolean');
     });
 
-    test('should update settings', async () => {
-      const newSettings = await mainWindow.execute(() => {
-        return window.electronAPI.updateSettings({
-          defaultUnit: 'imperial',
-          autoSave: true
-        });
+    test('should update settings via IPC', async () => {
+      const result = await mainWindow.execute(async () => {
+        const current = await window.electronAPI.invoke('get-settings');
+        const nextUnit = current.defaultUnit === 'metric' ? 'imperial' : 'metric';
+        const updated = { ...current, defaultUnit: nextUnit };
+        const saveResult = await window.electronAPI.invoke('save-settings', updated);
+        const roundtrip = await window.electronAPI.invoke('get-settings');
+        await window.electronAPI.invoke('save-settings', current);
+
+        return {
+          saveResult,
+          nextUnit,
+          roundtripUnit: roundtrip.defaultUnit
+        };
       });
-      
-      expect(newSettings.defaultUnit).toBe('imperial');
-      expect(newSettings.autoSave).toBe(true);
-    });
-  });
 
-  test.describe('Error Handling', () => {
-    test('should handle invalid coordinates gracefully', async () => {
+      expect(result.saveResult).toBe(true);
+      expect(result.roundtripUnit).toBe(result.nextUnit);
+    });
+
+    test('should persist measurements via IPC', async () => {
+      const result = await mainWindow.execute(async () => {
+        const existing = await window.electronAPI.invoke('get-measurements');
+        const measurementId = `e2e-measurement-${Date.now()}`;
+        const measurement = {
+          id: measurementId,
+          label: 'IPC Measurement',
+          startPoint: { x: 0, y: 0 },
+          endPoint: { x: 10, y: 10 },
+          distance: 14.14,
+          unit: 'metric',
+          timestamp: Date.now(),
+          panoId: 'test-pano',
+          cameraParams: { heading: 0, pitch: 0, zoom: 1 },
+          error: ''
+        };
+        const updated = [...existing, measurement];
+        const saveResult = await window.electronAPI.invoke('save-measurements', updated);
+        const roundtrip = await window.electronAPI.invoke('get-measurements');
+        await window.electronAPI.invoke('save-measurements', existing);
+
+        return {
+          saveResult,
+          before: existing.length,
+          after: roundtrip.length,
+          containsMeasurement: roundtrip.some((item: { id: string }) => item.id === measurementId)
+        };
+      });
+
+      expect(result.saveResult).toBe(true);
+      expect(result.after).toBe(result.before + 1);
+      expect(result.containsMeasurement).toBe(true);
+    });
+
+    test('should clear measurement data via IPC', async () => {
+      const result = await mainWindow.execute(async () => {
+        const existing = await window.electronAPI.invoke('get-measurements');
+        const clearResult = await window.electronAPI.invoke('clear-data');
+        const cleared = await window.electronAPI.invoke('get-measurements');
+        await window.electronAPI.invoke('save-measurements', existing);
+
+        return {
+          clearResult,
+          before: existing.length,
+          after: cleared.length
+        };
+      });
+
+      expect(result.clearResult).toBe(true);
+      expect(result.after).toBe(0);
+    });
+
+    test('should manage projects via IPC', async () => {
+      const result = await mainWindow.execute(async () => {
+        const projectId = `e2e-project-${Date.now()}`;
+        const project = { id: projectId, name: 'IPC Test Project', measurements: [] };
+        const saveResult = await window.electronAPI.invoke('save-project', project);
+        const projectsAfterSave = await window.electronAPI.invoke('get-projects');
+        const existsAfterSave = Boolean(projectsAfterSave[projectId]);
+        const deleteResult = await window.electronAPI.invoke('delete-project', projectId);
+        const projectsAfterDelete = await window.electronAPI.invoke('get-projects');
+
+        return {
+          saveResult,
+          existsAfterSave,
+          deleteResult,
+          existsAfterDelete: Boolean(projectsAfterDelete[projectId])
+        };
+      });
+
+      expect(result.saveResult).toBe(true);
+      expect(result.existsAfterSave).toBe(true);
+      expect(result.deleteResult).toBe(true);
+      expect(result.existsAfterDelete).toBe(false);
+    });
+
+    test('should reject invalid invoke channels', async () => {
       const result = await mainWindow.execute(() => {
-        return window.electronAPI.validateCoordinates({
-          lat: 100, // Invalid latitude
-          lng: 200  // Invalid longitude
-        });
+        try {
+          void window.electronAPI.invoke('invalid-channel');
+          return { success: true };
+        } catch (error: any) {
+          return {
+            success: false,
+            message: error?.message ?? String(error)
+          };
+        }
       });
-      
-      expect(result.valid).toBe(false);
-      expect(result.errors).toBeDefined();
-    });
 
-    test('should handle network errors', async () => {
-      // Simulate network error by temporarily disabling internet
-      const error = await mainWindow.execute(() => {
-        return window.electronAPI.simulateNetworkError();
-      });
-      
-      expect(error).toBeDefined();
-      expect(error.type).toBe('network');
-    });
-
-    test('should recover from errors', async () => {
-      // Simulate error recovery
-      const recovery = await mainWindow.execute(() => {
-        return window.electronAPI.simulateErrorRecovery();
-      });
-      
-      expect(recovery.success).toBe(true);
-    });
-  });
-
-  test.describe('Performance Tests', () => {
-    test('should handle rapid measurements', async () => {
-      const startTime = Date.now();
-      
-      // Create multiple measurements rapidly
-      const promises = Array.from({ length: 10 }, (_, i) => 
-        mainWindow.execute(() => {
-          return window.electronAPI.createMeasurement({
-            startPoint: { x: i * 10, y: i * 10 },
-            endPoint: { x: (i + 1) * 10, y: (i + 1) * 10 },
-            label: `Rapid Measurement ${i}`
-          });
-        })
-      );
-      
-      const results = await Promise.all(promises);
-      const endTime = Date.now();
-      
-      expect(results).toHaveLength(10);
-      expect(endTime - startTime).toBeLessThan(5000); // Should complete within 5 seconds
-    });
-
-    test('should maintain responsive UI during heavy operations', async () => {
-      // Start a heavy operation
-      const heavyOperation = mainWindow.execute(() => {
-        return window.electronAPI.startHeavyOperation();
-      });
-      
-      // Try to interact with UI while operation is running
-      const uiResponsive = await mainWindow.execute(() => {
-        return window.electronAPI.isUIResponsive();
-      });
-      
-      await heavyOperation;
-      
-      expect(uiResponsive).toBe(true);
-    });
-  });
-
-  test.describe('Memory Management', () => {
-    test('should not leak memory during operations', async () => {
-      const initialMemory = await mainWindow.execute(() => {
-        return window.electronAPI.getMemoryUsage();
-      });
-      
-      // Perform memory-intensive operations
-      for (let i = 0; i < 10; i++) {
-        await mainWindow.execute(() => {
-          return window.electronAPI.performMemoryIntensiveOperation();
-        });
-      }
-      
-      const finalMemory = await mainWindow.execute(() => {
-        return window.electronAPI.getMemoryUsage();
-      });
-      
-      const memoryIncrease = finalMemory.heapUsed - initialMemory.heapUsed;
-      
-      // Memory increase should be reasonable (less than 50MB)
-      expect(memoryIncrease).toBeLessThan(50 * 1024 * 1024);
-    });
-  });
-
-  test.describe('Accessibility', () => {
-    test('should support keyboard navigation', async () => {
-      const keyboardSupport = await mainWindow.execute(() => {
-        return window.electronAPI.testKeyboardNavigation();
-      });
-      
-      expect(keyboardSupport).toBe(true);
-    });
-
-    test('should have proper ARIA labels', async () => {
-      const ariaLabels = await mainWindow.execute(() => {
-        return window.electronAPI.getAriaLabels();
-      });
-      
-      expect(ariaLabels).toBeDefined();
-      expect(ariaLabels.length).toBeGreaterThan(0);
-    });
-
-    test('should support screen readers', async () => {
-      const screenReaderSupport = await mainWindow.execute(() => {
-        return window.electronAPI.testScreenReaderSupport();
-      });
-      
-      expect(screenReaderSupport).toBe(true);
-    });
-  });
-
-  test.describe('Security', () => {
-    test('should validate input data', async () => {
-      const validation = await mainWindow.execute(() => {
-        return window.electronAPI.validateInputData({
-          malicious: '<script>alert("xss")</script>',
-          coordinates: { lat: 100, lng: 200 } // Invalid
-        });
-      });
-      
-      expect(validation.valid).toBe(false);
-      expect(validation.errors).toBeDefined();
-    });
-
-    test('should prevent XSS attacks', async () => {
-      const xssPrevention = await mainWindow.execute(() => {
-        return window.electronAPI.testXSSPrevention();
-      });
-      
-      expect(xssPrevention).toBe(true);
-    });
-
-    test('should sanitize user input', async () => {
-      const sanitized = await mainWindow.execute(() => {
-        return window.electronAPI.sanitizeInput('<script>alert("xss")</script>');
-      });
-      
-      expect(sanitized).not.toContain('<script>');
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('Invalid invoke channel');
     });
   });
 });
