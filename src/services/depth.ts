@@ -1,7 +1,5 @@
 import { get, set, del, keys } from 'idb-keyval';
-import { OnnxDepthMap, CameraParams, DecodedDepthData } from '../types/common';
-
-export { DecodedDepthData };
+import { OnnxDepthMap, CameraParams } from '../types/common';
 
 interface CachedDepthMap extends OnnxDepthMap {
   lastUsed: number;

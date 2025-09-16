@@ -1,5 +1,4 @@
-import { CameraParams, Point, Vector3, DistortionCoefficients } from '../types/common';
-import { DecodedDepthData } from './depth';
+import { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
 
 // Helper function to calculate the dot product of two vectors
 const dotProduct = (v1: Vector3, v2: Vector3): number => {
