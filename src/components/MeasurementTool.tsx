@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Point, Measurement, UNIT_CONVERSIONS, AppSettings } from '../types/common';
+import type {
+  Point,
+  Measurement,
+  CameraParams,
+  OnnxDepthMap,
+  DecodedDepthData,
+} from '../types/common';
+import { UNIT_CONVERSIONS } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { calibrationManager } from '../services/depthCalibration';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
@@ -15,18 +22,20 @@ const MeasurementCanvas = React.memo<{
   phase: MeasurementPhase;
   startPoint: Point | null;
   currentMousePos: Point | null;
-  cameraParams: any;
-  onnxDepthMap: any;
+  cameraParams: CameraParams | null;
+  onnxDepthMap: OnnxDepthMap | null;
+  depthData: DecodedDepthData | null;
   defaultUnit: string;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   overlayRef: React.RefObject<HTMLDivElement>;
 }>(({ 
-  measurements, 
-  phase, 
-  startPoint, 
-  currentMousePos, 
-  cameraParams, 
-  onnxDepthMap, 
+  measurements,
+  phase,
+  startPoint,
+  currentMousePos,
+  cameraParams,
+  onnxDepthMap,
+  depthData,
   defaultUnit,
   canvasRef,
   overlayRef
@@ -129,10 +138,12 @@ const MeasurementCanvas = React.memo<{
         }
 
         const estimatedHeight = calculateEstimatedHeight(
-          startPoint.y,
-          currentMousePos.y,
+          startPoint,
+          currentMousePos,
+          viewWidth,
           viewHeight,
           cameraParams,
+          depthData,
           distanceToBase
         );
 
@@ -156,7 +167,18 @@ const MeasurementCanvas = React.memo<{
         }
       }
     }
-  }, [measurements, phase, startPoint, currentMousePos, cameraParams, onnxDepthMap, defaultUnit, canvasRef, overlayRef]);
+  }, [
+    measurements,
+    phase,
+    startPoint,
+    currentMousePos,
+    cameraParams,
+    onnxDepthMap,
+    depthData,
+    defaultUnit,
+    canvasRef,
+    overlayRef,
+  ]);
 
   useEffect(() => {
     drawCanvas();
@@ -202,9 +224,9 @@ StatusIndicator.displayName = 'StatusIndicator';
 // Memoized start button component
 const StartButton = React.memo<{
   phase: MeasurementPhase;
-  cameraParams: any;
-  onnxDepthMap: any;
-  depthData: any;
+  cameraParams: CameraParams | null;
+  onnxDepthMap: OnnxDepthMap | null;
+  depthData: DecodedDepthData | null;
   isCalibrated: boolean;
   onStartMeasurement: () => void;
 }>(({ phase, cameraParams, onnxDepthMap, depthData, isCalibrated, onStartMeasurement }) => {
@@ -412,10 +434,12 @@ const MeasurementTool: React.FC = () => {
     let estimatedHeight: number | null = null;
     if (distanceToBase !== null) {
       estimatedHeight = calculateEstimatedHeight(
-        startPoint.y,
-        coords.y,
+        startPoint,
+        coords,
+        viewWidth,
         viewHeight,
         currentCameraParams,
+        depthData,
         distanceToBase
       );
       console.log('[measure] Estimated height:', estimatedHeight);
@@ -564,6 +588,7 @@ const MeasurementTool: React.FC = () => {
         currentMousePos={currentMousePos}
         cameraParams={currentCameraParams}
         onnxDepthMap={onnxDepthMap}
+        depthData={depthData}
         defaultUnit={defaultUnit}
         canvasRef={canvasRef}
         overlayRef={overlayRef}
