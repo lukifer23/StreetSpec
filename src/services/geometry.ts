@@ -22,6 +22,89 @@ const normalizeVector = (vec: Vector3): Vector3 => {
     };
 };
 
+type CachedEntry<T> = {
+  value: T;
+  timestamp: number;
+};
+
+const calculationCache = new Map<string, CachedEntry<unknown>>();
+const CACHE_SIZE_LIMIT = 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_MISS = Symbol('CACHE_MISS');
+
+const fovCache = new Map<string, { hFov: number; vFov: number }>();
+const FOV_CACHE_LIMIT = 100;
+
+const trigCache = new Map<number, { cos: number; sin: number }>();
+const TRIG_CACHE_LIMIT = 1000;
+
+const depthDataSignatureCache = new Map<DecodedDepthData, string>();
+
+function getCacheKey(operation: string, params: unknown): string {
+  return `${operation}_${JSON.stringify(params)}`;
+}
+
+function getCachedResult<T>(key: string): T | typeof CACHE_MISS {
+  const cached = calculationCache.get(key) as CachedEntry<T> | undefined;
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.value;
+  }
+  if (cached) {
+    calculationCache.delete(key);
+  }
+  return CACHE_MISS;
+}
+
+function setCachedResult<T>(key: string, value: T): void {
+  if (calculationCache.size >= CACHE_SIZE_LIMIT) {
+    const firstKey = calculationCache.keys().next().value;
+    calculationCache.delete(firstKey);
+  }
+
+  calculationCache.set(key, {
+    value,
+    timestamp: Date.now(),
+  });
+}
+
+function getTrigValues(angleDegrees: number): { cos: number; sin: number } {
+  const normalizedAngle = angleDegrees % 360;
+  const cacheKey = Math.round(normalizedAngle * 100) / 100; // Round to 2 decimal places
+
+  let cached = trigCache.get(cacheKey);
+  if (!cached) {
+    const radians = degreesToRadians(normalizedAngle);
+    cached = {
+      cos: Math.cos(radians),
+      sin: Math.sin(radians),
+    };
+    trigCache.set(cacheKey, cached);
+
+    if (trigCache.size > TRIG_CACHE_LIMIT) {
+      const firstKey = trigCache.keys().next().value;
+      trigCache.delete(firstKey);
+    }
+  }
+
+  return cached;
+}
+
+function getDepthDataSignature(depthData: DecodedDepthData): string {
+  let signature = depthDataSignatureCache.get(depthData);
+  if (!signature) {
+    const planeSignature = depthData.planes
+      .map((plane) =>
+        [plane.nx, plane.ny, plane.nz, plane.d]
+          .map((value) => value.toFixed(6))
+          .join(',')
+      )
+      .join('|');
+    signature = `${depthData.width}x${depthData.height}:${planeSignature}`;
+    depthDataSignatureCache.set(depthData, signature);
+  }
+  return signature;
+}
+
 // Iteratively undistort a normalized point given distortion coefficients
 const undistortPoint = (
     x: number,
@@ -74,6 +157,12 @@ export function calculateFov(
   const effectiveZoom = zoom ?? 1;
   // Clamp zoom level for safety
   const clampedZoom = Math.max(0, Math.min(effectiveZoom, 4));
+  const normalizedAspect = Number(aspectRatio.toFixed(6));
+  const cacheKey = `${clampedZoom}_${normalizedAspect}`;
+  const cached = fovCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
   // Look up the calibrated horizontal FOV and fall back to zoom level 1
   const hFov = CALIBRATED_HFOV_BY_ZOOM[clampedZoom as keyof typeof CALIBRATED_HFOV_BY_ZOOM] ?? CALIBRATED_HFOV_BY_ZOOM[1];
   // Derive vertical FOV from horizontal FOV and aspect ratio
@@ -81,7 +170,15 @@ export function calculateFov(
   const vFovRad = 2 * Math.atan(Math.tan(hFovRad / 2) / aspectRatio);
   const vFov = (vFovRad * 180) / Math.PI;
 
-  return { hFov, vFov };
+  const result = { hFov, vFov };
+  fovCache.set(cacheKey, result);
+
+  if (fovCache.size > FOV_CACHE_LIMIT) {
+    const firstKey = fovCache.keys().next().value;
+    fovCache.delete(firstKey);
+  }
+
+  return result;
 }
 
 /**
@@ -130,22 +227,19 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     };
 
     // 4. Apply rotations based on camera heading and pitch
-    // Convert heading and pitch to radians
-    const headingRad = degreesToRadians(heading);
-    const pitchRad = degreesToRadians(pitch);
-
-    // Pitch rotation (around X-axis)
-    const cosPitch = Math.cos(-pitchRad); 
-    const sinPitch = Math.sin(-pitchRad); 
-    let rotatedY = vector.y * cosPitch - vector.z * sinPitch; 
-    let rotatedZ = vector.y * sinPitch + vector.z * cosPitch; 
+    const pitchTrig = getTrigValues(-pitch);
+    const cosPitch = pitchTrig.cos;
+    const sinPitch = pitchTrig.sin;
+    let rotatedY = vector.y * cosPitch - vector.z * sinPitch;
+    let rotatedZ = vector.y * sinPitch + vector.z * cosPitch;
     vector = { x: vector.x, y: rotatedY, z: rotatedZ };
 
     // Heading rotation (around Y-axis)
     // Positive heading turns right, negative turns left
     // Rotate the *opposite* way
-    const cosHeading = Math.cos(-headingRad);
-    const sinHeading = Math.sin(-headingRad);
+    const headingTrig = getTrigValues(-heading);
+    const cosHeading = headingTrig.cos;
+    const sinHeading = headingTrig.sin;
     let rotatedX = vector.x * cosHeading + vector.z * sinHeading;
     rotatedZ = -vector.x * sinHeading + vector.z * cosHeading;
     vector = { x: rotatedX, y: vector.y, z: rotatedZ };
@@ -210,16 +304,51 @@ export function screenToWorldWithDepth(
     viewHeight: number,
     depthData: DecodedDepthData
 ): Vector3 | null {
-    // 1. Get the 3D direction vector for the screen point
-    const directionVector = screenToWorld(screenPoint, cameraParams, viewWidth, viewHeight);
-
-    // 2. Map the screen pixel to a depth-map index
+    // 1. Map the screen pixel to a depth-map index
     const mapX = Math.round((screenPoint.x / viewWidth) * depthData.width);
     const mapY = Math.round((screenPoint.y / viewHeight) * depthData.height);
     const clampedX = Math.max(0, Math.min(depthData.width - 1, mapX));
     const clampedY = Math.max(0, Math.min(depthData.height - 1, mapY));
     const pixelIndex = clampedY * depthData.width + clampedX;
     const planeIndex = depthData.indices[pixelIndex];
+
+    const normalizedHeading = Number((cameraParams.heading ?? 0).toFixed(6));
+    const normalizedPitch = Number((cameraParams.pitch ?? 0).toFixed(6));
+    const normalizedVFov = Number((cameraParams.vFov ?? 90).toFixed(6));
+    const normalizedDistortion = cameraParams.distortion
+      ? {
+          k1: cameraParams.distortion.k1,
+          k2: cameraParams.distortion.k2,
+          p1: cameraParams.distortion.p1,
+          p2: cameraParams.distortion.p2,
+          ...(cameraParams.distortion.k3 !== undefined ? { k3: cameraParams.distortion.k3 } : {}),
+        }
+      : null;
+
+    const cacheKey = getCacheKey('screenToWorldWithDepth', {
+      screen: {
+        x: Number(screenPoint.x.toFixed(3)),
+        y: Number(screenPoint.y.toFixed(3)),
+      },
+      clampedX,
+      clampedY,
+      planeIndex,
+      heading: normalizedHeading,
+      pitch: normalizedPitch,
+      vFov: normalizedVFov,
+      viewWidth,
+      viewHeight,
+      distortion: normalizedDistortion,
+      depthSignature: getDepthDataSignature(depthData),
+    });
+
+    const cachedResult = getCachedResult<Vector3 | null>(cacheKey);
+    if (cachedResult !== CACHE_MISS) {
+      return cachedResult;
+    }
+
+    // 2. Get the 3D direction vector for the screen point
+    const directionVector = screenToWorld(screenPoint, cameraParams, viewWidth, viewHeight);
 
     let minDistance = Infinity;
     const epsilon = 1e-6; // Small value to avoid division by zero and parallel checks
@@ -233,9 +362,8 @@ export function screenToWorldWithDepth(
             const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
             const dotVN = dotProduct(directionVector, normal);
             if (Math.abs(dotVN) >= epsilon) {
-                // Google depth planes follow n·x + d = 0 with normals pointing
-                // toward the camera and positive d along that normal. The
-                // intersection distance is therefore -d / (n·v).
+                // Google depth planes follow n·x + d = 0 with normals pointing toward the camera.
+                // The intersection distance along the viewing ray is therefore t = -d / (n · v).
                 const t = -selectedPlane.d / dotVN;
                 if (t > epsilon) {
                     minDistance = t;
@@ -252,6 +380,7 @@ export function screenToWorldWithDepth(
             if (Math.abs(dotVN) < epsilon) {
                 continue;
             }
+            // Same Street View plane convention applies when examining all planes.
             const t = -plane.d / dotVN;
             if (t > epsilon && t < minDistance) {
                 minDistance = t;
@@ -266,10 +395,12 @@ export function screenToWorldWithDepth(
             y: directionVector.y * minDistance,
             z: directionVector.z * minDistance,
         };
+        setCachedResult(cacheKey, worldPoint);
         return worldPoint;
-    } else {
-        return null; // No valid intersection found
     }
+
+    setCachedResult(cacheKey, null);
+    return null; // No valid intersection found
 }
 
 /**
@@ -284,4 +415,25 @@ export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
     const dy = point2.y - point1.y;
     const dz = point2.z - point1.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
-} 
+}
+
+export function clearGeometryCaches(): void {
+  calculationCache.clear();
+  fovCache.clear();
+  trigCache.clear();
+  depthDataSignatureCache.clear();
+}
+
+export function getGeometryCacheStats(): {
+  calculationCacheSize: number;
+  fovCacheSize: number;
+  trigCacheSize: number;
+  depthSignatureCacheSize: number;
+} {
+  return {
+    calculationCacheSize: calculationCache.size,
+    fovCacheSize: fovCache.size,
+    trigCacheSize: trigCache.size,
+    depthSignatureCacheSize: depthDataSignatureCache.size,
+  };
+}
