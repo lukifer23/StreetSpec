@@ -38,6 +38,16 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
 *   **Keyboard Shortcuts:** M for measurement, U for unit toggle, Ctrl+E for export, Ctrl+Shift+Delete for clear all.
 *   **Theme Support:** Light, dark, and system theme modes with CSS variables.
 
+## Roadmap Overview
+
+PoleCheck's production roadmap focuses on hardening the current experience before layering advanced capabilities:
+
+*   **Phase 1 – Foundation (Weeks 1–4):** Establish a robust testing stack, introduce dedicated state management with Zustand, add centralized error handling and validation, and optimize performance for large measurement sets.
+*   **Phase 2 – Feature Growth (Weeks 5–12):** Expand measurement tooling (polylines, areas, volumes), integrate AI assistance for object detection and smart snapping, and deliver richer project/data management workflows.
+*   **Phase 3 – Enterprise Readiness (Months 4–6):** Enable real-time collaboration, enterprise integrations (APIs, databases, reporting), and advanced ML capabilities for at-scale deployments.
+
+Review [docs/roadmap.md](./docs/roadmap.md) for the full improvement plan, including priority matrices, success metrics, and status tracking.
+
 ## Setup and Installation
 
 ### Quick Start (Automated Scripts)
