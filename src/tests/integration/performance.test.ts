@@ -108,11 +108,15 @@ describe('Performance Tests', () => {
       const startTime = performance.now();
       
       for (let i = 0; i < 1000; i++) {
+        const basePoint = { x: Math.random() * 640, y: Math.random() * 480 };
+        const topPoint = { x: basePoint.x, y: Math.random() * 480 };
         calculateEstimatedHeight(
-          Math.random() * 480,
-          Math.random() * 480,
+          basePoint,
+          topPoint,
+          640,
           480,
           { heading: 180, pitch: 0, vFov: 60, zoom: 1 },
+          null,
           Math.random() * 100 + 1
         );
       }
