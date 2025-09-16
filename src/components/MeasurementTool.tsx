@@ -469,6 +469,7 @@ const MeasurementTool: React.FC = () => {
 
     const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
       label: 'Est. Height',
+      distanceMeters: finalHeight,
       distance: finalDistance,
       startPoint: startPoint,
       endPoint: coords,

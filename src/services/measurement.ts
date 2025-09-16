@@ -1,10 +1,10 @@
-import { Point, CameraParams, Measurement, Vector3 } from '../types/common';
-import { 
-    screenToWorld, 
-    estimateGroundPlaneIntersection, 
-    calculateDistance3D, 
+import { Point, CameraParams, Measurement, Vector3, UNIT_CONVERSIONS } from '../types/common';
+import {
+    screenToWorld,
+    estimateGroundPlaneIntersection,
+    calculateDistance3D,
     screenToWorldWithDepth
-} from './geometry'; 
+} from './geometry';
 import { v4 as uuidv4 } from 'uuid'; // Assuming uuid is installed
 import { DecodedDepthData } from '../types/common'; // Import from common types
 
@@ -72,6 +72,7 @@ export function createMeasurement(
       label: "Measurement Failed",
       startPoint,
       endPoint,
+      distanceMeters: 0,
       distance: 0,
       unit,
       timestamp: Date.now(),
@@ -83,6 +84,9 @@ export function createMeasurement(
 
   // 2. Calculate 3D distance between world points
   const distanceMeters = calculateDistance3D(worldPoint1, worldPoint2);
+  const displayDistance = unit === 'imperial'
+    ? UNIT_CONVERSIONS.metersToFeet(distanceMeters)
+    : distanceMeters;
 
   // 3. Create the measurement object
   const measurement: Measurement = {
@@ -90,7 +94,8 @@ export function createMeasurement(
     label: `Measurement ${new Date().toLocaleTimeString()}`,
     startPoint,
     endPoint,
-    distance: distanceMeters,
+    distanceMeters,
+    distance: displayDistance,
     unit,
     timestamp: Date.now(),
     panoId: cameraParams.pano,

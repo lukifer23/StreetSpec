@@ -61,7 +61,8 @@ export interface Measurement {
   name?: string;        // Optional user-defined name
   startPoint: Point;    // Screen coordinates
   endPoint: Point;
-  distance: number;     // Calculated distance in meters
+  distanceMeters: number; // Calculated distance in meters
+  distance: number;     // Display distance in the user's selected unit
   unit: 'metric' | 'imperial'; // Unit at time of calculation
   timestamp: number;    // Creation timestamp
   panoId?: string;       // Pano ID where measurement was taken
