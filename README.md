@@ -38,85 +38,68 @@ PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built 
 *   **Keyboard Shortcuts:** M for measurement, U for unit toggle, Ctrl+E for export, Ctrl+Shift+Delete for clear all.
 *   **Theme Support:** Light, dark, and system theme modes with CSS variables.
 
-## Setup and Running
+## Setup and Installation
 
-### Quick Start (For Collaborators)
+### Quick Start (Automated Scripts)
 
-#### Option 1: Automated Setup (Recommended)
-**Windows Users:**
-1. Clone the repository: `git clone https://github.com/lukifer23/PoleCheck-Desktop.git`
-2. Navigate to the folder: `cd PoleCheck-Desktop`
-3. **Double-click `setup.bat`** - This will automatically:
-   - Check prerequisites (Node.js, npm, Git, Git LFS)
-   - Install dependencies
-   - Download model files
-   - Create .env file (prompts for API key)
-   - Run quality checks
-   - Launch the application
-
-**macOS/Linux Users:**
-1. Clone the repository: `git clone https://github.com/lukifer23/PoleCheck-Desktop.git`
-2. Navigate to the folder: `cd PoleCheck-Desktop`
-3. **Run the setup script:**
+#### Windows
+1. Clone the repository:
    ```bash
-   chmod +x setup.sh  # Make executable (first time only)
-   ./setup.sh         # Run the setup script
+   git clone https://github.com/lukifer23/PoleCheck-Desktop.git
+   cd PoleCheck-Desktop
+   ```
+2. Double-click `setup.bat`.
+   - Verifies Node.js, npm, Git, and Git LFS are installed.
+   - Installs npm dependencies.
+   - Downloads model files via Git LFS.
+   - Prompts for your Google Maps API key and creates a `.env` file.
+   - Runs ESLint and TypeScript checks.
+   - Launches the development environment.
+
+#### macOS/Linux
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/lukifer23/PoleCheck-Desktop.git
+   cd PoleCheck-Desktop
+   ```
+2. Make the setup script executable (first run only) and execute it:
+   ```bash
+   chmod +x setup.sh
+   ./setup.sh
+   ```
+   The script performs the same dependency, model download, environment, and quality-check steps as the Windows script before starting the app.
+
+### Manual Setup
+
+1. **Install prerequisites**
+   - [Node.js](https://nodejs.org/) v18 or later (npm included).
+   - [Git](https://git-scm.com/) and [Git LFS](https://git-lfs.com/).
+
+2. **Clone the repository and install dependencies**
+   ```bash
+   git clone https://github.com/lukifer23/PoleCheck-Desktop.git
+   cd PoleCheck-Desktop
+   git lfs install       # Initializes Git LFS locally (once per machine)
+   git lfs pull          # Downloads the depth model assets
+   npm install
    ```
 
-#### Option 2: Manual Setup
-```bash
-git clone https://github.com/lukifer23/PoleCheck-Desktop.git
-cd PoleCheck-Desktop
-git lfs pull  # Downloads the model files
-npm install
-# Create .env file with your Google Maps API key
-npm run dev
-```
+3. **Configure environment variables**
+   Create a `.env` file in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, and Street View Static API enabled:
+   ```env
+   VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
+   ```
 
-### Detailed Setup
+4. **Run the application in development mode**
+   ```bash
+   npm run dev
+   ```
+   This starts the Vite development server and Electron shell.
 
-1.  **Prerequisites:**
-    *   Node.js (v18 or later recommended)
-    *   npm or yarn
-
-2.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/lukifer23/PoleCheck-Desktop.git
-    cd PoleCheck-Desktop
-    ```
-
-3.  **Install dependencies:**
-    ```bash
-    npm install
-    # or
-    # yarn install
-    ```
-
-4.  **Set up Google Maps API Key:**
-    *   Create a `.env` file in the project root.
-    *   Add your Google Maps API key (with Maps JavaScript API, Places API, and Street View Static API enabled):
-        ```env
-        VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
-        ```
-
-5.  **Model Files (Included with Git LFS):**
-    *   The required model files are included in the repository and tracked with Git LFS.
-    *   When you clone the repository, run `git lfs pull` to download the model files:
-        ```bash
-        git clone https://github.com/lukifer23/PoleCheck-Desktop.git
-        cd PoleCheck-Desktop
-        git lfs pull  # Downloads the model files automatically
-        ```
-    *   The models will be placed in:
-        *   `src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx` (ONNX format for the app)
-        *   `models_temp/depth_anything_v2_metric_vkitti_vits.pth` (PyTorch format for reference)
-    *   If you need to download the models manually, get them from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small).
-
-6.  **Run in Development Mode:**
-    ```bash
-    npm run dev
-    ```
-    This will start the Vite development server and the Electron application.
+5. **Model file reference**
+   - `src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx`
+   - `models_temp/depth_anything_v2_metric_vkitti_vits.pth`
+   If the automated download fails, you can fetch the models manually from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small) and place them in the paths above.
 
 ## Building for Production
 
@@ -161,16 +144,32 @@ Access settings via the gear icon (⚙️) in the header:
 - **Measurement History Limit**: Maximum number of measurements to keep
 - **Depth Scale / Bias**: Adjust calibration applied to depth maps
 
-### Depth Calibration
-Depth models can output depths that are consistently scaled or offset. The app applies a
-model-specific scale and bias to raw depth values before they are used. Default values are
-derived from sample scenes with known distances, but you can refine them:
+## Depth Calibration & Pixel-to-World Conversion
 
-1. Visit locations with known distances (e.g., a building of known height).
-2. Record the model's predicted depth and the actual distance for several points.
-3. Fit a line using `actual = scale * predicted + bias`.
-4. Enter the resulting **Depth Scale** and **Depth Bias** in the settings panel.
-5. Depth inference will use these parameters for all future measurements.
+PoleCheck combines Street View camera metadata with the Depth Anything model to map on-screen pixels to real-world distances. Accurate calibration ensures the geometry used for height estimation reflects what the camera actually captured.
+
+### Field of View & Camera Pose
+- The Google Street View API supplies field-of-view, pitch, and heading information for each panorama. PoleCheck uses this metadata to reconstruct the virtual camera so that measurements align with the original perspective.
+- Avoid forcing extreme zoom levels inside Street View—staying near the default perspective preserves the FOV assumptions baked into the calibration pipeline.
+- When revisiting a saved measurement, confirm the panorama hasn't changed (e.g., a different capture date) because variations in camera pose can introduce error.
+
+### Lens Distortion Considerations
+- Street View imagery is delivered as an equirectangular panorama. The app renders a rectilinear view and accounts for the spherical distortion before projecting points into 3D space.
+- Distortion rises toward the image edges. For highest accuracy, place measurement points near the center of the viewport and avoid leaning poles or objects that span heavily warped regions.
+
+### Depth Scale & Bias
+- Depth models can output values that are consistently scaled or offset. Default scale/bias parameters are derived from calibration scenes but can be customized in **Settings → Depth Scale / Bias**.
+- To refine the values:
+  1. Visit locations with known dimensions (buildings, survey markers, etc.).
+  2. Record both the predicted depth and the ground-truth distance.
+  3. Fit a line using `actual = scale * predicted + bias`.
+  4. Enter the resulting scale and bias values in the settings panel.
+- The adjusted parameters are applied to all future depth maps and cached results.
+
+### Horizon Calibration
+- Horizon calibration corrects small pitch offsets that accumulate from panorama stitching or tripod tilt.
+- Click **Calibrate Horizon** and select a point where the sky meets the ground (or any long, flat reference line). The app shifts the virtual camera to make that line level, improving vertical height calculations.
+- Re-run the calibration whenever you switch locations, move to a new panorama date, or notice that vertical lines do not appear plumb on screen.
 
 ## Project Structure
 
@@ -205,16 +204,24 @@ npm run typecheck   # Run TypeScript type checking
 
 ## Troubleshooting
 
-### Common Issues
-1. **"ONNX model file not found"**: Ensure the model file is in `src/assets/models/` with the correct filename
-2. **"Google Maps API Key is missing"**: Check your `.env` file and API key permissions
-3. **"Failed to load Google Maps"**: Verify your API key has the required APIs enabled
-4. **Measurement not working**: Ensure you've generated a depth map first
+### Environment & Setup
+- **"Node.js not found"**: Install Node.js from [nodejs.org](https://nodejs.org/) and confirm it is on your PATH.
+- **"Git not found"**: Install Git from [git-scm.com](https://git-scm.com/) and enable the “Add to PATH” option during installation (Windows).
+- **"Git LFS not found"**: Install Git LFS from [git-lfs.com](https://git-lfs.com/) or run `git lfs install` after installing the extension.
+- **"Permission denied" when running `setup.sh`**: Make the script executable with `chmod +x setup.sh` (use `sudo` if required by your environment).
+- **Model files did not download**: Run `git lfs pull` manually or fetch them from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small) and place them in the paths listed above.
+- **Google Maps API key missing or invalid**: Ensure your `.env` file includes `VITE_GOOGLE_MAPS_API_KEY` with the Maps JavaScript API, Places API, and Street View Static API enabled.
+
+### Application Issues
+1. **"ONNX model file not found"**: Confirm the ONNX file exists in `src/assets/models/` and that Git LFS completed successfully.
+2. **"Failed to load Google Maps"**: Check browser dev tools for API quota or billing errors and verify required APIs are enabled.
+3. **Measurements appear inaccurate**: Re-run horizon calibration and revisit the **Depth Calibration & Pixel-to-World Conversion** section above to validate scale/bias values.
+4. **Measurement not working**: Ensure you've generated a depth map before starting a measurement.
 
 ### Performance Tips
-- Depth maps are cached automatically to improve performance
-- Use GPU acceleration in settings if available on your system
-- Clear measurement history if the list becomes too long
+- Depth maps are cached automatically to improve performance.
+- Use GPU acceleration in settings if available on your system.
+- Clear measurement history if the list becomes too long.
 
 ## Contributing
 
