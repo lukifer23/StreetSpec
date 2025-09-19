@@ -189,6 +189,8 @@ PoleCheck combines Street View camera metadata with the Depth Anything model to 
 *   `electron/`: Electron main process (`main.ts`) and preload script (`preload.ts`).
 *   `src/`: React frontend source code.
     *   `components/`: React components (MapView, MeasurementTool, SearchBox, SettingsPanel).
+    *   `stores/`: Zustand stores with `rootStore.ts` serving as the authoritative global state container for settings, camera
+        metadata, measurements, projects, and UI state.
     *   `services/`: Logic for geometry, measurements, depth caching, etc.
     *   `types/`: TypeScript type definitions.
     *   `assets/`: Static assets (including the `models/` subdirectory).

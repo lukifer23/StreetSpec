@@ -217,40 +217,24 @@ src/
 ```
 
 ### **4.2 State Management Structure**
+PoleCheck consolidates global state management into a single authoritative Zustand store defined in `stores/rootStore.ts`. This `rootStore` tracks settings, camera metadata, depth artifacts, measurement history, project metadata, and UI flags so that
+renderer components and the Electron bridge observe a single source of truth.
+
 ```typescript
-// stores/measurementStore.ts
-interface MeasurementStore {
-  measurements: Measurement[];
-  selectedMeasurement: string | null;
-  addMeasurement: (measurement: Measurement) => void;
-  updateMeasurement: (id: string, updates: Partial<Measurement>) => void;
-  deleteMeasurement: (id: string) => void;
-  clearAll: () => void;
-  undo: () => void;
-  redo: () => void;
-}
-
-// stores/settingsStore.ts
-interface SettingsStore {
+// stores/rootStore.ts
+interface RootState {
   settings: AppSettings;
-  updateSettings: (updates: Partial<AppSettings>) => void;
-  resetSettings: () => void;
-}
-
-// stores/cameraStore.ts
-interface CameraStore {
-  cameraParams: CameraParams | null;
-  updateCameraParams: (params: Partial<CameraParams>) => void;
-  calibrateHorizon: (offset: number) => void;
-}
-
-// stores/depthStore.ts
-interface DepthStore {
-  depthMap: OnnxDepthMap | null;
+  targetCoords: Coordinates | null;
+  currentCameraParams: CameraParams | null;
+  onnxDepthMap: OnnxDepthMap | null;
   depthData: DecodedDepthData | null;
-  isGenerating: boolean;
-  generateDepthMap: (params: CameraParams) => Promise<void>;
-  clearDepthMap: () => void;
+  measurements: Measurement[];
+  projects: Record<string, Project>;
+  currentProjectId: string | null;
+  isSettingsOpen: boolean;
+  isGeneratingMap: boolean;
+  calibrateMode: boolean;
+  // ...
 }
 ```
 
