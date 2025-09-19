@@ -282,11 +282,21 @@ const StartButton = React.memo<{
 StartButton.displayName = 'StartButton';
 
 const MeasurementTool: React.FC = () => {
-  const { measurements, addMeasurement } = useRootStore();
-  const { settings, currentCameraParams, onnxDepthMap, depthData } = useRootStore();
-  const { updateSettings } = useRootStore();
-  const { isCalibrated, onGenerateDepthMap } = useRootStore();
-  const { defaultUnit } = settings;
+  const measurements = useRootStore((state) => state.measurements);
+  const addMeasurement = useRootStore((state) => state.addMeasurement);
+  const currentCameraParams = useRootStore((state) => state.currentCameraParams);
+  const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
+  const depthData = useRootStore((state) => state.depthData);
+  const updateSettings = useRootStore((state) => state.updateSettings);
+  const isCalibrated = useRootStore((state) => state.isCalibrated);
+  const onGenerateDepthMap = useRootStore((state) => state.onGenerateDepthMap);
+  const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
+  const autoCalibrateDepth = useRootStore((state) => state.settings.autoCalibrateDepth ?? false);
+  const depthKernelSize = useRootStore((state) => state.settings.depthKernelSize ?? 5);
+  const depthUseBilinear = useRootStore((state) => state.settings.depthUseBilinear ?? true);
+  const depthEdgeRejectThreshold = useRootStore((state) => state.settings.depthEdgeRejectThreshold ?? 0.35);
+  const depthScale = useRootStore((state) => state.settings.depthScale ?? 1);
+  const depthBias = useRootStore((state) => state.settings.depthBias ?? 0);
 
   const [phase, setPhase] = useState<MeasurementPhase>('idle');
   const [startPoint, setStartPoint] = useState<Point | null>(null);
@@ -340,7 +350,7 @@ const MeasurementTool: React.FC = () => {
         confidence = distOk ? 0.9 : 0.7;
 
         // Optional auto-calibration: compare ONNX predicted distance at base vs plane distance
-        if (settings.autoCalibrateDepth && onnxDepthMap) {
+        if (autoCalibrateDepth && onnxDepthMap) {
           const onnxDist = estimateDistanceToPoint(
             startPoint.x,
             startPoint.y,
@@ -349,17 +359,17 @@ const MeasurementTool: React.FC = () => {
             currentCameraParams,
             onnxDepthMap,
             {
-              depthKernelSize: (settings.depthKernelSize as 3|5|7) ?? 5,
-              depthUseBilinear: settings.depthUseBilinear ?? true,
-              depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold ?? 0.35,
+              depthKernelSize: depthKernelSize as 3|5|7,
+              depthUseBilinear,
+              depthEdgeRejectThreshold,
             }
           );
           if (onnxDist && distanceToBase) {
             calibrationManager.addSample(onnxDist, distanceToBase);
             const proposal = calibrationManager.computeScaleBias();
             if (proposal) {
-              const scaleDelta = Math.abs((settings.depthScale ?? 1) - proposal.scale);
-              const biasDelta = Math.abs((settings.depthBias ?? 0) - proposal.bias);
+              const scaleDelta = Math.abs(depthScale - proposal.scale);
+              const biasDelta = Math.abs(depthBias - proposal.bias);
               const shouldPropose = scaleDelta > 0.02 || biasDelta > 0.05;
               if (shouldPropose) {
                 // One-time confirmation per session
@@ -373,7 +383,7 @@ const MeasurementTool: React.FC = () => {
                   }
                   applyCalTimerRef.current = window.setTimeout(() => {
                     updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
-                    const newSettings = { ...settings, depthScale: proposal.scale, depthBias: proposal.bias };
+                    const newSettings = { ...useRootStore.getState().settings, depthScale: proposal.scale, depthBias: proposal.bias };
                     window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
                   }, 1500);
                 }
@@ -394,9 +404,9 @@ const MeasurementTool: React.FC = () => {
         currentCameraParams,
         onnxDepthMap,
         {
-          depthKernelSize: (settings.depthKernelSize as 3|5|7) ?? 5,
-          depthUseBilinear: settings.depthUseBilinear ?? true,
-          depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold ?? 0.35,
+          depthKernelSize: depthKernelSize as 3|5|7,
+          depthUseBilinear,
+          depthEdgeRejectThreshold,
         }
       );
       console.log('[measure] Depth map distance:', distanceToBase);
@@ -484,7 +494,20 @@ const MeasurementTool: React.FC = () => {
     setStartPoint(null);
     setCurrentMousePos(null);
     setPhase('idle');
-  }, [currentCameraParams, onnxDepthMap, depthData, defaultUnit, addMeasurement]);
+  }, [
+    currentCameraParams,
+    onnxDepthMap,
+    depthData,
+    defaultUnit,
+    addMeasurement,
+    autoCalibrateDepth,
+    depthKernelSize,
+    depthUseBilinear,
+    depthEdgeRejectThreshold,
+    depthScale,
+    depthBias,
+    updateSettings,
+  ]);
 
   const handleOverlayClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     console.log('[measure] Click detected, phase:', phase);
