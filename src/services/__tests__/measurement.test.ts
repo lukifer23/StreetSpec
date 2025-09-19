@@ -17,6 +17,7 @@ describe('createMeasurement', () => {
   const cameraParams: CameraParams = {
     vFov: 90,
     pano: 'test-pano',
+    panoId: 'test-pano-id',
   };
 
   const startPoint: Point = { x: 0, y: 0 };
@@ -50,6 +51,7 @@ describe('createMeasurement', () => {
     expect(measurement.distanceMeters).toBe(mockDistanceMeters);
     expect(measurement.distance).toBeCloseTo(mockDistanceMeters);
     expect(measurement.unit).toBe('metric');
+    expect(measurement.panoId).toBe(cameraParams.panoId);
   });
 
   it('converts to feet when unit is imperial', () => {
@@ -66,5 +68,6 @@ describe('createMeasurement', () => {
     expect(measurement.distanceMeters).toBe(mockDistanceMeters);
     expect(measurement.distance).toBeCloseTo(UNIT_CONVERSIONS.metersToFeet(mockDistanceMeters));
     expect(measurement.unit).toBe('imperial');
+    expect(measurement.panoId).toBe(cameraParams.panoId);
   });
 });

@@ -76,7 +76,7 @@ export function createMeasurement(
       distance: 0,
       unit,
       timestamp: Date.now(),
-      panoId: cameraParams.pano,
+      panoId: cameraParams.panoId ?? cameraParams.pano,
       cameraParams: cameraParams,
       error: errorMessage || "Failed to determine 3D coordinates for measurement."
     };
@@ -98,7 +98,7 @@ export function createMeasurement(
     distance: displayDistance,
     unit,
     timestamp: Date.now(),
-    panoId: cameraParams.pano,
+    panoId: cameraParams.panoId ?? cameraParams.pano,
     cameraParams: cameraParams,
     error: errorMessage // Include any error/warning messages
   };
