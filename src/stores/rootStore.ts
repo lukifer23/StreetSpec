@@ -46,6 +46,7 @@ interface RootState {
   isProjectPanelOpen: boolean;
   mapGenerationError: string | null;
   isCalibrated: boolean;
+  onGenerateDepthMap: (() => Promise<void>) | null;
   
   // Actions
   // Settings actions
@@ -86,6 +87,7 @@ interface RootState {
   setMapGenerationError: (error: string | null) => void;
   setIsCalibrated: (isCalibrated: boolean) => void;
   setLoading: (loading: boolean) => void;
+  setOnGenerateDepthMap: (fn: (() => Promise<void>) | null) => void;
   
   // Utility actions
   resetState: () => void;
@@ -130,6 +132,7 @@ export const useRootStore = create<RootState>()(
         isProjectPanelOpen: false,
         mapGenerationError: null,
         isCalibrated: false,
+        onGenerateDepthMap: null,
 
         // Settings actions
         setSettings: (settings) => set((state) => {
@@ -317,6 +320,10 @@ export const useRootStore = create<RootState>()(
           state.isLoading = loading;
         }),
 
+        setOnGenerateDepthMap: (fn) => set((state) => {
+          state.onGenerateDepthMap = fn;
+        }),
+
         // Utility actions
         resetState: () => set((state) => {
           state.measurements = [];
@@ -381,6 +388,7 @@ export const useUIState = () => useRootStore((state) => ({
   isVolumeToolActive: state.isVolumeToolActive,
   isProjectPanelOpen: state.isProjectPanelOpen,
   isCalibrated: state.isCalibrated,
+  onGenerateDepthMap: state.onGenerateDepthMap,
 }));
 
 // Action hooks
@@ -419,4 +427,5 @@ export const useUIActions = () => useRootStore((state) => ({
   setMapGenerationError: state.setMapGenerationError,
   setIsCalibrated: state.setIsCalibrated,
   setLoading: state.setLoading,
+  setOnGenerateDepthMap: state.setOnGenerateDepthMap,
 }));
