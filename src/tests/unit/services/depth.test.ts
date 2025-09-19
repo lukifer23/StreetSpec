@@ -44,12 +44,24 @@ describe('Depth Service with fake-indexeddb', () => {
     it('should retrieve a previously cached depth map', async () => {
       await cacheDepthMap(mockCameraParams, mockDepthMap);
       const result = await getCachedDepthMap(mockCameraParams);
-      
+
       expect(result).not.toBeNull();
       expect(result?.data).toEqual(mockDepthMap.data);
       expect(result?.width).toBe(mockDepthMap.width);
       expect(result?.height).toBe(mockDepthMap.height);
       expect(result).toHaveProperty('lastUsed');
+    });
+
+    it('should cache and retrieve depth maps with zero heading and pitch', async () => {
+      const zeroHeadingParams = { ...mockCameraParams, heading: 0, pitch: 0 };
+
+      await cacheDepthMap(zeroHeadingParams, mockDepthMap);
+      const result = await getCachedDepthMap(zeroHeadingParams);
+
+      expect(result).not.toBeNull();
+      expect(result?.data).toEqual(mockDepthMap.data);
+      expect(result?.width).toBe(mockDepthMap.width);
+      expect(result?.height).toBe(mockDepthMap.height);
     });
   });
 

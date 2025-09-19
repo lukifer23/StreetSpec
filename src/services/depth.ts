@@ -10,13 +10,36 @@ const CACHE_VERSION = '1.0';
 const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
 const MAX_CACHE_SIZE = 50; // Maximum number of cached depth maps
 
+const NUMERIC_PRECISION = 6;
+
+function normalizeNumericParam(value: number | undefined | null): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
+
+  return numericValue.toFixed(NUMERIC_PRECISION);
+}
+
 // Generate cache key from camera parameters
 function generateCacheKey(params: CameraParams): string {
-  if (!params.panoId || !params.heading || !params.pitch || !params.fov) {
+  if (!params.panoId) {
     return '';
   }
-  
-  return `${CACHE_PREFIX}${params.panoId}_${params.heading}_${params.pitch}_${params.fov}`;
+
+  const normalizedHeading = normalizeNumericParam(params.heading);
+  const normalizedPitch = normalizeNumericParam(params.pitch);
+  const normalizedFov = normalizeNumericParam(params.fov);
+
+  if (!normalizedHeading || !normalizedPitch || !normalizedFov) {
+    return '';
+  }
+
+  return `${CACHE_PREFIX}${params.panoId}_${normalizedHeading}_${normalizedPitch}_${normalizedFov}`;
 }
 
 // Check if depth map is cached
