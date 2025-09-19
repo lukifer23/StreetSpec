@@ -4,6 +4,12 @@ class ErrorHandlerService implements ErrorHandler {
   private errorLog: AppError[] = [];
   private readonly maxLogSize = 1000;
   private retryDelays = [1000, 2000, 5000]; // Exponential backoff delays
+  private readonly severityRank: Record<ErrorSeverity, number> = {
+    [ErrorSeverity.LOW]: 0,
+    [ErrorSeverity.MEDIUM]: 1,
+    [ErrorSeverity.HIGH]: 2,
+    [ErrorSeverity.CRITICAL]: 3
+  };
 
   constructor() {
     // Set up global error handlers
@@ -47,10 +53,15 @@ class ErrorHandlerService implements ErrorHandler {
 
   async handleError(error: AppError, context?: ErrorContext): Promise<void> {
     // Add context to error
+    const baseDetails =
+      error.details && typeof error.details === 'object'
+        ? (error.details as Record<string, unknown>)
+        : {};
+
     const enrichedError = {
       ...error,
       details: {
-        ...error.details,
+        ...baseDetails,
         context
       }
     };
@@ -59,7 +70,7 @@ class ErrorHandlerService implements ErrorHandler {
     this.logError(enrichedError, context);
 
     // Show user-friendly error if severity is medium or higher
-    if (enrichedError.severity >= ErrorSeverity.MEDIUM) {
+    if (this.severityRank[enrichedError.severity] >= this.severityRank[ErrorSeverity.MEDIUM]) {
       this.showUserError(enrichedError);
     }
 
