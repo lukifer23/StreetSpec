@@ -1,5 +1,8 @@
 import { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
 
+const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');
+type CalibratedVector3 = Vector3 & { [calibrationAppliedSymbol]?: boolean };
+
 // Helper function to calculate the dot product of two vectors
 const dotProduct = (v1: Vector3, v2: Vector3): number => {
     return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
@@ -252,6 +255,8 @@ export function calculateFov(
  */
 export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, viewWidth: number, viewHeight: number): Vector3 {
     const { heading = 0, pitch = 0, vFov = 90 } = cameraParams;
+    const calibrationOffset = cameraParams.calibrationPitchOffsetDeg ?? 0;
+    const effectivePitch = pitch - calibrationOffset;
 
     // 1. Convert screen coordinates to Normalized Device Coordinates (NDC)
     // NDC range from -1 to 1, with (0,0) at the center.
@@ -286,7 +291,7 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     };
 
     // 4. Apply rotations based on camera heading and pitch
-    const pitchTrig = getTrigValues(-pitch);
+    const pitchTrig = getTrigValues(-effectivePitch);
     const cosPitch = pitchTrig.cos;
     const sinPitch = pitchTrig.sin;
     let rotatedY = vector.y * cosPitch - vector.z * sinPitch;
@@ -306,7 +311,8 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // 5. Normalize the vector to get a unit direction vector
     // Conventionally, in Street View context: +Y is up, +X is right, +Z is forward.
     // Our calculation results in +Z forward, +Y up, +X right relative to camera view. Let's keep this.
-    const normalized = normalizeVector(vector);
+    const normalized = normalizeVector(vector) as CalibratedVector3;
+    normalized[calibrationAppliedSymbol] = true;
     return normalized;
 }
 
@@ -326,21 +332,37 @@ export function estimateGroundPlaneIntersection(
     const cameraHeight = cameraParams?.cameraHeight ?? 2.5; // Default assumed height
     const HORIZON_THRESHOLD = 0.01; // Treat vectors with |y| < threshold as horizontal
 
+    const calibrationOffset = cameraParams?.calibrationPitchOffsetDeg ?? 0;
+    let workingVector = directionVector as CalibratedVector3;
+
+    if (!workingVector[calibrationAppliedSymbol] && calibrationOffset !== 0) {
+        const calibrationTrig = getTrigValues(calibrationOffset);
+        const rotatedY = workingVector.y * calibrationTrig.cos - workingVector.z * calibrationTrig.sin;
+        const rotatedZ = workingVector.y * calibrationTrig.sin + workingVector.z * calibrationTrig.cos;
+        const rotatedVector = {
+            x: workingVector.x,
+            y: rotatedY,
+            z: rotatedZ,
+        } as CalibratedVector3;
+        rotatedVector[calibrationAppliedSymbol] = true;
+        workingVector = rotatedVector;
+    }
+
     // Check if the vector points downwards (negative y component) and is not too close to horizontal
-    if (directionVector.y >= 0 || Math.abs(directionVector.y) < HORIZON_THRESHOLD) {
+    if (workingVector.y >= 0 || Math.abs(workingVector.y) < HORIZON_THRESHOLD) {
         // Vector points upwards or is too close to horizontal, won't intersect reliably.
-        return null; 
+        return null;
     }
 
     // Calculate the scaling factor 't' such that the point P = t * D has P.y = -cameraHeight
     // t * directionVector.y = -cameraHeight
-    const t = -cameraHeight / directionVector.y;
+    const t = -cameraHeight / workingVector.y;
 
     // Calculate the intersection point
     const intersectionPoint: Vector3 = {
-        x: t * directionVector.x,
-        y: t * directionVector.y, // Should be approximately -cameraHeight
-        z: t * directionVector.z,
+        x: t * workingVector.x,
+        y: t * workingVector.y, // Should be approximately -cameraHeight
+        z: t * workingVector.z,
     };
 
     return intersectionPoint;
@@ -393,6 +415,7 @@ export function screenToWorldWithDepth(
 
     const normalizedHeading = Number((cameraParams.heading ?? 0).toFixed(6));
     const normalizedPitch = Number((cameraParams.pitch ?? 0).toFixed(6));
+    const normalizedCalibrationOffset = Number((cameraParams.calibrationPitchOffsetDeg ?? 0).toFixed(6));
     const normalizedVFov = Number((cameraParams.vFov ?? 90).toFixed(6));
     const normalizedDistortion = cameraParams.distortion
       ? {
@@ -414,6 +437,7 @@ export function screenToWorldWithDepth(
       planeIndex: planeIndex ?? -1,
       heading: normalizedHeading,
       pitch: normalizedPitch,
+      calibrationOffset: normalizedCalibrationOffset,
       vFov: normalizedVFov,
       viewWidth,
       viewHeight,

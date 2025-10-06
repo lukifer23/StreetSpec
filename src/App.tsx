@@ -6,6 +6,7 @@ import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
 import { CameraParams, Measurement, AppSettings, DepthDataFetchResult } from './types/common';
 import { calibrationManager } from './services/depthCalibration';
+import { pixelOffsetToVerticalAngle } from './utils/cameraMath';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
 import { createDepthMapFetcher, generateDepthMap } from './services/depthGeneration';
 import styles from './App.module.css';
@@ -205,19 +206,25 @@ function App() {
     setCurrentCameraParams(merged);
   }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams?.panoId, updateSettings]);
 
-  const handleCalibrateClick = useCallback((pixelY:number, viewH:number)=>{
-     if(!currentCameraParams||!currentCameraParams.vFov||currentCameraParams.pitch===undefined) {setCalibrateMode(false);return;}
-     const verticalFov=currentCameraParams.vFov;
-     const center=viewH/2;
-     const angle=((pixelY-center)/viewH)*verticalFov; // degrees
+  const handleCalibrateClick = useCallback((pixelY: number, viewH: number) => {
+     if (
+       !currentCameraParams ||
+       !currentCameraParams.vFov ||
+       currentCameraParams.pitch === undefined
+     ) {
+       setCalibrateMode(false);
+       return;
+     }
+     const verticalFov = currentCameraParams.vFov;
+     const angle = pixelOffsetToVerticalAngle(pixelY, viewH, verticalFov);
      const offset = -(currentCameraParams.pitch + angle);
-     const newSettings={...settings, calibrationPitchOffsetDeg:offset};
+     const newSettings = { ...settings, calibrationPitchOffsetDeg: offset };
      updateSettings({ calibrationPitchOffsetDeg: offset });
-     window.electronAPI?.invoke('save-settings',newSettings).catch(()=>{});
+     window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
      setCalibrateMode(false);
      setIsCalibrated(true);
      alert(`Calibration saved ΔPitch ${offset.toFixed(2)}°`);
-  },[currentCameraParams, settings, updateSettings, setCalibrateMode]);
+  }, [currentCameraParams, settings, updateSettings, setCalibrateMode]);
 
   // Fetch Street View depth data when pano changes
   useEffect(() => {

@@ -115,6 +115,18 @@ describe('Geometry Service', () => {
       const result = screenToWorld(mockPoint, cameraWithHeading, 640, 480);
       expect(result).toBeDefined();
     });
+
+    it('applies calibration pitch offsets when computing rays', () => {
+      const centerPoint = { x: 320, y: 240 };
+      const baseline = screenToWorld(centerPoint, mockCameraParams, 640, 480);
+      const calibrated = screenToWorld(
+        centerPoint,
+        { ...mockCameraParams, calibrationPitchOffsetDeg: 5 },
+        640,
+        480
+      );
+      expect(calibrated.y).toBeLessThan(baseline.y);
+    });
   });
 
   describe('estimateGroundPlaneIntersection', () => {
@@ -140,6 +152,21 @@ describe('Geometry Service', () => {
       expect(result).toBeDefined();
       if (result) {
         expect(result.y).toBeCloseTo(-5);
+      }
+    });
+
+    it('uses calibration offset when provided an uncalibrated vector', () => {
+      const centerPoint = { x: 320, y: 240 };
+      const direction = screenToWorld(centerPoint, mockCameraParams, 640, 480);
+      const uncalibratedDirection: Vector3 = { x: direction.x, y: direction.y, z: direction.z };
+      const result = estimateGroundPlaneIntersection(uncalibratedDirection, {
+        ...mockCameraParams,
+        calibrationPitchOffsetDeg: 5,
+      });
+
+      expect(result).not.toBeNull();
+      if (result) {
+        expect(result.y).toBeLessThan(0);
       }
     });
   });

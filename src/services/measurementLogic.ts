@@ -1,5 +1,6 @@
 import { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings } from '../types/common';
 import { screenToWorldWithDepth } from './geometry';
+import { pixelOffsetToVerticalAngle, degreesToRadians } from '../utils/cameraMath';
 
 // Size of square kernel (odd number)
 const DEFAULT_KERNEL_SIZE = 5 as 3 | 5 | 7;
@@ -292,19 +293,20 @@ export function calculateEstimatedHeight(
         return null;
     }
 
-    const verticalFovRadians = (cameraParams.vFov * Math.PI) / 180;
-    const centerPixelY = viewportHeight / 2;
-    const effectivePitch = (cameraParams.pitch - (cameraParams.calibrationPitchOffsetDeg ?? 0));
-    const pitchRadians = (effectivePitch * Math.PI) / 180;
-    const halfViewport = viewportHeight / 2;
-    const tanHalfFov = Math.tan(verticalFovRadians / 2);
+    const effectivePitchDeg = (cameraParams.pitch - (cameraParams.calibrationPitchOffsetDeg ?? 0));
+    const angleToBaseDeg = effectivePitchDeg + pixelOffsetToVerticalAngle(basePoint.y, viewportHeight, cameraParams.vFov);
+    const angleToTopDeg = effectivePitchDeg + pixelOffsetToVerticalAngle(topPoint.y, viewportHeight, cameraParams.vFov);
 
-    const angleToBase = pitchRadians + Math.atan(((basePoint.y - centerPixelY) / halfViewport) * tanHalfFov);
-    const angleToTop = pitchRadians + Math.atan(((topPoint.y - centerPixelY) / halfViewport) * tanHalfFov);
+    const angleToBase = degreesToRadians(angleToBaseDeg);
+    const angleToTop = degreesToRadians(angleToTopDeg);
 
     // Harden against near-vertical angles
     const EPS = 1e-3;
+    const HORIZON_EPS = 5e-3;
     if (Math.abs(angleToBase) > Math.PI/2 - EPS || Math.abs(angleToTop) > Math.PI/2 - EPS) {
+        return null;
+    }
+    if (Math.abs(angleToBase) < HORIZON_EPS || Math.abs(angleToTop) < HORIZON_EPS) {
         return null;
     }
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
