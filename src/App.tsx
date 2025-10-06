@@ -4,9 +4,10 @@ import MapView from './components/MapView';
 import SearchBox from './components/SearchBox';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
-import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DepthDataFetchResult } from './types/common';
+import { CameraParams, Measurement, AppSettings, DepthDataFetchResult } from './types/common';
 import { calibrationManager } from './services/depthCalibration';
 import { getCachedDepthMap, cacheDepthMap } from './services/depth';
+import { createDepthMapFetcher, generateDepthMap } from './services/depthGeneration';
 import styles from './App.module.css';
 import './App.css';
 
@@ -56,7 +57,6 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
   );
 };
 
-import { executeWithRateLimit } from './services/rateLimiter';
 
 function App() {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -309,62 +309,29 @@ function App() {
     setOnnxDepthMap(null);
 
     try {
-      // Check cache first
-      const cachedDepthMap = await getCachedDepthMap(currentCameraParams);
-      if (cachedDepthMap) {
+      const fetchImage = createDepthMapFetcher();
+      const { depthMap, fromCache } = await generateDepthMap(currentCameraParams, apiKey, {
+        fetchImage,
+        getCachedDepthMap,
+        cacheDepthMap,
+        invokeDepth: async (base64data) => {
+          if (!window.electronAPI?.invoke) {
+            throw new Error('IPC invoke function not available. Please restart the application.');
+          }
+
+          try {
+            return await window.electronAPI.invoke('infer-depth', base64data);
+          } catch (err) {
+            throw err instanceof Error ? err : new Error('Depth inference failed');
+          }
+        }
+      });
+
+      if (fromCache) {
         console.log('[depth] Using cached depth map');
-        setOnnxDepthMap(cachedDepthMap);
-        setIsGeneratingMap(false);
-        return;
       }
 
-      const imgWidth = 640;
-      const imgHeight = 640;
-
-      const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
-                     `size=${imgWidth}x${imgHeight}&` +
-                     (currentCameraParams.panoId ? `pano=${currentCameraParams.panoId}&` : `location=${currentCameraParams.lat},${currentCameraParams.lng}&`) +
-                     `heading=${currentCameraParams.heading ?? 0}&` +
-                     `pitch=${currentCameraParams.pitch ?? 0}&` +
-                     `fov=${currentCameraParams.fov ?? 90}&` +
-                     `key=${apiKey}`;
-
-      const response = await executeWithRateLimit('google-maps', () => fetch(apiUrl), { timeout: 15000 });
-      
-      if (!response.ok) {
-        throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
-      }
-
-      const imageBlob = await response.blob();
-      const reader = new FileReader();
-      
-      reader.readAsDataURL(imageBlob);
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        if (!base64data) {
-          throw new Error('Failed to convert image blob to Data URL');
-        }
-        
-        if (!window.electronAPI?.invoke) {
-          throw new Error('IPC invoke function not available. Please restart the application.');
-        }
-
-        const result: OnnxDepthMap | null = await window.electronAPI.invoke('infer-depth', base64data);
-        
-        if (!result?.data || !result?.width || !result?.height) {
-          throw new Error('Main process failed to return valid depth map data.');
-        }
-
-        // Cache the result
-        await cacheDepthMap(currentCameraParams, result);
-        
-        setOnnxDepthMap(result);
-      };
-
-      reader.onerror = () => {
-        throw new Error('FileReader error reading image blob');
-      };
-
+      setOnnxDepthMap(depthMap);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate depth map';
       setMapGenerationError(errorMessage);

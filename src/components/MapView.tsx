@@ -22,7 +22,7 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
 }
 
 // Memoized status indicator component
-const GenStatusIndicator = React.memo<{
+export const GenStatusIndicator = React.memo<{
   isGeneratingMap: boolean;
   mapGenerationError: string | null;
   onnxDepthMap: any;
