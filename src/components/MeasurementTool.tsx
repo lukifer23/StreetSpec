@@ -9,6 +9,7 @@ import type {
 import { UNIT_CONVERSIONS } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { calibrationManager } from '../services/depthCalibration';
+import { invalidateDepthCacheForCalibration } from '../services/depth';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './MeasurementTool.module.css';
 
@@ -229,7 +230,14 @@ const StartButton = React.memo<{
   depthData: DecodedDepthData | null;
   isCalibrated: boolean;
   onStartMeasurement: () => void;
-}>(({ phase, cameraParams, onnxDepthMap, depthData, isCalibrated, onStartMeasurement }) => {
+  isGeneratingMap: boolean;
+}>(({ phase, cameraParams, onnxDepthMap, depthData, isCalibrated, onStartMeasurement, isGeneratingMap }) => {
+  const isDisabled =
+    isGeneratingMap ||
+    !cameraParams ||
+    (!onnxDepthMap && !depthData) ||
+    !isCalibrated;
+
   const buttonStyle = useMemo(() => ({
     position: 'absolute' as const,
     bottom: '20px',
@@ -237,33 +245,33 @@ const StartButton = React.memo<{
     transform: 'translateX(-50%)',
     zIndex: 10,
     padding: '10px 15px',
-    cursor: (cameraParams && (onnxDepthMap || depthData) && isCalibrated) ? 'pointer' : 'not-allowed',
+    cursor: isDisabled ? 'not-allowed' : 'pointer',
     pointerEvents: 'auto' as const
-  }), [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+  }), [isDisabled]);
 
-  const isDisabled = !cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated;
-  
   const getTitle = useCallback(() => {
     if (!cameraParams) return "Waiting for camera parameters...";
     if (!onnxDepthMap && !depthData) return "Generate Depth Map first!";
     if (!isCalibrated) return "Calibrate horizon first!";
+    if (isGeneratingMap) return 'Generating depth map...';
     return "Start Height Estimation (M)";
-  }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+  }, [cameraParams, onnxDepthMap, depthData, isCalibrated, isGeneratingMap]);
 
   const getButtonText = useCallback(() => {
     if (!cameraParams) return 'Waiting for Camera...';
     if (!onnxDepthMap && !depthData) return 'Depth Data Needed';
     if (!isCalibrated) return 'Calibrate Horizon First';
+    if (isGeneratingMap) return 'Generating Depth Map...';
     return 'Estimate Height (M)';
-  }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+  }, [cameraParams, onnxDepthMap, depthData, isCalibrated, isGeneratingMap]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (phase === 'idle') {
+    if (phase === 'idle' && !isDisabled) {
       onStartMeasurement();
     }
-  }, [phase, onStartMeasurement]);
+  }, [phase, onStartMeasurement, isDisabled]);
 
   if (phase !== 'idle') return null;
 
@@ -286,10 +294,12 @@ const MeasurementTool: React.FC = () => {
   const addMeasurement = useRootStore((state) => state.addMeasurement);
   const currentCameraParams = useRootStore((state) => state.currentCameraParams);
   const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
+  const setOnnxDepthMap = useRootStore((state) => state.setOnnxDepthMap);
   const depthData = useRootStore((state) => state.depthData);
   const updateSettings = useRootStore((state) => state.updateSettings);
   const isCalibrated = useRootStore((state) => state.isCalibrated);
   const onGenerateDepthMap = useRootStore((state) => state.onGenerateDepthMap);
+  const isGeneratingMap = useRootStore((state) => state.isGeneratingMap);
   const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const autoCalibrateDepth = useRootStore((state) => state.settings.autoCalibrateDepth ?? false);
   const depthKernelSize = useRootStore((state) => state.settings.depthKernelSize ?? 5);
@@ -382,9 +392,19 @@ const MeasurementTool: React.FC = () => {
                     clearTimeout(applyCalTimerRef.current);
                   }
                   applyCalTimerRef.current = window.setTimeout(() => {
-                    updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
-                    const newSettings = { ...useRootStore.getState().settings, depthScale: proposal.scale, depthBias: proposal.bias };
-                    window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
+                    void (async () => {
+                      updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
+                      const newSettings = { ...useRootStore.getState().settings, depthScale: proposal.scale, depthBias: proposal.bias };
+                      await invalidateDepthCacheForCalibration({
+                        setOnnxDepthMap,
+                        onGenerateDepthMap,
+                      });
+                      try {
+                        await window.electronAPI?.invoke('save-settings', newSettings);
+                      } catch {
+                        // ignore persistence errors for auto calibration updates
+                      }
+                    })();
                   }, 1500);
                 }
               }
@@ -507,6 +527,8 @@ const MeasurementTool: React.FC = () => {
     depthScale,
     depthBias,
     updateSettings,
+    setOnnxDepthMap,
+    onGenerateDepthMap,
   ]);
 
   const handleOverlayClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -553,6 +575,11 @@ const MeasurementTool: React.FC = () => {
       return;
     }
 
+    if (isGeneratingMap) {
+      console.log('[measure] Depth map generation already in progress, deferring measurement start');
+      return;
+    }
+
     if (!onnxDepthMap && !depthData) {
       if (onGenerateDepthMap) {
         await onGenerateDepthMap();
@@ -562,7 +589,7 @@ const MeasurementTool: React.FC = () => {
     setPhase('placingEnd');
     setStartPoint(null);
     setCurrentMousePos(null);
-  }, [currentCameraParams, onnxDepthMap, depthData, onGenerateDepthMap]);
+  }, [currentCameraParams, onnxDepthMap, depthData, onGenerateDepthMap, isGeneratingMap]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -603,6 +630,7 @@ const MeasurementTool: React.FC = () => {
         depthData={depthData}
         isCalibrated={isCalibrated}
         onStartMeasurement={startMeasurement}
+        isGeneratingMap={isGeneratingMap}
       />
       <StatusIndicator phase={phase} startPoint={startPoint} />
       <MeasurementCanvas

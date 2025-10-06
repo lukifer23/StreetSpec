@@ -7,7 +7,7 @@ import {
 } from '../../../services/depth';
 import { estimateDistanceToPoint } from '../../../services/measurementLogic';
 import { CameraParams, OnnxDepthMap } from '../../../types/common';
-import { clear } from 'idb-keyval';
+import { clear, get, set, keys } from 'idb-keyval';
 
 describe('Depth Service with fake-indexeddb', () => {
   let mockCameraParams: CameraParams;
@@ -21,6 +21,8 @@ describe('Depth Service with fake-indexeddb', () => {
       heading: 45,
       pitch: 10,
       fov: 90,
+      depthScale: 1,
+      depthBias: 0,
     };
 
     mockDepthMap = {
@@ -62,6 +64,23 @@ describe('Depth Service with fake-indexeddb', () => {
       expect(result?.data).toEqual(mockDepthMap.data);
       expect(result?.width).toBe(mockDepthMap.width);
       expect(result?.height).toBe(mockDepthMap.height);
+    });
+
+    it('should discard cached entries when depth calibration changes', async () => {
+      await cacheDepthMap(mockCameraParams, mockDepthMap);
+
+      const cacheKeys = (await keys()) as string[];
+      expect(cacheKeys.length).toBe(1);
+      const cacheKey = cacheKeys[0];
+      const stored = await get(cacheKey);
+      await set(cacheKey, { ...stored, depthScale: 1.1 });
+
+      const mismatchedResult = await getCachedDepthMap(mockCameraParams);
+
+      expect(mismatchedResult).toBeNull();
+
+      const stats = await getCacheStats();
+      expect(stats.count).toBe(0);
     });
   });
 

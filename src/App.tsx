@@ -6,7 +6,7 @@ import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
 import { CameraParams, Measurement, OnnxDepthMap, AppSettings, DepthDataFetchResult } from './types/common';
 import { calibrationManager } from './services/depthCalibration';
-import { getCachedDepthMap, cacheDepthMap } from './services/depth';
+import { getCachedDepthMap, cacheDepthMap, invalidateDepthCacheForCalibration } from './services/depth';
 import styles from './App.module.css';
 import './App.css';
 
@@ -309,8 +309,14 @@ function App() {
     setOnnxDepthMap(null);
 
     try {
+      const cameraWithCalibration: CameraParams = {
+        ...currentCameraParams,
+        depthScale: settings.depthScale ?? 1,
+        depthBias: settings.depthBias ?? 0,
+      };
+
       // Check cache first
-      const cachedDepthMap = await getCachedDepthMap(currentCameraParams);
+      const cachedDepthMap = await getCachedDepthMap(cameraWithCalibration);
       if (cachedDepthMap) {
         console.log('[depth] Using cached depth map');
         setOnnxDepthMap(cachedDepthMap);
@@ -336,34 +342,34 @@ function App() {
       }
 
       const imageBlob = await response.blob();
-      const reader = new FileReader();
-      
-      reader.readAsDataURL(imageBlob);
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        if (!base64data) {
-          throw new Error('Failed to convert image blob to Data URL');
-        }
-        
-        if (!window.electronAPI?.invoke) {
-          throw new Error('IPC invoke function not available. Please restart the application.');
-        }
+      const base64data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result;
+          if (typeof result === 'string') {
+            resolve(result);
+          } else {
+            reject(new Error('Failed to convert image blob to Data URL'));
+          }
+        };
+        reader.onerror = () => reject(new Error('FileReader error reading image blob'));
+        reader.readAsDataURL(imageBlob);
+      });
 
-        const result: OnnxDepthMap | null = await window.electronAPI.invoke('infer-depth', base64data);
-        
-        if (!result?.data || !result?.width || !result?.height) {
-          throw new Error('Main process failed to return valid depth map data.');
-        }
+      if (!window.electronAPI?.invoke) {
+        throw new Error('IPC invoke function not available. Please restart the application.');
+      }
 
-        // Cache the result
-        await cacheDepthMap(currentCameraParams, result);
-        
-        setOnnxDepthMap(result);
-      };
+      const result: OnnxDepthMap | null = await window.electronAPI.invoke('infer-depth', base64data);
 
-      reader.onerror = () => {
-        throw new Error('FileReader error reading image blob');
-      };
+      if (!result?.data || !result?.width || !result?.height) {
+        throw new Error('Main process failed to return valid depth map data.');
+      }
+
+      // Cache the result
+      await cacheDepthMap(cameraWithCalibration, result);
+
+      setOnnxDepthMap(result);
 
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate depth map';
@@ -371,7 +377,16 @@ function App() {
     } finally {
       setIsGeneratingMap(false);
     }
-  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap]);
+  }, [
+    currentCameraParams,
+    apiKey,
+    isGeneratingMap,
+    setIsGeneratingMap,
+    setMapGenerationError,
+    setOnnxDepthMap,
+    settings.depthScale,
+    settings.depthBias,
+  ]);
   const { setOnGenerateDepthMap } = useRootStore();
 
   useEffect(() => {
@@ -404,6 +419,7 @@ function App() {
   }, [toggleUnit, settings]);
 
   const handleSaveSettingsPanel = async (newSettings: AppSettings) => {
+    const previousSettings = useRootStore.getState().settings;
     setSettings(newSettings);
     if (window.electronAPI?.invoke) {
       try {
@@ -411,6 +427,20 @@ function App() {
       } catch {
         // silent
       }
+    }
+    const prevScale = previousSettings.depthScale ?? 1;
+    const prevBias = previousSettings.depthBias ?? 0;
+    const nextScale = newSettings.depthScale ?? 1;
+    const nextBias = newSettings.depthBias ?? 0;
+    const calibrationChanged =
+      Math.abs(prevScale - nextScale) > Number.EPSILON ||
+      Math.abs(prevBias - nextBias) > Number.EPSILON;
+
+    if (calibrationChanged) {
+      await invalidateDepthCacheForCalibration({
+        setOnnxDepthMap,
+        onGenerateDepthMap: useRootStore.getState().onGenerateDepthMap,
+      });
     }
     // If auto-calibration toggled on, reset samples to fit fresh scene context
     if (newSettings.autoCalibrateDepth) {

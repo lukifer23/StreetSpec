@@ -39,6 +39,8 @@ export interface CameraParams {
   calibrationPitchOffsetDeg?: number; // applied offset for horizon calibration
   cameraHeight?: number; // Height of camera above ground in meters
   distortion?: DistortionCoefficients; // Lens distortion coefficients
+  depthScale?: number;   // Applied depth scale coefficient for ONNX maps
+  depthBias?: number;    // Applied depth bias coefficient for ONNX maps
   // Potentially add: altitude, exact camera position vector later
 }
 

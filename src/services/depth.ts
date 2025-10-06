@@ -3,6 +3,8 @@ import { OnnxDepthMap, CameraParams } from '../types/common';
 
 interface CachedDepthMap extends OnnxDepthMap {
   lastUsed: number;
+  depthScale: number;
+  depthBias: number;
 }
 
 // Cache configuration
@@ -11,6 +13,8 @@ const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
 const MAX_CACHE_SIZE = 50; // Maximum number of cached depth maps
 
 const NUMERIC_PRECISION = 6;
+const DEFAULT_DEPTH_SCALE = 1;
+const DEFAULT_DEPTH_BIAS = 0;
 
 function normalizeNumericParam(value: number | undefined | null): string | null {
   if (value === undefined || value === null) {
@@ -25,6 +29,19 @@ function normalizeNumericParam(value: number | undefined | null): string | null 
   return numericValue.toFixed(NUMERIC_PRECISION);
 }
 
+function getNormalizedCalibration(
+  params: Pick<CameraParams, 'depthScale' | 'depthBias'>
+): { normalizedScale: string; normalizedBias: string } | null {
+  const normalizedScale = normalizeNumericParam(params.depthScale ?? DEFAULT_DEPTH_SCALE);
+  const normalizedBias = normalizeNumericParam(params.depthBias ?? DEFAULT_DEPTH_BIAS);
+
+  if (!normalizedScale || !normalizedBias) {
+    return null;
+  }
+
+  return { normalizedScale, normalizedBias };
+}
+
 // Generate cache key from camera parameters
 function generateCacheKey(params: CameraParams): string {
   if (!params.panoId) {
@@ -34,12 +51,13 @@ function generateCacheKey(params: CameraParams): string {
   const normalizedHeading = normalizeNumericParam(params.heading);
   const normalizedPitch = normalizeNumericParam(params.pitch);
   const normalizedFov = normalizeNumericParam(params.fov);
+  const calibration = getNormalizedCalibration(params);
 
-  if (!normalizedHeading || !normalizedPitch || !normalizedFov) {
+  if (!normalizedHeading || !normalizedPitch || !normalizedFov || !calibration) {
     return '';
   }
 
-  return `${CACHE_PREFIX}${params.panoId}_${normalizedHeading}_${normalizedPitch}_${normalizedFov}`;
+  return `${CACHE_PREFIX}${params.panoId}_${normalizedHeading}_${normalizedPitch}_${normalizedFov}_${calibration.normalizedScale}_${calibration.normalizedBias}`;
 }
 
 // Check if depth map is cached
@@ -47,9 +65,19 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
   try {
     const cacheKey = generateCacheKey(params);
     if (!cacheKey) return null;
-    
+
     const cached = (await get(cacheKey)) as CachedDepthMap | undefined;
     if (cached && cached.data && cached.width && cached.height) {
+      const calibration = getNormalizedCalibration(params);
+      const cachedScale = normalizeNumericParam(cached.depthScale);
+      const cachedBias = normalizeNumericParam(cached.depthBias);
+
+      if (!calibration || cachedScale !== calibration.normalizedScale || cachedBias !== calibration.normalizedBias) {
+        console.log('[cache] Discarding stale depth map for key:', cacheKey);
+        await del(cacheKey);
+        return null;
+      }
+
       console.log('[cache] Hit for key:', cacheKey);
       cached.lastUsed = Date.now();
       await set(cacheKey, cached);
@@ -69,15 +97,20 @@ export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap
     const cacheKey = generateCacheKey(params);
     if (!cacheKey) return;
 
+    const calibration = getNormalizedCalibration(params);
+    if (!calibration) return;
+
     const toStore: CachedDepthMap = {
       data: depthMap.data,
       width: depthMap.width,
       height: depthMap.height,
-      lastUsed: Date.now()
+      lastUsed: Date.now(),
+      depthScale: Number.parseFloat(calibration.normalizedScale),
+      depthBias: Number.parseFloat(calibration.normalizedBias)
     };
     await set(cacheKey, toStore);
     console.log('[cache] Stored depth map for key:', cacheKey);
-    
+
     // Implement LRU by limiting cache size
     await enforceCacheSizeLimit();
   } catch (error) {
@@ -119,14 +152,35 @@ async function enforceCacheSizeLimit(): Promise<void> {
 export async function clearDepthCache(): Promise<void> {
   try {
     const allKeys = await keys();
-    const cacheKeys = allKeys.filter(key => 
+    const cacheKeys = allKeys.filter(key =>
       typeof key === 'string' && key.startsWith(CACHE_PREFIX)
     ) as string[];
-    
+
     await Promise.all(cacheKeys.map(key => del(key)));
     console.log('[cache] Cleared', cacheKeys.length, 'cached depth maps');
   } catch (error) {
     console.warn('[cache] Error clearing cache:', error);
+  }
+}
+
+interface CacheInvalidationOptions {
+  setOnnxDepthMap: (map: OnnxDepthMap | null) => void;
+  onGenerateDepthMap?: (() => Promise<void>) | null;
+  awaitRegeneration?: boolean;
+}
+
+export async function invalidateDepthCacheForCalibration(options: CacheInvalidationOptions): Promise<void> {
+  const { setOnnxDepthMap, onGenerateDepthMap, awaitRegeneration = false } = options;
+
+  await clearDepthCache();
+  setOnnxDepthMap(null);
+
+  if (awaitRegeneration && onGenerateDepthMap) {
+    try {
+      await onGenerateDepthMap();
+    } catch (error) {
+      console.warn('[cache] Error regenerating depth map after calibration update:', error);
+    }
   }
 }
 
