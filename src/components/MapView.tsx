@@ -129,7 +129,7 @@ const CalibrationOverlay = React.memo<{
   return (
     <>
       <div style={instructionStyle}>
-        Click on the flat horizontal line where sky meets ground (Esc to cancel)
+        Click exactly where the sky meets the ground so we can match the camera tilt using its vertical FOV (Esc to cancel)
       </div>
       <div style={overlayStyle} onClick={handleClick} />
     </>

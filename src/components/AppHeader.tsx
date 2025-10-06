@@ -85,7 +85,7 @@ const AppHeader: React.FC = () => {
         </button>
       </Tooltip>
       
-      <Tooltip text="Calibrate the horizon for accurate measurements. Click on the flat horizontal line where the sky meets the ground - like where the ocean meets the sky, or where a flat field meets the sky, or where distant mountains meet the sky. This tells the app what 'level' means in your view so measurements are accurate.">
+      <Tooltip text="Calibrate the horizon for accurate measurements. Click exactly where the sky meets the ground so the app can compute the correct pitch from the camera's vertical FOV and understand what 'level' means in your view.">
         <button 
           style={{marginRight:10}} 
           onClick={() => setCalibrateMode(true)} 
