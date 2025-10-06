@@ -20,7 +20,7 @@ export default {
   coverageReporters: ['text', 'lcov', 'html'],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
-      tsconfig: 'tsconfig.json',
+      tsconfig: 'tsconfig.app.json',
       useESM: true,
     }],
   },
