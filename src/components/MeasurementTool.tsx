@@ -289,7 +289,6 @@ const MeasurementTool: React.FC = () => {
   const depthData = useRootStore((state) => state.depthData);
   const updateSettings = useRootStore((state) => state.updateSettings);
   const isCalibrated = useRootStore((state) => state.isCalibrated);
-  const onGenerateDepthMap = useRootStore((state) => state.onGenerateDepthMap);
   const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const autoCalibrateDepth = useRootStore((state) => state.settings.autoCalibrateDepth ?? false);
   const depthKernelSize = useRootStore((state) => state.settings.depthKernelSize ?? 5);
@@ -304,6 +303,12 @@ const MeasurementTool: React.FC = () => {
   const overlayRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const applyCalTimerRef = useRef<number | null>(null);
+
+  const hasDepthSupport = useMemo(() => Boolean(onnxDepthMap || depthData), [onnxDepthMap, depthData]);
+  const showEstimatePrompt = useMemo(
+    () => phase === 'idle' && isCalibrated && hasDepthSupport,
+    [phase, isCalibrated, hasDepthSupport]
+  );
 
   const getClickCoords = useCallback((event: React.MouseEvent<HTMLDivElement>): Point | null => {
     const rect = overlayRef.current?.getBoundingClientRect();
@@ -511,14 +516,18 @@ const MeasurementTool: React.FC = () => {
 
   const handleOverlayClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     console.log('[measure] Click detected, phase:', phase);
+
     if (phase === 'idle') {
-      const coords = getClickCoords(event);
-      console.log('[measure] Starting measurement, coords:', coords);
-      if (coords) {
-        setStartPoint(coords);
-        setPhase('placingEnd');
-      }
-    } else if (phase === 'placingStart') {
+      console.log('[measure] Ignoring click while idle');
+      return;
+    }
+
+    if (!isCalibrated || !hasDepthSupport) {
+      console.log('[measure] Prerequisites missing, ignoring click');
+      return;
+    }
+
+    if (phase === 'placingStart') {
       // Handle the first click when starting from button
       const coords = getClickCoords(event);
       console.log('[measure] First click (placingStart), coords:', coords);
@@ -537,7 +546,7 @@ const MeasurementTool: React.FC = () => {
         setStartPoint(coords);
       }
     }
-  }, [phase, startPoint, getClickCoords, completeMeasurement]);
+  }, [phase, startPoint, getClickCoords, completeMeasurement, hasDepthSupport, isCalibrated]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {
@@ -546,23 +555,27 @@ const MeasurementTool: React.FC = () => {
     }
   }, [phase, getClickCoords]);
 
-  const startMeasurement = useCallback(async () => {
+  const startMeasurement = useCallback(() => {
     console.log('[measure] startMeasurement called');
     if (!currentCameraParams) {
       alert("Camera parameters not yet available. Please wait a moment.");
       return;
     }
 
-    if (!onnxDepthMap && !depthData) {
-      if (onGenerateDepthMap) {
-        await onGenerateDepthMap();
-      }
+    if (!isCalibrated) {
+      alert('Calibrate the horizon before estimating height.');
+      return;
     }
 
-    setPhase('placingEnd');
+    if (!hasDepthSupport) {
+      alert('Depth data is required before estimating height. Generate or load a depth map first.');
+      return;
+    }
+
+    setPhase('placingStart');
     setStartPoint(null);
     setCurrentMousePos(null);
-  }, [currentCameraParams, onnxDepthMap, depthData, onGenerateDepthMap]);
+  }, [currentCameraParams, hasDepthSupport, isCalibrated]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -581,13 +594,13 @@ const MeasurementTool: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [phase, startMeasurement]);
 
-  const overlayClassName = useMemo(() => 
-    `${styles.overlay} ${phase !== 'idle' ? styles.overlayActive : ''}`, 
+  const overlayClassName = useMemo(() =>
+    `${styles.overlay} ${phase !== 'idle' ? styles.overlayActive : ''}`,
     [phase]
   );
 
   return (
-    <div 
+    <div
       ref={overlayRef}
       className={overlayClassName}
       onClick={handleOverlayClick}
@@ -595,7 +608,14 @@ const MeasurementTool: React.FC = () => {
       role="button"
       tabIndex={0}
       aria-label="Measurement overlay - click to place measurement points"
+      aria-disabled={phase === 'idle'}
+      data-testid="measurement-overlay"
     >
+      {showEstimatePrompt && (
+        <div className={styles.estimatePrompt} role="status" aria-live="polite">
+          Calibration complete! Press “Estimate Height” (or tap M) to begin measuring.
+        </div>
+      )}
       <StartButton
         phase={phase}
         cameraParams={currentCameraParams}
