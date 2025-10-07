@@ -1,52 +1,53 @@
-# PoleCheck Desktop Application
+# PoleCheck Desktop
 
 ## Overview
 
-PoleCheck Desktop is a cross-platform (Windows, macOS, Linux) application built with Electron, React, and TypeScript. It allows users to:
+PoleCheck Desktop is a cross-platform application for measuring objects in Google Street View imagery. Built with Electron, React, and TypeScript, it provides:
 
-*   Search for locations using text or coordinates.
-*   View Google Street View panoramas.
-*   Perform height estimations of objects within Street View by clicking points on the image.
-*   Utilize Machine Learning (Depth Anything V2 Metric Depth model) for improved distance estimation accuracy.
-*   Manage and export measurements with depth-map caching for improved performance.
+*   Location search using text or coordinates
+*   Google Street View panorama integration
+*   Height measurement tools using camera geometry and depth estimation
+*   Machine learning depth analysis using Depth Anything V2 model
+*   Measurement management and CSV export capabilities
 
 ## Technology Stack
 
 *   **Framework:** Electron
 *   **Frontend:** React + TypeScript
 *   **Build Tool:** Vite with `vite-plugin-electron`
-*   **Mapping:** Google Maps JavaScript API (`@googlemaps/js-api-loader`)
-*   **ML Inference (Main Process):** ONNX Runtime (`onnxruntime-node`) with Depth Anything V2 Metric Depth model.
-*   **Image Processing (Main Process):** Sharp (`sharp`)
-*   **Styling:** CSS Modules with theme support (light/dark/system)
-*   **HTTP Requests:** `node-fetch`
+*   **Mapping:** Google Maps JavaScript API
+*   **ML Inference:** ONNX Runtime with Depth Anything V2 model
+*   **Image Processing:** Sharp for image manipulation
+*   **Styling:** CSS Modules with theme support
+*   **State Management:** Zustand with Immer
+*   **HTTP Requests:** node-fetch
 *   **Caching:** IndexedDB for depth map caching
-*   **Native Node Module Handling:** Configured via `external` in `vite.config.ts`.
 
 ## Key Features
 
-*   **Location Search:** Find locations via search bar (Places API) or direct coordinate input.
-*   **Street View Integration:** Interactive Street View display with camera parameter tracking.
-*   **Metric Depth Estimation:** Uses an ONNX model running in the main Electron process to estimate depth in meters.
-*   **Height Measurement Tool:** Click base and top points on an object to estimate its height using camera parameters and ML depth data.
-*   **Horizon Calibration:** Calibrate the horizon offset for accurate measurements by clicking on the flat horizontal line where sky meets ground.
-*   **Measurement List:** View, name, delete, and export measurements with persistent storage.
-*   **CSV Export:** Export measurements to a CSV file via main process file dialog.
-*   **Cross-Platform:** Built with Electron for compatibility across Windows, macOS, and Linux.
-*   **Settings Panel:** In-app modal for default unit, theme (light/dark/system), GPU toggle, and history limit.
-*   **Depth-Map Caching:** IndexedDB cache dramatically reduces repeat latency and Google quota usage.
-*   **Keyboard Shortcuts:** M for measurement, U for unit toggle, Ctrl+E for export, Ctrl+Shift+Delete for clear all.
-*   **Theme Support:** Light, dark, and system theme modes with CSS variables.
+*   **Location Search:** Text search or coordinate input for target locations
+*   **Street View Integration:** Interactive panorama display with camera tracking
+*   **Depth Estimation:** ONNX-based depth analysis for distance calculations
+*   **Height Measurements:** Point-to-point height estimation using camera geometry
+*   **Horizon Calibration:** Manual horizon offset correction for accuracy
+*   **Measurement Management:** View, rename, delete, and export measurements
+*   **CSV Export:** Export measurement data to spreadsheet format
+*   **Cross-Platform:** Windows, macOS, and Linux support via Electron
+*   **Settings Panel:** Unit preferences, theme selection, and calibration options
+*   **Depth Caching:** IndexedDB caching for improved performance
+*   **Keyboard Shortcuts:** Quick access to common functions
+*   **Theme Support:** Light, dark, and system theme options
 
-## Roadmap Overview
+## Development Status
 
-PoleCheck's production roadmap focuses on hardening the current experience before layering advanced capabilities:
+PoleCheck is in active development with focus on measurement accuracy and user experience:
 
-*   **Phase 1 – Foundation (Weeks 1–4):** Establish a robust testing stack, introduce dedicated state management with Zustand, add centralized error handling and validation, and optimize performance for large measurement sets.
-*   **Phase 2 – Feature Growth (Weeks 5–12):** Expand measurement tooling (polylines, areas, volumes), integrate AI assistance for object detection and smart snapping, and deliver richer project/data management workflows.
-*   **Phase 3 – Enterprise Readiness (Months 4–6):** Enable real-time collaboration, enterprise integrations (APIs, databases, reporting), and advanced ML capabilities for at-scale deployments.
+*   **Core Features:** Height measurement, depth estimation, and data export are functional
+*   **Testing:** Unit and integration test coverage is being expanded
+*   **State Management:** Centralized state management with Zustand is implemented
+*   **Performance:** Depth map caching and optimization features are in place
 
-Review [docs/roadmap.md](./docs/roadmap.md) for the full improvement plan, including priority matrices, success metrics, and status tracking.
+See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and priorities.
 
 ## Setup and Installation
 
@@ -149,60 +150,53 @@ This command will:
 - **Escape**: Cancel current measurement or calibration
 
 ### Settings
-Access settings via the gear icon (⚙️) in the header:
+Access settings via the gear icon in the header:
 - **Theme**: Light, dark, or system preference
 - **Default Unit**: Metric (meters) or Imperial (feet)
 - **GPU Acceleration**: Toggle for ONNX inference
 - **Measurement History Limit**: Maximum number of measurements to keep
-- **Depth Scale / Bias**: Adjust calibration applied to depth maps
-- **Street View Depth Retries**: Maximum number of API retries before skipping Street View depth for the active panorama
+- **Depth Calibration**: Scale and bias adjustments for depth maps
+- **Debug Options**: Overlay and sampling controls for development
 
-## Depth Calibration & Pixel-to-World Conversion
+## Measurement Accuracy
 
-PoleCheck combines Street View camera metadata with the Depth Anything model to map on-screen pixels to real-world distances. Accurate calibration ensures the geometry used for height estimation reflects what the camera actually captured.
+PoleCheck uses multiple data sources for accurate measurements:
 
-### Field of View & Camera Pose
-- The Google Street View API supplies field-of-view, pitch, and heading information for each panorama. PoleCheck uses this metadata to reconstruct the virtual camera so that measurements align with the original perspective.
-- Avoid forcing extreme zoom levels inside Street View—staying near the default perspective preserves the FOV assumptions baked into the calibration pipeline.
-- When revisiting a saved measurement, confirm the panorama hasn't changed (e.g., a different capture date) because variations in camera pose can introduce error.
+### Camera Parameters
+- Street View provides field-of-view, pitch, and heading data for each panorama
+- These parameters are used to reconstruct the camera perspective for 3D calculations
+- Avoid extreme zoom levels to maintain calibration accuracy
 
-### Lens Distortion Considerations
-- Street View imagery is delivered as an equirectangular panorama. The app renders a rectilinear view and accounts for the spherical distortion before projecting points into 3D space.
-- Distortion rises toward the image edges. For highest accuracy, place measurement points near the center of the viewport and avoid leaning poles or objects that span heavily warped regions.
+### Depth Estimation
+- Primary: Google Street View depth planes (when available)
+- Secondary: ONNX depth model with calibration
+- Fallback: Ground plane intersection using camera geometry
 
-### Depth Scale & Bias
-- Depth models can output values that are consistently scaled or offset. Default scale/bias parameters are derived from calibration scenes but can be customized in **Settings → Depth Scale / Bias**.
-- To refine the values:
-  1. Visit locations with known dimensions (buildings, survey markers, etc.).
-  2. Record both the predicted depth and the ground-truth distance.
-  3. Fit a line using `actual = scale * predicted + bias`.
-  4. Enter the resulting scale and bias values in the settings panel.
-- The adjusted parameters are applied to all future depth maps and cached results.
+### Calibration
+- **Depth Scale/Bias**: Adjustable parameters to correct depth model output
+- **Horizon Calibration**: Manual correction for camera tilt and panorama stitching
+- **Auto-calibration**: Automatic refinement based on measurement samples
 
-### Horizon Calibration
-- Horizon calibration corrects small pitch offsets that accumulate from panorama stitching or tripod tilt.
-- Click **Calibrate Horizon** and select a point where the sky meets the ground (or any long, flat reference line). The app shifts the virtual camera to make that line level, improving vertical height calculations.
-- Re-run the calibration whenever you switch locations, move to a new panorama date, or notice that vertical lines do not appear plumb on screen.
+### Best Practices
+- Place measurement points near the center of the viewport for best accuracy
+- Use horizon calibration when switching locations or noticing measurement drift
+- Verify panorama date consistency when revisiting saved measurements
 
 ## Project Structure
 
-*   `electron/`: Electron main process (`main.ts`) and preload script (`preload.ts`).
-*   `src/`: React frontend source code.
-    *   `components/`: React components (MapView, MeasurementTool, SearchBox, SettingsPanel).
-    *   `stores/`: Zustand stores with `rootStore.ts` serving as the authoritative global state container for settings, camera
-        metadata, measurements, projects, and UI state.
-    *   `services/`: Logic for geometry, measurements, depth caching, etc.
-    *   `types/`: TypeScript type definitions.
-    *   `assets/`: Static assets (including the `models/` subdirectory).
-    *   `App.tsx`: Main application component.
-    *   `main.tsx`: React entry point.
-*   `public/`: Static assets copied to the build output.
-*   `dist/`: Output directory for the Vite frontend build.
-*   `dist-electron/`: Output directory for the Electron main/preload script builds.
-*   `release/`: Output directory for packaged application builds.
-*   `setup.bat`: Windows automated setup script.
-*   `setup.sh`: Cross-platform automated setup script.
-*   `build-windows.bat`: Windows build automation script.
+*   `electron/`: Electron main process and preload scripts
+*   `src/`: React frontend source code
+    *   `components/`: UI components (MapView, MeasurementTool, SearchBox, SettingsPanel, etc.)
+    *   `stores/`: Zustand state management (rootStore.ts, projectStore.ts, settingsStore.ts)
+    *   `services/`: Business logic (geometry, measurement, depth, error handling)
+    *   `types/`: TypeScript type definitions
+    *   `utils/`: Utility functions
+    *   `tests/`: Test files (unit, integration, e2e)
+    *   `assets/models/`: ONNX model files
+*   `docs/`: Documentation files
+*   `dist/`: Vite build output
+*   `dist-electron/`: Electron build output
+*   `release/`: Packaged application builds
 
 ## Development
 
@@ -212,17 +206,16 @@ PoleCheck combines Street View camera metadata with the Depth Anything model to 
 - **Prettier**: Code formatting (configured in ESLint)
 
 ### Testing
-[![CI/CD Pipeline](https://github.com/lukifer23/PoleCheck-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/lukifer23/PoleCheck-Desktop/actions/workflows/ci.yml)
 
-Use the following commands to exercise the primary test suites locally:
+Run tests using these commands:
 
 ```bash
 npm run test:unit        # Unit tests
 npm run test:integration # Integration tests
-npm run test:e2e         # Playwright e2e tests
+npm run test:e2e         # End-to-end tests
+npm run test:all         # All test suites
+npm run validate         # Type checking, linting, and tests
 ```
-
-Run `npm run validate` to execute strict type-checking, linting, and the aggregated test suites in one step.
 
 ## Troubleshooting
 
@@ -256,4 +249,4 @@ Run `npm run validate` to execute strict type-checking, linting, and the aggrega
 
 ## License
 
-[Add your license information here]
+This project is licensed under the MIT License.

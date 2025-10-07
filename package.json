@@ -2,7 +2,7 @@
   "name": "polecheck-desktop",
   "private": true,
   "version": "0.0.1",
-  "description": "Desktop application for Street View measurements using Google Maps APIs.",
+  "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
   "author": "Your Name <your.email@example.com>",
   "type": "module",
   "main": "dist-electron/main.js",

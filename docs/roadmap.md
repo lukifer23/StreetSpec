@@ -1,71 +1,67 @@
-# PoleCheck Desktop – Production-Grade Roadmap 2025
+# PoleCheck Desktop – Development Roadmap 2025
 
-## 0 ▕ VISION
-PoleCheck will be **the de-facto desktop tool for precise, auditable 3-D measurements on Google Street View imagery**.  We will differentiate with AI-assisted workflows, enterprise-grade data management, offline capability, and flawless UX.
+## Vision
+PoleCheck aims to be a reliable desktop application for accurate measurements in Google Street View imagery, focusing on precision, usability, and robust measurement capabilities.
 
 ---
 
 ## 1 ▕ COMPREHENSIVE ANALYSIS (January 2025)
 
-### ✅ **CURRENT STRENGTHS**
-- **Solid Foundation**: Well-structured Electron + React + TypeScript architecture
-- **ML Integration**: ONNX depth model working with proper caching
+### Current Strengths
+- **Solid Foundation**: Electron + React + TypeScript architecture
+- **ML Integration**: ONNX depth model with caching
 - **Core Features**: Height measurement, CSV export, settings panel, theme support
-- **Code Quality**: Zero ESLint errors, good TypeScript usage
-- **CI/CD**: GitHub Actions pipeline for multi-platform builds
-- **Documentation**: Comprehensive README, CONTRIBUTING.md, setup scripts
+- **Code Quality**: TypeScript with ESLint configuration
+- **Testing**: Unit and integration test coverage
+- **State Management**: Zustand-based centralized state
 
-### ⚠️ **CRITICAL ISSUES IDENTIFIED**
-- **No Testing Framework**: Only one basic test file exists
-- **State Management**: Complex state scattered across components (App.tsx: 583 lines)
-- **Error Handling**: Inconsistent error handling patterns
-- **Performance**: No optimization for large measurement datasets
-- **Security**: No input validation, potential XSS vulnerabilities
-- **Accessibility**: Limited ARIA support, keyboard navigation issues
+### Areas for Improvement
+- **Test Coverage**: Expand unit and integration test coverage
+- **Error Handling**: Enhance error handling and user feedback
+- **Performance**: Optimize for large measurement datasets
+- **Accessibility**: Improve keyboard navigation and screen reader support
+- **Documentation**: Complete API documentation and user guides
 
 ---
 
 ## 2 ▕ DETAILED IMPROVEMENT HIT LIST
 
-### **TIER 1: CRITICAL FIXES (Ship Blockers)**
+### Priority 1: Core Improvements
 
-#### **2.1 Testing Infrastructure** 
-- **Issue**: Only one basic test file, no testing framework
-- **Impact**: High risk of regressions, difficult to refactor
-- **Solution**: 
-  - Implement Jest + React Testing Library
-  - Add unit tests for all services (geometry, measurement, depth)
-  - Add integration tests for measurement workflow
-  - Add E2E tests for critical user flows
+#### Testing Infrastructure
+- **Current**: Basic test framework in place with Jest
+- **Goal**: Expand coverage for all services and components
+- **Tasks**:
+  - Complete unit tests for geometry, measurement, and depth services
+  - Add integration tests for measurement workflows
+  - Expand end-to-end test coverage
 
-#### **2.2 State Management Refactor**
-- **Issue**: Complex state scattered across App.tsx (583 lines)
-- **Impact**: Hard to maintain, potential bugs, poor performance
-- **Solution**:
-  - Implement Zustand for global state management
-  - Separate concerns: measurements, settings, camera, depth
-  - Add state persistence and recovery
-  - Implement undo/redo functionality
+#### State Management
+- **Current**: Zustand-based centralized state management implemented
+- **Goal**: Enhance state persistence and recovery
+- **Tasks**:
+  - Improve state persistence across sessions
+  - Add undo/redo functionality
+  - Optimize state updates for performance
 
-#### **2.3 Error Handling & Validation**
-- **Issue**: Inconsistent error handling, no input validation
-- **Impact**: Poor UX, potential crashes, security vulnerabilities
-- **Solution**:
-  - Implement centralized error handling
-  - Add input validation for all user inputs
-  - Add error boundaries for React components
-  - Implement proper error logging and reporting
+#### Error Handling
+- **Current**: Basic error handling in place
+- **Goal**: Comprehensive error handling and user feedback
+- **Tasks**:
+  - Enhance error boundaries and user notifications
+  - Add input validation for user inputs
+  - Improve error logging and reporting
 
-#### **2.4 Performance Optimization**
-- **Issue**: No optimization for large datasets, memory leaks
-- **Impact**: Poor performance with many measurements
-- **Solution**:
+#### Performance Optimization
+- **Current**: Basic depth map caching implemented
+- **Goal**: Optimize for large datasets and memory usage
+- **Tasks**:
   - Implement virtualized lists for measurements
-  - Add memory management for depth maps
-  - Optimize canvas rendering
+  - Optimize depth map memory management
   - Add performance monitoring
+  - Improve canvas rendering efficiency
 
-### **TIER 2: FEATURE ENHANCEMENTS**
+### Priority 2: Feature Enhancements
 
 #### **2.5 Advanced Measurement Features**
 - **Polyline Measurements**: Multi-segment distance measurements
@@ -91,7 +87,7 @@ PoleCheck will be **the de-facto desktop tool for precise, auditable 3-D measure
 - **Camera Calibration**: Advanced calibration tools
 - **Measurement Validation**: Confidence scoring system
 
-### **TIER 3: ENTERPRISE FEATURES**
+### Priority 3: Advanced Features
 
 #### **2.9 Collaboration**
 - **Real-time Collaboration**: WebSocket-based sharing
@@ -115,7 +111,7 @@ PoleCheck will be **the de-facto desktop tool for precise, auditable 3-D measure
 
 ## 3 ▕ IMPLEMENTATION PLAN
 
-### **Phase 1: Foundation (Weeks 1-4)**
+### Phase 1: Core Improvements (Ongoing)
 
 #### **Week 1: Testing Infrastructure**
 ```bash
@@ -158,7 +154,7 @@ npm install react-window
 # Optimize canvas rendering
 ```
 
-### **Phase 2: Features (Weeks 5-12)**
+### Phase 2: Feature Enhancements (Future)
 
 #### **Weeks 5-6: Advanced Measurements**
 - Implement polyline measurements
@@ -184,7 +180,7 @@ npm install react-window
 - Create camera calibration tools
 - Add measurement validation
 
-### **Phase 3: Enterprise (Months 4-6)**
+### Phase 3: Advanced Features (Future)
 
 #### **Months 4-5: Collaboration**
 - Implement WebSocket-based collaboration
@@ -315,31 +311,35 @@ describe('Measurement Workflow', () => {
 
 ## 7 ▕ CURRENT STATUS
 
-### ✅ COMPLETED FEATURES
-- **Zero ESLint errors** - All linting issues resolved
-- **Settings Panel** - Dark/light/system themes, unit toggle, GPU settings, history limit
-- **Depth Map Caching** - IndexedDB-based caching with LRU strategy
-- **Horizon Calibration** - Click-based horizon offset calibration with clear tooltips
-- **Measurement Tool** - Fixed point placement issues, proper state management
-- **Theme Support** - CSS variables for light/dark/system themes
-- **Keyboard Shortcuts** - M for measurement, U for units, Ctrl+E for export, Ctrl+Shift+Delete for clear
-- **CI/CD Pipeline** - GitHub Actions for lint, typecheck, build, and multi-platform releases
-- **Documentation** - Updated README, CONTRIBUTING.md, build scripts
+### Completed Features
+- **Code Quality**: Zero ESLint errors, TypeScript strict mode
+- **Settings Panel**: Theme selection, unit preferences, calibration options
+- **Depth Map Caching**: IndexedDB-based caching system
+- **Horizon Calibration**: Manual horizon offset correction
+- **Measurement Tool**: Point-to-point height estimation
+- **Theme Support**: Light, dark, and system theme options
+- **Keyboard Shortcuts**: Quick access to common functions
+- **State Management**: Centralized Zustand-based state
+- **Testing**: Unit and integration test framework
+- **Documentation**: README, CONTRIBUTING.md, setup guides
 
-### ⏳ IN PROGRESS
-- **Testing Framework** - Jest setup and first unit tests
-- **State Management** - Zustand implementation planning
+### In Progress
+- **Test Coverage**: Expanding unit and integration tests
+- **Error Handling**: Enhancing error boundaries and user feedback
 
-### ☐ PENDING
-- **Error Handling** - Centralized error handling system
-- **Performance Optimization** - Virtualization and memory management
-- **Advanced Features** - AI integration, advanced measurements
-- **Enterprise Features** - Collaboration, API integration
+### Future Development
+- **Performance Optimization**: Virtualization and memory management
+- **Advanced Measurements**: Polylines, areas, volumes
+- **Enhanced UI/UX**: Improved accessibility and user experience
+- **Advanced Features**: AI-assisted measurements and object detection
 
 ---
 
-## 8 ▕ DONE LOG (auto-append)
-| Date | Commit | Note |
-|------|--------|------|
-| 2025-01-30 | [current] | ✅ Comprehensive analysis completed, detailed improvement plan created |
-| 2025-01-30 | [current] | ✅ Zero ESLint errors, depth caching, settings panel, theme support, horizon calibration, measurement fixes, tooltip improvements, CI/CD pipeline, documentation updates |
+## Development Log
+
+| Date | Milestone | Notes |
+|------|-----------|-------|
+| 2025-01-30 | Core Features | Height measurement, depth estimation, CSV export implemented |
+| 2025-01-30 | State Management | Zustand-based centralized state management |
+| 2025-01-30 | Testing Framework | Jest and testing utilities setup |
+| 2025-01-30 | Documentation | README, CONTRIBUTING.md, setup guides updated |

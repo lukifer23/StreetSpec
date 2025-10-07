@@ -125,7 +125,7 @@ class ErrorHandlerService implements ErrorHandler {
     notification.className = `error-notification error-${error.severity}`;
     notification.innerHTML = `
       <div class="error-header">
-        <span class="error-icon">⚠️</span>
+        <span class="error-icon">!</span>
         <span class="error-title">${this.getErrorTitle(error)}</span>
         <button class="error-close" onclick="this.parentElement.parentElement.remove()">×</button>
       </div>
