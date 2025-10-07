@@ -3,27 +3,14 @@ import { cacheDepthMap, getCachedDepthMap } from './depth';
 import { executeWithRateLimit } from './rateLimiter';
 
 export async function blobToDataUrl(blob: Blob): Promise<string> {
+  // Convert blob to base64 data URL for ONNX inference
   const arrayBuffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-
-  let base64: string;
-
-  if (typeof Buffer !== 'undefined') {
-    base64 = Buffer.from(bytes).toString('base64');
-  } else {
-    const chunkSize = 0x8000;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-    base64 = btoa(binary);
-  }
-
+  const buffer = Buffer.from(arrayBuffer);
+  const base64 = buffer.toString('base64');
   const mimeType = blob.type || 'application/octet-stream';
-
   return `data:${mimeType};base64,${base64}`;
 }
+
 
 export interface DepthGenerationDeps {
   fetchImage: (url: string) => Promise<Response>;

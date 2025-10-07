@@ -181,7 +181,7 @@ const MapView: React.FC<{
   onCameraParamsChange,
   onCalibrateClick
 }) => {
-  const { targetCoords, setTargetCoords } = useRootStore();
+  const { targetCoords } = useRootStore();
   const { isGeneratingMap, mapGenerationError, calibrateMode } = useRootStore();
   const { onnxDepthMap } = useRootStore();
 

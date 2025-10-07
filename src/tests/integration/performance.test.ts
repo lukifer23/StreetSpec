@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { rateLimiter, executeWithRateLimit, getRateLimitStatus } from '../../services/rateLimiter';
+import { executeWithRateLimit, getRateLimitStatus } from '../../services/rateLimiter';
 import { calculateFov, screenToWorld, calculateDistance3D } from '../../services/geometry';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../../services/measurementLogic';
 import { validateCoordinates, validateMeasurement, validateCameraParams } from '../../types/strict';

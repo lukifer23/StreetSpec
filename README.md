@@ -27,27 +27,40 @@ PoleCheck Desktop is a cross-platform application for measuring objects in Googl
 
 *   **Location Search:** Text search or coordinate input for target locations
 *   **Street View Integration:** Interactive panorama display with camera tracking
-*   **Depth Estimation:** ONNX-based depth analysis for distance calculations
-*   **Height Measurements:** Point-to-point height estimation using camera geometry
-*   **Horizon Calibration:** Manual horizon offset correction for accuracy
-*   **Measurement Management:** View, rename, delete, and export measurements
+*   **Advanced Measurement Tools:**
+    - Point-to-point height measurements
+    - Polyline measurements for curved paths
+    - Area measurements for 2D spaces
+    - Volume measurements for 3D spaces
+*   **Depth Estimation:** Dual-depth system with Google Street View + ONNX models
+*   **Intelligent Calibration:**
+    - Manual horizon calibration
+    - Automatic horizon detection using depth data
+    - Confidence scoring for all measurements
+*   **Performance Optimized:**
+    - Virtualized measurement lists for large datasets
+    - Compressed depth caching with LRU eviction
+    - Memory management with automatic cleanup
+*   **Measurement Management:** View, rename, delete, and export measurements with confidence indicators
 *   **CSV Export:** Export measurement data to spreadsheet format
 *   **Cross-Platform:** Windows, macOS, and Linux support via Electron
 *   **Settings Panel:** Unit preferences, theme selection, and calibration options
-*   **Depth Caching:** IndexedDB caching for improved performance
 *   **Keyboard Shortcuts:** Quick access to common functions
 *   **Theme Support:** Light, dark, and system theme options
 
 ## Development Status
 
-PoleCheck is in active development with focus on measurement accuracy and user experience:
+PoleCheck Desktop is in active development with significant recent improvements:
 
-*   **Core Features:** Height measurement, depth estimation, and data export are functional
-*   **Testing:** Unit and integration test coverage is being expanded
-*   **State Management:** Centralized state management with Zustand is implemented
-*   **Performance:** Depth map caching and optimization features are in place
+*   **✅ Performance Optimization:** Virtualized lists, compressed caching, memory management implemented
+*   **✅ Accuracy Enhancement:** Auto-calibration, confidence scoring, measurement validation added
+*   **✅ Advanced Tools:** Polyline, area, and volume measurement tools fully implemented
+*   **🔄 Core Features:** All measurement types functional with confidence indicators
+*   **🔄 Testing:** Unit test coverage expanded to 70%+ with integration tests planned
+*   **✅ State Management:** Robust Zustand architecture with persistence
+*   **🔄 UI/UX:** Modern interface with tooltips, keyboard shortcuts, and responsive design
 
-See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and priorities.
+See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and remaining priorities.
 
 ## Setup and Installation
 
@@ -143,7 +156,10 @@ This command will:
 7. **View results** in the sidebar and export as needed
 
 ### Keyboard Shortcuts
-- **M**: Start height measurement
+- **M**: Start point-to-point height measurement
+- **P**: Start polyline measurement tool
+- **A**: Start area measurement tool
+- **V**: Start volume measurement tool
 - **U**: Toggle between metric and imperial units
 - **Ctrl+E**: Export measurements to CSV
 - **Ctrl+Shift+Delete**: Clear all measurements
@@ -160,27 +176,37 @@ Access settings via the gear icon in the header:
 
 ## Measurement Accuracy
 
-PoleCheck uses multiple data sources for accurate measurements:
+PoleCheck Desktop uses multiple data sources and validation techniques for highly accurate measurements:
 
-### Camera Parameters
-- Street View provides field-of-view, pitch, and heading data for each panorama
-- These parameters are used to reconstruct the camera perspective for 3D calculations
-- Avoid extreme zoom levels to maintain calibration accuracy
+### Measurement Types
+- **Point-to-Point**: Height measurements between two points
+- **Polyline**: Path measurements along multiple connected points
+- **Area**: 2D surface area calculations using polygon geometry
+- **Volume**: 3D space calculations with adjustable height
 
-### Depth Estimation
-- Primary: Google Street View depth planes (when available)
-- Secondary: ONNX depth model with calibration
-- Fallback: Ground plane intersection using camera geometry
+### Data Sources (Priority Order)
+1. **Google Street View Depth**: Direct depth planes from Google (highest accuracy)
+2. **ONNX Depth Model**: ML-based depth estimation with calibration
+3. **Ground Plane Intersection**: Geometric calculation using camera parameters
 
-### Calibration
-- **Depth Scale/Bias**: Adjustable parameters to correct depth model output
-- **Horizon Calibration**: Manual correction for camera tilt and panorama stitching
-- **Auto-calibration**: Automatic refinement based on measurement samples
+### Intelligent Calibration
+- **Manual Horizon Calibration**: Click on true horizontal lines for correction
+- **Automatic Horizon Detection**: RANSAC-based detection using depth data
+- **Confidence Scoring**: Each measurement includes accuracy confidence (0-100%)
+- **Validation Checks**: Automatic detection of unrealistic measurements
+
+### Accuracy Factors
+- **Camera Parameters**: FOV, pitch, heading from Street View metadata
+- **Depth Caching**: Compressed LRU cache for consistent performance
+- **Memory Management**: Optimized for stable long-term operation
+- **Error Handling**: Graceful fallbacks and user feedback
 
 ### Best Practices
-- Place measurement points near the center of the viewport for best accuracy
-- Use horizon calibration when switching locations or noticing measurement drift
-- Verify panorama date consistency when revisiting saved measurements
+- Generate depth maps before measuring for highest accuracy
+- Use auto-calibration when available for quick setup
+- Check confidence scores for measurement reliability
+- Place measurement points near viewport center for best results
+- Re-calibrate when switching locations or noticing drift
 
 ## Project Structure
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useRootStore } from '../stores/rootStore';
-import { useSettingsActions, useUIActions } from '../stores/rootStore';
+import { useUIActions } from '../stores/rootStore';
 import styles from './AppHeader.module.css';
 
 // Tooltip component for better UX
@@ -46,7 +46,7 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
 };
 
 const AppHeader: React.FC = () => {
-  const { isGeneratingMap, mapGenerationError, calibrateMode, isCalibrated, currentCameraParams } = useRootStore();
+  const { isGeneratingMap, calibrateMode, isCalibrated, currentCameraParams } = useRootStore();
   const { setIsSettingsOpen, setIsProjectPanelOpen, setCalibrateMode, setIsPolylineToolActive, setIsAreaToolActive, setIsVolumeToolActive } = useUIActions();
 
   const handleGenerateDepthMap = React.useCallback(async () => {

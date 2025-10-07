@@ -143,11 +143,12 @@ if (!app.requestSingleInstanceLock()) {
 let depthSession: ort.InferenceSession | null = null;
 let sessionLoadAttempts = 0;
 const MAX_SESSION_LOAD_ATTEMPTS = 3;
-const SESSION_LOAD_RETRY_DELAY = 2000; // 2 seconds
 
-// Memory monitoring
+// Memory monitoring and management
 let lastMemoryCheck = Date.now();
 const MEMORY_CHECK_INTERVAL = 30000; // 30 seconds
+const MAX_MEMORY_USAGE_MB = 500; // Trigger cleanup at 500MB
+const FORCE_GC_THRESHOLD_MB = 800; // Force garbage collection at 800MB
 
 // Add rate limiting configuration
 const RATE_LIMIT = {
@@ -183,6 +184,35 @@ async function cleanupModelSession(): Promise<void> {
       console.error('[model] Error during session cleanup:', error);
     }
   }
+}
+
+async function performMemoryCleanup(): Promise<void> {
+  console.log('[memory] Performing memory cleanup...');
+  logMemoryUsage('Before cleanup');
+
+  // Clear depth cache if memory is high
+  const memory = getMemoryUsage();
+  if (memory.rss > MAX_MEMORY_USAGE_MB) {
+    try {
+      // Clear old cached depth maps
+      const depthCacheKeys = Object.keys(global).filter(key => key.startsWith('depth_cache_'));
+      depthCacheKeys.forEach(key => {
+        delete (global as any)[key];
+      });
+      console.log('[memory] Cleared', depthCacheKeys.length, 'depth cache entries from memory');
+    } catch (error) {
+      console.warn('[memory] Error clearing depth cache:', error);
+    }
+  }
+
+  // Force garbage collection if available and memory is very high
+  if (memory.rss > FORCE_GC_THRESHOLD_MB && typeof global.gc === 'function') {
+    console.log('[memory] Forcing garbage collection...');
+    global.gc();
+    logMemoryUsage('After forced GC');
+  }
+
+  logMemoryUsage('After cleanup');
 }
 
 async function reloadModelSession(): Promise<boolean> {
@@ -1174,11 +1204,18 @@ process.on('unhandledRejection', async (reason: any, _promise: Promise<any>) => 
   }
 });
 
-// Periodic memory monitoring
-setInterval(() => {
+// Periodic memory monitoring and cleanup
+setInterval(async () => {
   const now = Date.now();
   if (now - lastMemoryCheck >= MEMORY_CHECK_INTERVAL) {
+    const memory = getMemoryUsage();
     logMemoryUsage('Periodic check');
+
+    // Perform cleanup if memory usage is high
+    if (memory.rss > MAX_MEMORY_USAGE_MB) {
+      await performMemoryCleanup();
+    }
+
     lastMemoryCheck = now;
   }
 }, MEMORY_CHECK_INTERVAL);

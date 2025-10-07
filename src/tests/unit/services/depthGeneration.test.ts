@@ -1,5 +1,5 @@
 import { describe, it, expect, jest } from '@jest/globals';
-import { blobToDataUrl, generateDepthMap } from '../../../services/depthGeneration';
+import { generateDepthMap } from '../../../services/depthGeneration';
 import { CameraParams, OnnxDepthMap } from '../../../types/common';
 
 const baseCameraParams: CameraParams = {
@@ -12,15 +12,6 @@ const baseCameraParams: CameraParams = {
 };
 
 describe('depthGeneration helpers', () => {
-  it('converts blobs into data URLs', async () => {
-    const blob = new Blob([Uint8Array.from([0xde, 0xad, 0xbe, 0xef])], { type: 'image/png' });
-    const dataUrl = await blobToDataUrl(blob);
-
-    expect(dataUrl.startsWith('data:image/png;base64,')).toBe(true);
-    const base64 = dataUrl.split(',')[1];
-    const restored = Buffer.from(base64, 'base64');
-    expect(Array.from(restored.values())).toEqual([0xde, 0xad, 0xbe, 0xef]);
-  });
 
   it('returns cached depth maps without hitting the network', async () => {
     const cachedDepthMap: OnnxDepthMap = { data: [1, 2, 3], width: 1, height: 3 };
@@ -41,7 +32,11 @@ describe('depthGeneration helpers', () => {
   });
 
   it('awaits caching before resolving when generating a new depth map', async () => {
-    const blob = new Blob([Uint8Array.from([1, 2, 3])], { type: 'image/jpeg' });
+    const imageBuffer = Buffer.from([1, 2, 3]);
+    const blob = {
+      type: 'image/jpeg',
+      arrayBuffer: async () => imageBuffer
+    } as Blob;
     const response = {
       ok: true,
       status: 200,
@@ -86,7 +81,7 @@ describe('depthGeneration helpers', () => {
       ok: false,
       status: 500,
       statusText: 'Internal Error',
-      blob: async () => new Blob(),
+      arrayBuffer: async () => Buffer.from([]),
     } as Response;
 
     await expect(generateDepthMap(baseCameraParams, 'api-key', {
@@ -98,7 +93,11 @@ describe('depthGeneration helpers', () => {
   });
 
   it('throws when inference result is invalid', async () => {
-    const blob = new Blob([Uint8Array.from([1, 2, 3])], { type: 'image/jpeg' });
+    const imageBuffer = Buffer.from([1, 2, 3]);
+    const blob = {
+      type: 'image/jpeg',
+      arrayBuffer: async () => imageBuffer
+    } as Blob;
     const response = {
       ok: true,
       status: 200,

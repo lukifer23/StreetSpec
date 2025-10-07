@@ -1,4 +1,5 @@
 import { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
+import { Matrix } from 'ml-matrix';
 
 const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');
 type CalibratedVector3 = Vector3 & { [calibrationAppliedSymbol]?: boolean };
@@ -518,6 +519,166 @@ export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
     const dy = point2.y - point1.y;
     const dz = point2.z - point1.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// Automatic horizon detection using RANSAC line fitting
+export interface HorizonDetectionResult {
+  pitchOffset: number;
+  confidence: number;
+  method: 'depth' | 'gradient' | 'fallback';
+  detected: boolean;
+}
+
+export function detectHorizonFromDepth(
+  depthData: DecodedDepthData,
+  cameraParams: CameraParams,
+  viewWidth: number,
+  viewHeight: number
+): HorizonDetectionResult {
+  if (!depthData || depthData.planes.length === 0) {
+    return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
+  }
+
+  // Sample points along the bottom half of the image
+  const samplePoints: Array<{ x: number; y: number; depth: number }> = [];
+  const bottomHalfStart = Math.floor(viewHeight * 0.6);
+
+  for (let y = bottomHalfStart; y < viewHeight; y += 2) {
+    for (let x = 0; x < viewWidth; x += 4) {
+      const depth = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
+      if (depth) {
+        // Convert 3D point back to screen space to find horizon candidates
+        const distance = Math.sqrt(depth.x * depth.x + depth.y * depth.y + depth.z * depth.z);
+        samplePoints.push({ x, y, depth: distance });
+      }
+    }
+  }
+
+  if (samplePoints.length < 10) {
+    return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
+  }
+
+  // Use RANSAC to find the best horizontal line (horizon)
+  const bestLine = ransacLineFit(samplePoints, 50, 5.0); // 50 iterations, 5px threshold
+
+  if (!bestLine) {
+    return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
+  }
+
+  // Calculate pitch offset from the detected horizon line
+  const centerY = viewHeight / 2;
+  const horizonY = bestLine.intercept + bestLine.slope * (viewWidth / 2);
+  const pixelOffset = horizonY - centerY;
+
+  // Convert pixel offset to angle
+  const vFov = cameraParams.vFov || 90;
+  const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
+
+  const confidence = Math.min(1.0, bestLine.inliers / samplePoints.length);
+
+  return {
+    pitchOffset: -angleOffset, // Negative because we want to rotate the camera
+    confidence,
+    method: 'depth',
+    detected: confidence > 0.3
+  };
+}
+
+// RANSAC line fitting for horizon detection
+function ransacLineFit(
+  points: Array<{ x: number; y: number; depth: number }>,
+  maxIterations: number,
+  threshold: number
+): { slope: number; intercept: number; inliers: number } | null {
+  let bestLine: { slope: number; intercept: number; inliers: number } | null = null;
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    // Randomly select 2 points
+    const idx1 = Math.floor(Math.random() * points.length);
+    const idx2 = Math.floor(Math.random() * points.length);
+    if (idx1 === idx2) continue;
+
+    const p1 = points[idx1];
+    const p2 = points[idx2];
+
+    // Calculate line parameters (y = mx + b)
+    const slope = (p2.y - p1.y) / (p2.x - p1.x);
+    const intercept = p1.y - slope * p1.x;
+
+    // Count inliers
+    let inliers = 0;
+    for (const point of points) {
+      const expectedY = slope * point.x + intercept;
+      const distance = Math.abs(point.y - expectedY);
+      if (distance < threshold) {
+        inliers++;
+      }
+    }
+
+    // Update best line
+    if (!bestLine || inliers > bestLine.inliers) {
+      bestLine = { slope, intercept, inliers };
+    }
+  }
+
+  return bestLine;
+}
+
+// Convert pixel offset to vertical angle (similar to existing function but more robust)
+function pixelOffsetToVerticalAngle(pixelY: number, viewHeight: number, vFov: number): number {
+  // Normalize pixel coordinate to [-1, 1] range
+  const normalizedY = 1 - (pixelY / viewHeight) * 2; // Flip Y axis
+
+  // Convert to angle using FOV
+  const vFovRad = degreesToRadians(vFov);
+  const angleRad = Math.atan2(normalizedY * Math.tan(vFovRad / 2), 1);
+
+  return angleRad * 180 / Math.PI;
+}
+
+// Enhanced ground plane intersection with confidence scoring
+export interface GroundPlaneResult {
+  point: Vector3 | null;
+  confidence: number;
+  method: 'depth' | 'estimated' | 'fallback';
+}
+
+export function estimateGroundPlaneIntersectionWithConfidence(
+  directionVector: Vector3,
+  cameraParams: CameraParams,
+  depthData?: DecodedDepthData | null,
+  viewWidth?: number,
+  viewHeight?: number
+): GroundPlaneResult {
+  // Try depth-based intersection first
+  if (depthData && viewWidth && viewHeight) {
+    // This would use the depth data for more accurate intersection
+    // For now, fall back to the existing method
+  }
+
+  // Use existing ground plane estimation
+  const point = estimateGroundPlaneIntersection(directionVector, cameraParams);
+
+  if (point) {
+    // Calculate confidence based on direction vector properties
+    const horizontalComponent = Math.sqrt(directionVector.x * directionVector.x + directionVector.z * directionVector.z);
+    const verticalComponent = Math.abs(directionVector.y);
+
+    // High confidence if vector points significantly downward and has reasonable horizontal spread
+    const confidence = Math.min(1.0, (verticalComponent / horizontalComponent) * 0.5);
+
+    return {
+      point,
+      confidence: Math.max(0.1, confidence), // Minimum confidence
+      method: 'estimated'
+    };
+  }
+
+  return {
+    point: null,
+    confidence: 0,
+    method: 'fallback'
+  };
 }
 
 export function clearGeometryCaches(): void {
