@@ -1,6 +1,6 @@
 import { get, set, del, keys } from 'idb-keyval';
 import { compress, decompress } from 'lz-string';
-import { OnnxDepthMap, CameraParams } from '../types/common';
+import type { OnnxDepthMap, CameraParams } from '../types/common';
 
 interface CachedDepthMap extends OnnxDepthMap {
   lastUsed: number;

@@ -184,7 +184,7 @@ const MeasurementCanvas = React.memo<{
     drawCanvas();
   }, [drawCanvas]);
 
-  return <canvas ref={canvasRef} className={styles.measurementCanvas} />;
+  return <canvas ref={canvasRef} className={styles['measurementCanvas']} />;
 });
 
 MeasurementCanvas.displayName = 'MeasurementCanvas';
@@ -595,7 +595,7 @@ const MeasurementTool: React.FC = () => {
   }, [phase, startMeasurement]);
 
   const overlayClassName = useMemo(() =>
-    `${styles.overlay} ${phase !== 'idle' ? styles.overlayActive : ''}`,
+    `${styles['overlay']} ${phase !== 'idle' ? styles['overlayActive'] : ''}`,
     [phase]
   );
 
@@ -612,7 +612,7 @@ const MeasurementTool: React.FC = () => {
       data-testid="measurement-overlay"
     >
       {showEstimatePrompt && (
-        <div className={styles.estimatePrompt} role="status" aria-live="polite">
+        <div className={styles['estimatePrompt']} role="status" aria-live="polite">
           Calibration complete! Press “Estimate Height” (or tap M) to begin measuring.
         </div>
       )}

@@ -54,13 +54,13 @@ const MeasurementSidebar: React.FC = () => {
   }, [measurements]);
 
   return (
-    <div className={styles.sidebar}>
-      <div className={styles.sidebarHeader}>
+    <div className={styles['sidebar']}>
+      <div className={styles['sidebarHeader']}>
         <h4>Measurements</h4>
-        <div className={styles.sidebarControls}>
+        <div className={styles['sidebarControls']}>
           <button 
             onClick={handleUnitToggle} 
-            className={styles.unitToggle}
+            className={styles['unitToggle']}
             title={`Toggle units (${settings.defaultUnit === 'metric' ? 'Imperial' : 'Metric'})`}
           >
             {settings.defaultUnit === 'metric' ? 'm/ft' : 'ft/m'}
@@ -69,14 +69,14 @@ const MeasurementSidebar: React.FC = () => {
             <>
               <button 
                 onClick={handleExportCSV} 
-                className={styles.sidebarButton} 
+                className={styles['sidebarButton']} 
                 title="Export as CSV (Ctrl+E)"
               >
                 Export
               </button>
               <button 
                 onClick={handleClearMeasurements} 
-                className={`${styles.sidebarButton} ${styles.dangerButton}`} 
+                className={`${styles['sidebarButton']} ${styles['dangerButton']}`} 
                 title="Clear All Measurements (Ctrl+Shift+Delete)"
               >
                 Clear All
@@ -87,27 +87,27 @@ const MeasurementSidebar: React.FC = () => {
       </div>
 
       {measurements.length === 0 ? (
-        <div className={styles.noMeasurements}> 
+        <div className={styles['noMeasurements']}> 
           No measurements yet.
         </div> 
       ) : (
-        <ul className={styles.measurementList}>
+        <ul className={styles['measurementList']}>
           {measurements.map(m => (
-            <li key={m.id} className={styles.measurementItem}>
+            <li key={m.id} className={styles['measurementItem']}>
               <input 
                 type="text" 
                 placeholder="Add Name..." 
                 value={m.name || ''} 
                 onChange={(e) => renameMeasurement(m.id, e.target.value)}
-                className={styles.nameInput}
+                className={styles['nameInput']}
                 title="Rename Measurement"
               />
-              <span className={styles.measurementDetails}>
+              <span className={styles['measurementDetails']}>
                 {m.label}: {m.distance.toFixed(2)}{m.unit === 'metric' ? 'm' : 'ft'}
               </span>
               <button 
                 onClick={() => deleteMeasurement(m.id)}
-                className={styles.deleteButton}
+                className={styles['deleteButton']}
                 title="Delete Measurement"
               >
                 ✕
@@ -117,9 +117,9 @@ const MeasurementSidebar: React.FC = () => {
         </ul>
       )}
       
-      <div className={styles.sidebarFooter}>
+      <div className={styles['sidebarFooter']}>
         <div>PoleCheck Desktop v0.0.1</div>
-        <div className={styles.shortcuts}>
+        <div className={styles['shortcuts']}>
           <span>M: Measure</span>
           <span>U: Toggle Units</span>
           <span>Ctrl+E: Export</span>

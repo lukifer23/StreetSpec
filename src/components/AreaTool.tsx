@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
-import { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import type { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
 import styles from './AreaTool.module.css';
 
@@ -172,51 +172,51 @@ const AreaTool: React.FC = () => {
   const perimeterUnit = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
 
   return (
-    <div className={styles.areaTool}>
-      <div className={styles.toolHeader}>
+    <div className={styles['areaTool']}>
+      <div className={styles['toolHeader']}>
         <h3>Area Measurement Tool</h3>
-        <button onClick={handleClose} className={styles.closeButton}>×</button>
+        <button onClick={handleClose} className={styles['closeButton']}>×</button>
       </div>
 
-      <div className={styles.toolContent}>
-        <div className={styles.instructions}>
+      <div className={styles['toolContent']}>
+        <div className={styles['instructions']}>
           <p><strong>Instructions:</strong></p>
           <p>Click on the map to define the corners of the area you want to measure.</p>
           <p>Add at least 3 points to create an area measurement.</p>
         </div>
 
-        <div className={styles.measurementInfo}>
-          <div className={styles.pointsCount}>
+        <div className={styles['measurementInfo']}>
+          <div className={styles['pointsCount']}>
             Points: {points.length}
           </div>
 
           {area > 0 && (
-            <div className={styles.areaInfo}>
-              <div className={styles.areaValue}>
+            <div className={styles['areaInfo']}>
+              <div className={styles['areaValue']}>
                 Area: {displayArea.toFixed(2)} {areaUnit}
               </div>
-              <div className={styles.perimeterValue}>
+              <div className={styles['perimeterValue']}>
                 Perimeter: {displayPerimeter.toFixed(2)} {perimeterUnit}
               </div>
             </div>
           )}
         </div>
 
-        <div className={styles.controls}>
+        <div className={styles['controls']}>
           <button
             onClick={handleCompleteMeasurement}
             disabled={points.length < 3}
-            className={styles.completeButton}
+            className={styles['completeButton']}
           >
             Complete Area Measurement
           </button>
-          <button onClick={handleCancel} className={styles.cancelButton}>
+          <button onClick={handleCancel} className={styles['cancelButton']}>
             Clear Points
           </button>
         </div>
 
         {cameraParams && (
-          <div className={styles.cameraInfo}>
+          <div className={styles['cameraInfo']}>
             <h4>Camera Parameters:</h4>
             <ul>
               <li>Heading: {cameraParams.heading?.toFixed(2)}°</li>

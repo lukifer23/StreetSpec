@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styles from './SettingsPanel.module.css';
-import { AppSettings } from '../types/common';
+import type { AppSettings } from '../types/common';
 
 interface Props {
   initial: AppSettings;
@@ -20,11 +20,11 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
   };
 
   return (
-    <div className={styles.backdrop} onClick={onClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()}>
+    <div className={styles['backdrop']} onClick={onClose}>
+      <div className={styles['modal']} onClick={e => e.stopPropagation()}>
         <h2>Settings</h2>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="unit">Default Unit</label>
           <select
             id="unit"
@@ -37,7 +37,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           </select>
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="theme">Theme</label>
           <select
             id="theme"
@@ -51,7 +51,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           </select>
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="gpu">Use GPU (if available)</label>
           <input
             id="gpu"
@@ -62,7 +62,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="cameraHeight">Camera Height (m)</label>
           <input
             id="cameraHeight"
@@ -75,7 +75,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="depthScale">Depth Scale</label>
           <input
             id="depthScale"
@@ -87,7 +87,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="depthBias">Depth Bias (m)</label>
           <input
             id="depthBias"
@@ -99,7 +99,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="depthApiMaxRetries">Street View Depth Retries</label>
           <input
             id="depthApiMaxRetries"
@@ -116,19 +116,19 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             title="Maximum Street View depth API retry attempts before failing"
           />
         </div>
-        <div className={styles.hint}>
+        <div className={styles['hint']}>
           The app stops requesting Street View depth data after the configured number of retries to avoid exceeding Google API limits.
         </div>
 
         {form.autoCalibrateDepth && (
-          <div className={styles.field}>
-            <div className={styles.hint}>
+          <div className={styles['field']}>
+            <div className={styles['hint']}>
               Auto-calibration will continuously fit ONNX depth to plane-based distances when available and may adjust scale/bias.
             </div>
           </div>
         )}
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="kernel">Depth Kernel Size</label>
           <select
             id="kernel"
@@ -142,7 +142,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           </select>
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="bilinear">Use Bilinear Sampling</label>
           <input
             id="bilinear"
@@ -153,7 +153,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="edgeThresh">Depth Edge Reject Threshold</label>
           <input
             id="edgeThresh"
@@ -167,7 +167,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="history">Measurement History Limit</label>
           <input
             id="history"
@@ -180,7 +180,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="autoCal">Auto-calibrate Depth (experimental)</label>
           <input
             id="autoCal"
@@ -191,7 +191,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.field}>
+        <div className={styles['field']}>
           <label htmlFor="debugOverlay">Show Debug Overlay</label>
           <input
             id="debugOverlay"
@@ -202,9 +202,9 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           />
         </div>
 
-        <div className={styles.actions}>
-          <button className={styles.secondary} onClick={onClose}>Cancel</button>
-          <button className={styles.primary} onClick={handleSubmit}>Save</button>
+        <div className={styles['actions']}>
+          <button className={styles['secondary']} onClick={onClose}>Cancel</button>
+          <button className={styles['primary']} onClick={handleSubmit}>Save</button>
         </div>
       </div>
     </div>

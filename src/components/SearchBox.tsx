@@ -62,35 +62,35 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
   };
 
   return (
-    <div className={styles.searchBox}>
-      <div className={styles.searchInput}>
+    <div className={styles['searchBox']}>
+      <div className={styles['searchInput']}>
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Search for a location..."
-          className={styles.input}
+          className={styles['input']}
         />
         <button
           onClick={handleSearch}
           disabled={isSearching}
-          className={styles.searchButton}
+          className={styles['searchButton']}
         >
           {isSearching ? 'Searching...' : 'Search'}
         </button>
       </div>
       
       {showResults && searchResults.length > 0 && (
-        <div className={styles.results}>
+        <div className={styles['results']}>
           {searchResults.map((place, index) => (
             <div
               key={index}
-              className={styles.resultItem}
+              className={styles['resultItem']}
               onClick={() => handleResultClick(place)}
             >
-              <div className={styles.placeName}>{place.name}</div>
-              <div className={styles.placeAddress}>{place.formatted_address}</div>
+              <div className={styles['placeName']}>{place.name}</div>
+              <div className={styles['placeAddress']}>{place.formatted_address}</div>
             </div>
           ))}
         </div>

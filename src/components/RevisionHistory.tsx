@@ -11,9 +11,9 @@ const RevisionHistory: React.FC = () => {
   }
 
   return (
-    <div className={styles.container}>
+    <div className={styles['container']}>
       <h4>Revision History</h4>
-      <ul className={styles.revisionList}>
+      <ul className={styles['revisionList']}>
         {project.revisionHistory.map((revision) => (
           <li key={revision.timestamp}>
             <span>{new Date(revision.timestamp).toLocaleString()}</span>

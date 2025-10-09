@@ -1,4 +1,4 @@
-import { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings } from '../types/common';
+import type { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings } from '../types/common';
 import { screenToWorldWithDepth } from './geometry';
 import { pixelOffsetToVerticalAngle, degreesToRadians } from '../utils/cameraMath';
 

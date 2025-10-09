@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
-import { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import type { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
 import styles from './VolumeTool.module.css';
 
@@ -155,20 +155,20 @@ const VolumeTool: React.FC = () => {
   const lengthUnit = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
 
   return (
-    <div className={styles.volumeTool}>
-      <div className={styles.toolHeader}>
+    <div className={styles['volumeTool']}>
+      <div className={styles['toolHeader']}>
         <h3>Volume Measurement Tool</h3>
-        <button onClick={handleClose} className={styles.closeButton}>×</button>
+        <button onClick={handleClose} className={styles['closeButton']}>×</button>
       </div>
 
-      <div className={styles.toolContent}>
-        <div className={styles.instructions}>
+      <div className={styles['toolContent']}>
+        <div className={styles['instructions']}>
           <p><strong>Instructions:</strong></p>
           <p>Click two opposite corners of the rectangular area to measure.</p>
           <p>Adjust the height below for 3D volume calculation.</p>
         </div>
 
-        <div className={styles.heightControl}>
+        <div className={styles['heightControl']}>
           <label>
             Height: {settings.defaultUnit === 'imperial' ? (height * 3.281).toFixed(1) : height.toFixed(1)} {lengthUnit}
           </label>
@@ -179,42 +179,42 @@ const VolumeTool: React.FC = () => {
             step="0.5"
             value={height}
             onChange={(e) => setHeight(parseFloat(e.target.value))}
-            className={styles.heightSlider}
+            className={styles['heightSlider']}
           />
         </div>
 
-        <div className={styles.measurementInfo}>
-          <div className={styles.pointsCount}>
+        <div className={styles['measurementInfo']}>
+          <div className={styles['pointsCount']}>
             Points: {points.length}/2
           </div>
 
           {volume > 0 && (
-            <div className={styles.volumeInfo}>
-              <div className={styles.volumeValue}>
+            <div className={styles['volumeInfo']}>
+              <div className={styles['volumeValue']}>
                 Volume: {displayVolume.toFixed(2)} {volumeUnit}
               </div>
-              <div className={styles.dimensions}>
+              <div className={styles['dimensions']}>
                 Dimensions: {dimensions.length.toFixed(1)} × {dimensions.width.toFixed(1)} × {dimensions.height.toFixed(1)} {lengthUnit === 'm' ? 'm' : 'ft'}
               </div>
             </div>
           )}
         </div>
 
-        <div className={styles.controls}>
+        <div className={styles['controls']}>
           <button
             onClick={handleCompleteMeasurement}
             disabled={points.length < 2}
-            className={styles.completeButton}
+            className={styles['completeButton']}
           >
             Complete Volume Measurement
           </button>
-          <button onClick={handleCancel} className={styles.cancelButton}>
+          <button onClick={handleCancel} className={styles['cancelButton']}>
             Clear Points
           </button>
         </div>
 
         {cameraParams && (
-          <div className={styles.cameraInfo}>
+          <div className={styles['cameraInfo']}>
             <h4>Camera Parameters:</h4>
             <ul>
               <li>Heading: {cameraParams.heading?.toFixed(2)}°</li>

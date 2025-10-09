@@ -20,9 +20,9 @@ const ProjectPanel: React.FC = () => {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={styles['container']}>
       <h3>Projects</h3>
-      <div className={styles.newProject}>
+      <div className={styles['newProject']}>
         <input
           type="text"
           value={newProjectName}
@@ -31,9 +31,9 @@ const ProjectPanel: React.FC = () => {
         />
         <button onClick={handleCreateProject}>Create</button>
       </div>
-      <ul className={styles.projectList}>
+      <ul className={styles['projectList']}>
         {Object.values(projects).map((project) => (
-          <li key={project.id} className={project.id === currentProjectId ? styles.active : ''}>
+          <li key={project.id} className={project.id === currentProjectId ? styles['active'] : ''}>
             <span onClick={() => loadProject(project.id)}>{project.name}</span>
             <button onClick={() => deleteProject(project.id)}>Delete</button>
           </li>

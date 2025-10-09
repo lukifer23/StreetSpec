@@ -29,5 +29,6 @@ export default {
     '<rootDir>/node_modules/',
     '<rootDir>/dist/',
     '<rootDir>/dist-electron/',
+    '<rootDir>/src/tests/e2e/',
   ],
 };

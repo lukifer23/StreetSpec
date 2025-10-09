@@ -1,4 +1,5 @@
-import { AppError, ErrorContext, ErrorHandler, ErrorSeverity, ErrorCategory, createError } from '../types/common';
+import { ErrorSeverity } from '../types/common';
+import type { AppError, ErrorContext, ErrorHandler, ErrorCategory, createError } from '../types/common';
 
 class ErrorHandlerService implements ErrorHandler {
   private errorLog: AppError[] = [];

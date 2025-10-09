@@ -64,6 +64,7 @@
     "zustand": "^5.0.7"
   },
   "devDependencies": {
+    "@babel/plugin-transform-react-jsx": "^7.27.1",
     "@playwright/test": "^1.45.0",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^16.3.0",
@@ -96,6 +97,7 @@
     "jest-extended": "^4.0.2",
     "playwright": "^1.45.0",
     "spectron": "^19.0.0",
+    "terser": "^5.44.0",
     "ts-jest": "^29.4.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.20",

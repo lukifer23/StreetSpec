@@ -1,4 +1,4 @@
-import { CameraParams, OnnxDepthMap } from '../types/common';
+import type { CameraParams, OnnxDepthMap } from '../types/common';
 import { cacheDepthMap, getCachedDepthMap } from './depth';
 import { executeWithRateLimit } from './rateLimiter';
 

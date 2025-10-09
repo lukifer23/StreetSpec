@@ -55,12 +55,12 @@ const AppHeader: React.FC = () => {
   }, []);
 
   return (
-    <div className={styles.header}>
+    <div className={styles['header']}>
       <button
         style={{ marginRight: 10 }}
         onClick={() => setIsProjectPanelOpen(true)}
         title="Projects"
-        className={styles.headerButton}
+        className={styles['headerButton']}
       >
         📁
       </button>
@@ -69,7 +69,7 @@ const AppHeader: React.FC = () => {
         style={{ marginRight: 10 }}
         onClick={() => setIsSettingsOpen(true)}
         title="Settings"
-        className={styles.headerButton}
+        className={styles['headerButton']}
       >
         ⚙️
       </button>
@@ -79,7 +79,7 @@ const AppHeader: React.FC = () => {
           style={{marginRight:10}} 
           onClick={handleGenerateDepthMap} 
           disabled={isGeneratingMap || !currentCameraParams}
-          className={styles.headerButton}
+          className={styles['headerButton']}
         > 
           {isGeneratingMap ? 'Generating...' : 'Generate Depth Map'} 
         </button>
@@ -90,7 +90,7 @@ const AppHeader: React.FC = () => {
           style={{marginRight:10}} 
           onClick={() => setCalibrateMode(true)} 
           disabled={!currentCameraParams || calibrateMode} 
-          className={`${styles.headerButton} ${!isCalibrated ? styles.highlight : ''}`}
+          className={`${styles['headerButton']} ${!isCalibrated ? styles['highlight'] : ''}`}
         >
           Calibrate Horizon
         </button>
@@ -101,7 +101,7 @@ const AppHeader: React.FC = () => {
           style={{marginRight:10}} 
           onClick={() => setIsPolylineToolActive(true)} 
           disabled={!currentCameraParams || !isCalibrated}
-          className={styles.headerButton}
+          className={styles['headerButton']}
         >
           Polyline Tool
         </button>
@@ -112,7 +112,7 @@ const AppHeader: React.FC = () => {
           style={{marginRight:10}} 
           onClick={() => setIsAreaToolActive(true)} 
           disabled={!currentCameraParams || !isCalibrated}
-          className={styles.headerButton}
+          className={styles['headerButton']}
         >
           Area Tool
         </button>
@@ -123,7 +123,7 @@ const AppHeader: React.FC = () => {
           style={{marginRight:10}} 
           onClick={() => setIsVolumeToolActive(true)} 
           disabled={!currentCameraParams || !isCalibrated}
-          className={styles.headerButton}
+          className={styles['headerButton']}
         >
           Volume Tool
         </button>

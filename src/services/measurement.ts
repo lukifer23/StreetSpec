@@ -1,4 +1,5 @@
-import { Point, CameraParams, Measurement, Vector3, UNIT_CONVERSIONS } from '../types/common';
+import { UNIT_CONVERSIONS } from '../types/common';
+import type { Point, CameraParams, Measurement, Vector3 } from '../types/common';
 import {
     screenToWorld,
     estimateGroundPlaneIntersection,

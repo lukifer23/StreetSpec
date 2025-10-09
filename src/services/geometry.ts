@@ -1,4 +1,4 @@
-import { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
+import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
 import { Matrix } from 'ml-matrix';
 
 const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');

@@ -1,6 +1,6 @@
 /// <reference types="@types/google.maps" />
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { CameraParams } from '../types/common';
+import type { CameraParams } from '../types/common';
 import { calculateFov } from '../services/geometry';
 
 import { useRootStore } from '../stores/rootStore';

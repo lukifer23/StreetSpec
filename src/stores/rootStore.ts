@@ -3,15 +3,15 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  Measurement, 
-  Project, 
-  Revision, 
-  AppSettings, 
-  CameraParams, 
-  OnnxDepthMap, 
+import type {
+  Measurement,
+  Project,
+  Revision,
+  AppSettings,
+  CameraParams,
+  OnnxDepthMap,
   DecodedDepthData,
-  Coordinates 
+  Coordinates
 } from '../types/common';
 
 // Root state interface

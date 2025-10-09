@@ -26,7 +26,7 @@ const Spinner: React.FC<{ size: string; color: string }> = React.memo(({ size, c
   }), [size, color]);
 
   return (
-    <div className={styles.spinner} style={spinnerStyle} />
+    <div className={styles['spinner']} style={spinnerStyle} />
   );
 });
 
@@ -40,9 +40,9 @@ const ProgressBar: React.FC<{ progress: number; color: string }> = React.memo(({
   }), [progress, color]);
 
   return (
-    <div className={styles.progressContainer}>
-      <div className={styles.progressBar} style={progressStyle} />
-      <div className={styles.progressText}>{Math.round(progress)}%</div>
+    <div className={styles['progressContainer']}>
+      <div className={styles['progressBar']} style={progressStyle} />
+      <div className={styles['progressText']}>{Math.round(progress)}%</div>
     </div>
   );
 });
@@ -57,7 +57,7 @@ const Skeleton: React.FC<{ size: string }> = React.memo(({ size }) => {
   }), [size]);
 
   return (
-    <div className={styles.skeleton} style={skeletonStyle} />
+    <div className={styles['skeleton']} style={skeletonStyle} />
   );
 });
 
@@ -72,10 +72,10 @@ const Pulse: React.FC<{ size: string; color: string }> = React.memo(({ size, col
   }), [size, color]);
 
   return (
-    <div className={styles.pulseContainer}>
-      <div className={styles.pulse} style={pulseStyle} />
-      <div className={styles.pulse} style={{ ...pulseStyle, animationDelay: '0.2s' }} />
-      <div className={styles.pulse} style={{ ...pulseStyle, animationDelay: '0.4s' }} />
+    <div className={styles['pulseContainer']}>
+      <div className={styles['pulse']} style={pulseStyle} />
+      <div className={styles['pulse']} style={{ ...pulseStyle, animationDelay: '0.2s' }} />
+      <div className={styles['pulse']} style={{ ...pulseStyle, animationDelay: '0.4s' }} />
     </div>
   );
 });
@@ -161,7 +161,7 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
 
   const renderContent = () => (
     <div 
-      className={`${styles.loadingIndicator} ${styles[type]} ${styles[size]} ${fadeOut ? styles.fadeOut : ''} ${className}`}
+      className={`${styles['loadingIndicator']} ${styles[type]} ${styles[size]} ${fadeOut ? styles['fadeOut'] : ''} ${className}`}
       style={containerStyle}
     >
       {type === 'spinner' && <Spinner size={size} color={color} />}
@@ -170,7 +170,7 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
       {type === 'pulse' && <Pulse size={size} color={color} />}
       
       {message && (
-        <div className={styles.message}>
+        <div className={styles['message']}>
           {message}
         </div>
       )}
@@ -179,7 +179,7 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
 
   if (backdrop) {
     return (
-      <div className={`${styles.backdrop} ${fadeOut ? styles.fadeOut : ''}`} style={backdropStyle}>
+      <div className={`${styles['backdrop']} ${fadeOut ? styles['fadeOut'] : ''}`} style={backdropStyle}>
         {renderContent()}
       </div>
     );

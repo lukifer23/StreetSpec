@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
-import { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import { UNIT_CONVERSIONS } from '../types/common';
+import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
 import styles from './PolylineTool.module.css';
 
@@ -142,32 +143,32 @@ const PolylineTool: React.FC = () => {
   const unitLabel = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
 
   return (
-    <div className={styles.polylineTool}>
-      <div className={styles.toolHeader}>
+    <div className={styles['polylineTool']}>
+      <div className={styles['toolHeader']}>
         <h3>Polyline Measurement Tool</h3>
-        <button onClick={handleClose} className={styles.closeButton}>×</button>
+        <button onClick={handleClose} className={styles['closeButton']}>×</button>
       </div>
 
-      <div className={styles.toolContent}>
-        <div className={styles.instructions}>
+      <div className={styles['toolContent']}>
+        <div className={styles['instructions']}>
           <p><strong>Instructions:</strong></p>
           <p>Click on the map to add points to your measurement path.</p>
           <p>Add at least 2 points to create a measurement.</p>
         </div>
 
-        <div className={styles.measurementInfo}>
-          <div className={styles.pointsCount}>
+        <div className={styles['measurementInfo']}>
+          <div className={styles['pointsCount']}>
             Points: {points.length}
           </div>
 
           {totalDistance > 0 && (
-            <div className={styles.distanceInfo}>
-              <div className={styles.totalDistance}>
+            <div className={styles['distanceInfo']}>
+              <div className={styles['totalDistance']}>
                 Total Distance: {displayDistance.toFixed(2)} {unitLabel}
               </div>
 
               {segmentDistances.length > 0 && (
-                <div className={styles.segments}>
+                <div className={styles['segments']}>
                   <h4>Segments:</h4>
                   <ul>
                     {segmentDistances.map((distance, index) => {
@@ -187,21 +188,21 @@ const PolylineTool: React.FC = () => {
           )}
         </div>
 
-        <div className={styles.controls}>
+        <div className={styles['controls']}>
           <button
             onClick={handleCompleteMeasurement}
             disabled={points.length < 2}
-            className={styles.completeButton}
+            className={styles['completeButton']}
           >
             Complete Measurement
           </button>
-          <button onClick={handleCancel} className={styles.cancelButton}>
+          <button onClick={handleCancel} className={styles['cancelButton']}>
             Clear Points
           </button>
         </div>
 
         {cameraParams && (
-          <div className={styles.cameraInfo}>
+          <div className={styles['cameraInfo']}>
             <h4>Camera Parameters:</h4>
             <ul>
               <li>Heading: {cameraParams.heading?.toFixed(2)}°</li>

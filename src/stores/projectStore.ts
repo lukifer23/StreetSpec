@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
-import { Measurement, Project, Revision } from '../types/common';
+import type { Measurement, Project, Revision } from '../types/common';
 
 interface ProjectState {
   projects: Record<string, Project>;

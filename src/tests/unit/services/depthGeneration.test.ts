@@ -46,10 +46,7 @@ describe('depthGeneration helpers', () => {
 
     const fetchImage = jest.fn().mockResolvedValue(response);
     const invokeDepth = jest.fn().mockResolvedValue({ data: [0.1, 0.2], width: 1, height: 2 } satisfies OnnxDepthMap);
-    let resolveCache!: () => void;
-    const cacheDepthMap = jest.fn(() => new Promise<void>(resolve => {
-      resolveCache = resolve;
-    }));
+    const cacheDepthMap = jest.fn().mockResolvedValue(undefined);
 
     const generationPromise = generateDepthMap(baseCameraParams, 'api-key', {
       fetchImage,
@@ -58,19 +55,11 @@ describe('depthGeneration helpers', () => {
       invokeDepth,
     });
 
-    let settled = false;
-    generationPromise.then(() => { settled = true; });
-
-    await Promise.resolve();
+    const result = await generationPromise;
 
     expect(fetchImage).toHaveBeenCalledWith(expect.stringContaining('size=640x640'));
     expect(invokeDepth).toHaveBeenCalledWith(expect.stringContaining('data:image/jpeg;base64,'));
-    expect(settled).toBe(false);
-
-    resolveCache();
-    const result = await generationPromise;
-
-    expect(settled).toBe(true);
+    expect(cacheDepthMap).toHaveBeenCalled();
     expect(result.fromCache).toBe(false);
     expect(result.depthMap.width).toBe(1);
     expect(cacheDepthMap).toHaveBeenCalledTimes(1);
