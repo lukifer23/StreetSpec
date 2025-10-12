@@ -121,20 +121,44 @@ class ErrorHandlerService implements ErrorHandler {
   }
 
   showUserError(error: AppError): void {
-    // Create a user-friendly notification
+    // Use the notification store if available for better UX
+    try {
+      import('../stores/notificationStore').then(({ pushNotification }) => {
+        const kind = error.severity === ErrorSeverity.CRITICAL || error.severity === ErrorSeverity.HIGH
+          ? 'error'
+          : error.severity === ErrorSeverity.MEDIUM
+            ? 'warning'
+            : 'info';
+
+        pushNotification({
+          kind,
+          title: this.getErrorTitle(error),
+          message: error.userFriendlyMessage,
+          timeoutMs: error.severity === ErrorSeverity.CRITICAL ? 0 : 8000
+        });
+      }).catch(() => {
+        // Fallback to DOM notification if notification store fails
+        this.showFallbackNotification(error);
+      });
+    } catch (e) {
+      // Fallback to DOM notification
+      this.showFallbackNotification(error);
+    }
+  }
+
+  private showFallbackNotification(error: AppError): void {
+    // Fallback DOM-based notification
     const notification = document.createElement('div');
     notification.className = `error-notification error-${error.severity}`;
     notification.innerHTML = `
       <div class="error-header">
         <span class="error-icon">!</span>
         <span class="error-title">${this.getErrorTitle(error)}</span>
-        <button class="error-close" onclick="this.parentElement.parentElement.remove()">Close</button>
+        <button class="error-close" onclick="this.parentElement.parentElement.remove()">×</button>
       </div>
       <div class="error-message">${error.userFriendlyMessage}</div>
-      ${error.recoverable ? '<div class="error-actions"><button onclick="this.parentElement.parentElement.remove()">Dismiss</button></div>' : ''}
     `;
 
-    // Add styles
     notification.style.cssText = `
       position: fixed;
       top: 20px;
@@ -149,16 +173,14 @@ class ErrorHandlerService implements ErrorHandler {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
 
-    // Add to page
     document.body.appendChild(notification);
 
-    // Auto-remove after 10 seconds for non-critical errors
     if (error.severity !== ErrorSeverity.CRITICAL) {
       setTimeout(() => {
         if (notification.parentElement) {
           notification.remove();
         }
-      }, 10000);
+      }, 8000);
     }
   }
 
@@ -275,8 +297,20 @@ class ErrorHandlerService implements ErrorHandler {
   }
 
   private sendToLoggingService(logEntry: any): void {
-    // In a real application, you would send this to a logging service
-    // For now, we'll just store it in localStorage for debugging
+    // Send to Electron main process for file-based logging
+    if (typeof window !== 'undefined' && window.electronAPI?.invoke) {
+      window.electronAPI.invoke('log-error', logEntry).catch(err => {
+        console.warn('[ErrorHandler] Failed to log to Electron main process:', err);
+        // Fallback to localStorage
+        this.saveToLocalStorage(logEntry);
+      });
+    } else {
+      // Fallback to localStorage when Electron is not available
+      this.saveToLocalStorage(logEntry);
+    }
+  }
+
+  private saveToLocalStorage(logEntry: any): void {
     try {
       const existingLogs = JSON.parse(localStorage.getItem('errorLogs') || '[]');
       existingLogs.push(logEntry);
@@ -288,7 +322,7 @@ class ErrorHandlerService implements ErrorHandler {
       
       localStorage.setItem('errorLogs', JSON.stringify(existingLogs));
     } catch (e) {
-      console.warn('Failed to store error log:', e);
+      console.warn('[ErrorHandler] Failed to store error log:', e);
     }
   }
 

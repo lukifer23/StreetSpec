@@ -34,7 +34,8 @@ const validChannels = {
     'delete-project',
     'get-settings',
     'save-settings',
-    'clear-data'
+    'clear-data',
+    'log-error'
   ],
   send: ['message'],
   receive: ['main-process-message']

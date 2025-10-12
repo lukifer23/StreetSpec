@@ -134,13 +134,28 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}",
+      "artifactName": "Street-Spec-Desktop-${name}-${version}.${ext}",
       "sign": false,
       "icon": "assets/icon.ico",
       "verifyUpdateCodeSignature": false,
       "requestedExecutionLevel": "asInvoker"
+    },
+    "portable": {
+      "artifactName": "Street-Spec-Desktop-Portable-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -149,11 +164,18 @@
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Street Spec Desktop",
+      "displayLanguageSelector": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "menuCategory": "Measurement Tools",
       "include": "StreetSpecInstaller.iss",
-      "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}"
+      "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}",
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "license": null
     }
   },
   "playwright": {

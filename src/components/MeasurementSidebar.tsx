@@ -3,8 +3,9 @@ import { useRootStore, useMeasurementActions, useSettingsActions } from '../stor
 import type { Measurement } from '../types/common';
 import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-import { List } from 'react-window';
-import type { ListChildComponentProps } from 'react-window';
+import { VariableSizeList as List } from 'react-window';
+import type { ListChildComponentProps, VariableSizeList } from 'react-window';
+import { shallow } from 'zustand/shallow';
 import styles from './MeasurementSidebar.module.css';
 
 const formatPrimaryLine = (measurement: Measurement): string => {
@@ -100,11 +101,20 @@ const getSegmentSummary = (measurement: Measurement) => {
 };
 
 const MeasurementSidebar: React.FC = () => {
-  const { measurements, settings } = useRootStore();
+  const { measurements, settings } = useRootStore(
+    useCallback(
+      (state) => ({
+        measurements: state.measurements,
+        settings: state.settings,
+      }),
+      []
+    ),
+    shallow
+  );
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();
   const { toggleUnit } = useSettingsActions();
   const measurementCount = measurements.length;
-  const listRef = useRef<any>(null);
+  const listRef = useRef<VariableSizeList | null>(null);
 
   const handleUnitToggle = useCallback(() => {
     toggleUnit();

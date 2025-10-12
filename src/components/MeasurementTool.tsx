@@ -413,6 +413,8 @@ const MeasurementTool: React.FC = () => {
   const overlayRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const applyCalTimerRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingMousePosRef = useRef<Point | null>(null);
 
   const hasDepthSupport = useMemo(() => Boolean(onnxDepthMap || depthData), [onnxDepthMap, depthData]);
   const showEstimatePrompt = useMemo(
@@ -730,9 +732,38 @@ const MeasurementTool: React.FC = () => {
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {
       const coords = getClickCoords(event);
-      setCurrentMousePos(coords);
+      
+      if (!coords) return;
+      
+      // Store pending position
+      pendingMousePosRef.current = coords;
+      
+      // Cancel previous RAF if pending
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      
+      // Schedule update on next animation frame
+      rafRef.current = requestAnimationFrame(() => {
+        const pending = pendingMousePosRef.current;
+        if (pending) {
+          setCurrentMousePos(pending);
+          pendingMousePosRef.current = null;
+        }
+        rafRef.current = null;
+      });
     }
   }, [phase, getClickCoords]);
+
+  // Cleanup RAF on unmount or phase change
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [phase]);
 
   const startMeasurement = useCallback(() => {
     console.log('[measure] startMeasurement called');

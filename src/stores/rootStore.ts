@@ -15,11 +15,23 @@ import type {
   Coordinates
 } from '../types/common';
 
+// Location state machine for coordinated flow
+type LocationState = 
+  | 'idle'
+  | 'loading_pano'
+  | 'pano_loaded'
+  | 'fetching_depth'
+  | 'depth_ready'
+  | 'calibrating'
+  | 'ready'
+  | 'error';
+
 // Root state interface
 interface RootState {
   // Core application state
   isLoading: boolean;
   error: string | null;
+  locationState: LocationState;
   
   // Settings
   settings: AppSettings;
@@ -48,6 +60,11 @@ interface RootState {
   mapGenerationError: string | null;
   isCalibrated: boolean;
   onGenerateDepthMap: (() => Promise<void>) | null;
+  
+  // Computed properties
+  canMeasure: boolean; // True when ready to measure
+  canGenerateDepth: boolean; // True when pano is loaded
+  canCalibrate: boolean; // True when depth data is available
   
   // Actions
   // Settings actions
@@ -91,6 +108,10 @@ interface RootState {
   setLoading: (loading: boolean) => void;
   setOnGenerateDepthMap: (fn: (() => Promise<void>) | null) => void;
   
+  // Location state actions
+  setLocationState: (state: LocationState) => void;
+  advanceLocationState: () => void; // Automatically advance based on current state
+  
   // Utility actions
   resetState: () => void;
   exportState: () => string;
@@ -119,6 +140,7 @@ export const useRootStore = create<RootState>()(
         // Initial state
         isLoading: false,
         error: null,
+        locationState: 'idle' as LocationState,
         settings: defaultSettings,
         targetCoords: null,
         currentCameraParams: null,
@@ -137,6 +159,27 @@ export const useRootStore = create<RootState>()(
         mapGenerationError: null,
         isCalibrated: false,
         onGenerateDepthMap: null,
+        
+        // Computed properties (getter functions)
+        get canMeasure(): boolean {
+          const state = get();
+          return state.locationState === 'ready' && 
+                 state.isCalibrated && 
+                 (state.onnxDepthMap !== null || state.depthData !== null) &&
+                 state.currentCameraParams !== null;
+        },
+        
+        get canGenerateDepth(): boolean {
+          const state = get();
+          return state.currentCameraParams !== null &&
+                 (state.locationState === 'pano_loaded' || state.locationState === 'ready');
+        },
+        
+        get canCalibrate(): boolean {
+          const state = get();
+          return (state.onnxDepthMap !== null || state.depthData !== null) &&
+                 state.currentCameraParams !== null;
+        },
 
         // Settings actions
         setSettings: (settings) => set((state) => {
@@ -346,6 +389,60 @@ export const useRootStore = create<RootState>()(
         setOnGenerateDepthMap: (fn) => set((state) => {
           state.onGenerateDepthMap = fn;
         }),
+        
+        // Location state actions
+        setLocationState: (locationState) => set((state) => {
+          state.locationState = locationState;
+        }),
+        
+        advanceLocationState: () => set((state) => {
+          // State machine transitions
+          switch (state.locationState) {
+            case 'idle':
+              if (state.currentCameraParams) {
+                state.locationState = 'pano_loaded';
+              }
+              break;
+            case 'loading_pano':
+              if (state.currentCameraParams) {
+                state.locationState = 'pano_loaded';
+              }
+              break;
+            case 'pano_loaded':
+              if (state.depthData || state.onnxDepthMap) {
+                state.locationState = 'depth_ready';
+              } else if (state.isGeneratingMap) {
+                state.locationState = 'fetching_depth';
+              }
+              break;
+            case 'fetching_depth':
+              if (state.depthData || state.onnxDepthMap) {
+                state.locationState = 'depth_ready';
+              }
+              break;
+            case 'depth_ready':
+              if (state.calibrateMode) {
+                state.locationState = 'calibrating';
+              } else if (state.isCalibrated) {
+                state.locationState = 'ready';
+              }
+              break;
+            case 'calibrating':
+              if (state.isCalibrated && !state.calibrateMode) {
+                state.locationState = 'ready';
+              }
+              break;
+            case 'ready':
+              // Stay in ready unless pano changes
+              if (!state.currentCameraParams) {
+                state.locationState = 'idle';
+              }
+              break;
+            case 'error':
+              // Can reset to idle manually
+              break;
+          }
+        }),
 
         // Utility actions
         resetState: () => set((state) => {
@@ -355,6 +452,7 @@ export const useRootStore = create<RootState>()(
           state.error = null;
           state.mapGenerationError = null;
           state.isCalibrated = false;
+          state.locationState = 'idle';
         }),
 
         exportState: () => {

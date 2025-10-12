@@ -1165,6 +1165,64 @@ async function createWindow() {
       return false;
     }
   });
+
+  // Error logging handler for persistent error tracking
+  ipcMain.handle('log-error', async (_event: IpcMainInvokeEvent, logEntry: any) => {
+    try {
+      const logDir = join(app.getPath('userData'), 'logs');
+      const logFile = join(logDir, `error-${new Date().toISOString().split('T')[0]}.log`);
+      
+      // Create logs directory if it doesn't exist
+      if (!existsSync(logDir)) {
+        await fs.promises.mkdir(logDir, { recursive: true });
+      }
+      
+      // Format log entry
+      const logLine = JSON.stringify({
+        ...logEntry,
+        appVersion: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch
+      }) + '\n';
+      
+      // Append to daily log file
+      await fs.promises.appendFile(logFile, logLine, 'utf8');
+      
+      // Also log to console for debugging
+      console.error('[ERROR LOG]', logEntry);
+      
+      // Clean up old log files (keep last 30 days)
+      cleanupOldLogs(logDir, 30);
+      
+      return true;
+    } catch (error) {
+      console.error('[log-error] Failed to write error log:', error);
+      return false;
+    }
+  });
+}
+
+// Helper function to clean up old log files
+async function cleanupOldLogs(logDir: string, daysToKeep: number): Promise<void> {
+  try {
+    const files = await fs.promises.readdir(logDir);
+    const now = Date.now();
+    const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
+    
+    for (const file of files) {
+      if (file.startsWith('error-') && file.endsWith('.log')) {
+        const filePath = join(logDir, file);
+        const stats = await fs.promises.stat(filePath);
+        
+        if (now - stats.mtimeMs > maxAge) {
+          await fs.promises.unlink(filePath);
+          console.log(`[cleanup] Deleted old log file: ${file}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[cleanup] Failed to clean up old logs:', error);
+  }
 }
 
 // Modify app.whenReady() to ensure proper initialization

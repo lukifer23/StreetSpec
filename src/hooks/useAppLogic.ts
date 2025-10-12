@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useRootStore } from '../stores/rootStore';
+import { shallow } from 'zustand/shallow';
 import { pushNotification } from '../stores/notificationStore';
 import { calibrationManager } from '../services/depthCalibration';
 import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
@@ -45,24 +46,63 @@ export const useAppLogic = (apiKey: string) => {
   const lastSavedMeasurements = useRef<string | null>(null);
   const lastSavedProjectId = useRef<string | null>(null);
 
-  // Use separate selectors for stable data and functions
-  const measurements = useRootStore((state) => state.measurements);
-  const settings = useRootStore((state) => state.settings);
-  const isSettingsOpen = useRootStore((state) => state.isSettingsOpen);
-  const isGeneratingMap = useRootStore((state) => state.isGeneratingMap);
-  const calibrateMode = useRootStore((state) => state.calibrateMode);
-  const error = useRootStore((state) => state.error);
-  const mapGenerationError = useRootStore((state) => state.mapGenerationError);
-  const isProjectPanelOpen = useRootStore((state) => state.isProjectPanelOpen);
-  const targetCoords = useRootStore((state) => state.targetCoords);
-  const currentCameraParams = useRootStore((state) => state.currentCameraParams);
-  const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
-  const depthData = useRootStore((state) => state.depthData);
-  const currentProjectId = useRootStore((state) => state.currentProjectId);
-  const loadProjects = useRootStore((state) => state.loadProjects);
+  const store = useRootStore(
+    useCallback(
+      (state) => ({
+        measurements: state.measurements,
+        settings: state.settings,
+        isSettingsOpen: state.isSettingsOpen,
+        isGeneratingMap: state.isGeneratingMap,
+        calibrateMode: state.calibrateMode,
+        error: state.error,
+        mapGenerationError: state.mapGenerationError,
+        isProjectPanelOpen: state.isProjectPanelOpen,
+        targetCoords: state.targetCoords,
+        currentCameraParams: state.currentCameraParams,
+        onnxDepthMap: state.onnxDepthMap,
+        depthData: state.depthData,
+        currentProjectId: state.currentProjectId,
+        loadProjects: state.loadProjects,
+        deleteMeasurement: state.deleteMeasurement,
+        renameMeasurement: state.renameMeasurement,
+        clearMeasurements: state.clearMeasurements,
+        setSettings: state.setSettings,
+        updateSettings: state.updateSettings,
+        toggleUnit: state.toggleUnit,
+        setIsSettingsOpen: state.setIsSettingsOpen,
+        setIsGeneratingMap: state.setIsGeneratingMap,
+        setCalibrateMode: state.setCalibrateMode,
+        setError: state.setError,
+        setMapGenerationError: state.setMapGenerationError,
+        setIsPolylineToolActive: state.setIsPolylineToolActive,
+        setIsAreaToolActive: state.setIsAreaToolActive,
+        setIsVolumeToolActive: state.setIsVolumeToolActive,
+        setIsProjectPanelOpen: state.setIsProjectPanelOpen,
+        setCurrentCameraParams: state.setCurrentCameraParams,
+        setOnnxDepthMap: state.setOnnxDepthMap,
+        setDepthData: state.setDepthData,
+        saveCurrentProject: state.saveCurrentProject,
+      }),
+      []
+    ),
+    shallow
+  );
 
-  // Get functions separately - these are stable references
   const {
+    measurements,
+    settings,
+    isSettingsOpen,
+    isGeneratingMap,
+    calibrateMode,
+    error,
+    mapGenerationError,
+    isProjectPanelOpen,
+    targetCoords,
+    currentCameraParams,
+    onnxDepthMap,
+    depthData,
+    currentProjectId,
+    loadProjects,
     deleteMeasurement,
     renameMeasurement,
     clearMeasurements,
@@ -82,31 +122,12 @@ export const useAppLogic = (apiKey: string) => {
     setOnnxDepthMap,
     setDepthData,
     saveCurrentProject,
-  } = useRootStore((state) => ({
-    deleteMeasurement: state.deleteMeasurement,
-    renameMeasurement: state.renameMeasurement,
-    clearMeasurements: state.clearMeasurements,
-    setSettings: state.setSettings,
-    updateSettings: state.updateSettings,
-    toggleUnit: state.toggleUnit,
-    setIsSettingsOpen: state.setIsSettingsOpen,
-    setIsGeneratingMap: state.setIsGeneratingMap,
-    setCalibrateMode: state.setCalibrateMode,
-    setError: state.setError,
-    setMapGenerationError: state.setMapGenerationError,
-    setIsPolylineToolActive: state.setIsPolylineToolActive,
-    setIsAreaToolActive: state.setIsAreaToolActive,
-    setIsVolumeToolActive: state.setIsVolumeToolActive,
-    setIsProjectPanelOpen: state.setIsProjectPanelOpen,
-    setCurrentCameraParams: state.setCurrentCameraParams,
-    setOnnxDepthMap: state.setOnnxDepthMap,
-    setDepthData: state.setDepthData,
-    saveCurrentProject: state.saveCurrentProject,
-  }));
-
+  } = store;
 
   useEffect(() => {
-    loadProjects();
+    if (loadProjects) {
+      void loadProjects();
+    }
   }, [loadProjects]);
 
 

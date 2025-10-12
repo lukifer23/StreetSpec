@@ -5,6 +5,7 @@ import { calculateFov } from '../services/geometry';
 import { ErrorBoundary } from './ErrorBoundary';
 
 import { useRootStore } from '../stores/rootStore';
+import { depthPrefetchService } from '../services/depthPrefetch';
 
 // Default coords
 const DEFAULT_LAT = 40.7580;
@@ -302,6 +303,81 @@ const MapView: React.FC<{
       listeners.forEach(listener => listener.remove());
     };
   }, [isInitialized, debouncedUpdateParams]);
+
+  // Prefetch adjacent depth maps when panorama changes
+  useEffect(() => {
+    if (!streetViewRef.current || !isInitialized) return;
+    
+    const triggerPrefetch = () => {
+      const panorama = streetViewRef.current;
+      if (!panorama) return;
+
+      try {
+        const currentPanoId = panorama.getPano();
+        if (!currentPanoId) return;
+
+        const links = panorama.getLinks();
+        if (!links || links.length === 0) return;
+
+        // Get adjacent pano IDs
+        const adjacentPanoIds = links
+          .filter(link => link.pano)
+          .map(link => link.pano!)
+          .slice(0, 3); // Limit to first 3 adjacent panos
+
+        if (adjacentPanoIds.length === 0) return;
+
+        // Get API key from env
+        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+        if (!apiKey) return;
+
+        // Get current camera params
+        const pov = panorama.getPov();
+        const position = panorama.getPosition();
+        const zoom = panorama.getZoom();
+        
+        if (!pov || !position) return;
+
+        const aspectRatio = mapContainerRef.current
+          ? mapContainerRef.current.clientWidth / mapContainerRef.current.clientHeight
+          : 16 / 9;
+        const { hFov, vFov } = calculateFov(zoom, aspectRatio);
+
+        const cameraParams: CameraParams = {
+          panoId: currentPanoId,
+          lat: position.lat(),
+          lng: position.lng(),
+          heading: pov.heading,
+          pitch: pov.pitch,
+          zoom: zoom ?? 1,
+          fov: hFov,
+          vFov: vFov
+        };
+
+        // Initialize and trigger prefetch
+        depthPrefetchService.init(apiKey);
+        depthPrefetchService.prefetchAdjacent(
+          currentPanoId,
+          adjacentPanoIds,
+          cameraParams,
+          { maxConcurrent: 2, quality: 'medium', enableCache: true }
+        ).catch(error => {
+          // Silent failure - prefetching is optional
+          console.warn('[MapView] Prefetch failed:', error);
+        });
+      } catch (error) {
+        // Silent error handling
+        console.warn('[MapView] Prefetch trigger error:', error);
+      }
+    };
+
+    // Debounce prefetch to avoid triggering too frequently
+    const prefetchTimer = setTimeout(triggerPrefetch, 1000);
+
+    return () => {
+      clearTimeout(prefetchTimer);
+    };
+  }, [isInitialized]);
 
   // Memoized container style
   const containerStyle = useMemo(() => ({

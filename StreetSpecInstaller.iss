@@ -30,11 +30,12 @@ DefaultDirName={autopf}\{#MyAppName}
 ChangesAssociations=no
 DisableProgramGroupPage=no
 PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=release
 OutputBaseFilename=Street-Spec-Desktop-Setup-{#MyAppVersion}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
-Compression=lzma
+Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 WizardImageFile=assets\wizard.bmp
@@ -45,6 +46,21 @@ AlwaysShowDirOnReadyPage=yes
 AlwaysShowGroupOnReadyPage=yes
 EnableDirDoesntExistWarning=yes
 DirExistsWarning=yes
+DisableWelcomePage=no
+DisableProgramGroupPage=yes
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
+DisableReadyPage=no
+SetupLogging=yes
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup
+VersionInfoCopyright=Copyright (C) 2025 {#MyAppPublisher}
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
+MinVersion=10.0
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
