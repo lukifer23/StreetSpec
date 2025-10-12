@@ -19,7 +19,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✓ Node.js found
+echo OK: Node.js found
 
 REM Check if npm is available
 npm --version >nul 2>&1
@@ -30,7 +30,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✓ npm found
+echo OK: npm found
 
 REM Check if Git is installed
 git --version >nul 2>&1
@@ -43,7 +43,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✓ Git found
+echo OK: Git found
 
 REM Check if Git LFS is installed
 git lfs version >nul 2>&1
@@ -59,7 +59,7 @@ if %errorlevel% neq 0 (
     )
 )
 
-echo ✓ Git LFS ready
+echo OK: Git LFS ready
 
 echo.
 echo Installing dependencies...
@@ -70,7 +70,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✓ Dependencies installed
+echo OK: Dependencies installed
 
 echo.
 echo Downloading model files...
@@ -87,7 +87,7 @@ if %errorlevel% neq 0 (
         exit /b 1
     )
 ) else (
-    echo ✓ Model files downloaded
+    echo OK: Model files downloaded
 )
 
 REM Check if .env file exists
@@ -100,14 +100,14 @@ if not exist ".env" (
     set /p api_key="Enter your Google Maps API key: "
     if not "%api_key%"=="" (
         echo VITE_GOOGLE_MAPS_API_KEY=%api_key% > .env
-        echo ✓ .env file created
+        echo OK: .env file created
     ) else (
         echo WARNING: No API key provided
         echo You can add it later by editing the .env file
         echo VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE > .env
     )
 ) else (
-    echo ✓ .env file found
+    echo OK: .env file found
 )
 
 echo.
@@ -117,7 +117,7 @@ if %errorlevel% neq 0 (
     echo WARNING: Linting found issues
     echo You can fix them later by running: npm run lint
 ) else (
-    echo ✓ Code quality check passed
+    echo OK: Code quality check passed
 )
 
 echo.
@@ -127,7 +127,7 @@ if %errorlevel% neq 0 (
     echo WARNING: Type checking found issues
     echo You can fix them later by running: npm run typecheck
 ) else (
-    echo ✓ Type checking passed
+    echo OK: Type checking passed
 )
 
 echo.

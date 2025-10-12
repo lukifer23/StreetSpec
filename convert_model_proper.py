@@ -16,7 +16,7 @@ def convert_depth_model():
     Convert the downloaded Depth Anything V2 PyTorch model to ONNX format
     using the proper model architecture
     """
-    print("🔧 Starting proper model conversion...")
+    print("Starting proper model conversion...")
     
     # Check if PyTorch model exists
     pytorch_model_path = "./models_temp/depth_anything_v2_metric_vkitti_vits.pth"
@@ -69,7 +69,7 @@ def convert_depth_model():
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
-        print(f"🔄 Converting to ONNX format...")
+        print(f"Converting to ONNX format...")
         print(f"   Input size: {dummy_input.shape}")
         print(f"   Output path: {output_path}")
         
@@ -135,7 +135,7 @@ def convert_depth_model():
 if __name__ == "__main__":
     success = convert_depth_model()
     if success:
-        print("\n🚀 Ready to integrate with your Electron app!")
+        print("\nReady to integrate with your Electron app!")
     else:
-        print("\n💥 Conversion failed. Please check the error messages above.")
+        print("\nConversion failed. Please check the error messages above.")
         sys.exit(1) 

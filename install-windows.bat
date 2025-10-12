@@ -168,7 +168,7 @@ if not exist ".env" (
     if not "!api_key!"=="" (
         echo VITE_GOOGLE_MAPS_API_KEY=!api_key! > .env
         echo GOOGLE_MAPS_API_KEY=!api_key! >> .env
-        echo ✓ .env file created
+        echo OK: .env file created
     ) else (
         echo WARNING: No API key provided
         echo You can add it later by editing the .env file
@@ -176,7 +176,7 @@ if not exist ".env" (
         echo GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE >> .env
     )
 ) else (
-    echo ✓ .env file found
+    echo OK: .env file found
 )
 
 REM Run quality checks
@@ -187,7 +187,7 @@ if %errorlevel% neq 0 (
     echo WARNING: Linting found issues
     echo You can fix them later by running: npm run lint
 ) else (
-    echo ✓ Code quality check passed
+    echo OK: Code quality check passed
 )
 
 npm run typecheck
@@ -195,7 +195,7 @@ if %errorlevel% neq 0 (
     echo WARNING: Type checking found issues
     echo You can fix them later by running: npm run typecheck
 ) else (
-    echo ✓ Type checking passed
+    echo OK: Type checking passed
 )
 
 echo.
@@ -218,7 +218,7 @@ $Shortcut.Save()
 if %errorlevel% neq 0 (
     echo WARNING: Failed to create desktop shortcut
 ) else (
-    echo ✓ Desktop shortcut created
+    echo OK: Desktop shortcut created
 )
 
 REM Create start menu shortcut
@@ -234,7 +234,7 @@ $Shortcut.Save()
 if %errorlevel% neq 0 (
     echo WARNING: Failed to create start menu shortcut
 ) else (
-    echo ✓ Start menu shortcut created
+    echo OK: Start menu shortcut created
 )
 
 echo.

@@ -3,10 +3,8 @@ import { useRootStore, useProjectActions } from '../stores/rootStore';
 import styles from './RevisionHistory.module.css';
 
 const RevisionHistory: React.FC = () => {
-  const { projects, currentProjectId } = useRootStore((state) => ({
-    projects: state.projects,
-    currentProjectId: state.currentProjectId,
-  }));
+  const projects = useRootStore((state) => state.projects);
+  const currentProjectId = useRootStore((state) => state.currentProjectId);
   const { revertToRevision } = useProjectActions();
   const project = currentProjectId ? projects[currentProjectId] : null;
 

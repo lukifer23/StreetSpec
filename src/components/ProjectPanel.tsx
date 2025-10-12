@@ -8,10 +8,8 @@ interface ProjectPanelProps {
 }
 
 const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
-  const { projects, currentProjectId } = useRootStore((state) => ({
-    projects: state.projects,
-    currentProjectId: state.currentProjectId,
-  }));
+  const projects = useRootStore((state) => state.projects);
+  const currentProjectId = useRootStore((state) => state.currentProjectId);
   const {
     loadProjects,
     createProject,

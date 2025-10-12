@@ -18,19 +18,19 @@ echo ""
 
 # Function to print steps with style
 print_step() {
-    echo -e "${BLUE}▸${NC} ${1}"
+    echo -e "${BLUE}INFO:${NC} ${1}"
 }
 
 # Function to print success
 print_success() {
     # Move cursor up one line and clear it
     echo -ne "\033[1A\033[2K"
-    echo -e "${GREEN}✓${NC} ${1}"
+    echo -e "${GREEN}OK:${NC} ${1}"
 }
 
 # Function to print error
 print_error() {
-    echo -e "${RED}✗${NC} ${1}"
+    echo -e "${RED}ERROR:${NC} ${1}"
 }
 
 # Detect OS and Architecture
@@ -120,7 +120,7 @@ print_success "Symlink created"
 
 # Success message
 echo ""
-echo -e "${BOLD}${GREEN}✨ Installation Complete! ${NC}"
+echo -e "${BOLD}${GREEN}Installation Complete! ${NC}"
 echo ""
 echo ""
 
@@ -179,5 +179,5 @@ echo -e "${BOLD}2.${NC} Start using Cursor Agent:"
 echo -e "   ${BOLD}cursor-agent${NC}"
 echo ""
 echo ""
-echo -e "${BOLD}${CYAN}Happy coding! 🚀${NC}"
+echo -e "${BOLD}${CYAN}Happy coding!${NC}"
 echo ""
