@@ -1,7 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, IpcMainInvokeEvent, Event } from 'electron';
 import { release } from 'node:os';
 import { join, dirname } from 'node:path';
-import fetch from 'node-fetch';
 import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
 import { existsSync } from 'node:fs';
@@ -11,7 +10,25 @@ import { inflateSync } from 'node:zlib';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseProto } from 'protobufjs';
 import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
+import type { HeadersInit, RequestInit } from 'node-fetch';
 import type { DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
+
+type NodeFetch = typeof import('node-fetch')['default'];
+type FetchArgs = Parameters<NodeFetch>;
+type FetchReturn = ReturnType<NodeFetch>;
+
+let cachedFetch: NodeFetch | null = null;
+async function ensureFetch(): Promise<NodeFetch> {
+  if (!cachedFetch) {
+    const mod = await import('node-fetch');
+    cachedFetch = mod.default;
+  }
+  return cachedFetch;
+}
+const fetch = async (...args: FetchArgs): FetchReturn => {
+  const fn = await ensureFetch();
+  return fn(...args);
+};
 
 // --- Add ESM __dirname equivalent --- 
 import { fileURLToPath } from 'node:url';
