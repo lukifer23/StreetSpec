@@ -107,10 +107,10 @@ const VolumeTool: React.FC = () => {
     if (points.length >= 2 && volume > 0) {
       // Create volume measurement object
       const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
-        label: `Volume (${dimensions.length.toFixed(1)}m × ${dimensions.width.toFixed(1)}m × ${dimensions.height.toFixed(1)}m)`,
+        kind: 'volume',
+        label: `Volume (${dimensions.length.toFixed(1)}m x ${dimensions.width.toFixed(1)}m x ${dimensions.height.toFixed(1)}m)`,
         startPoint: points[0],
         endPoint: points[1],
-        distanceMeters: volume, // Using distance field to store volume
         distance: settings.defaultUnit === 'imperial'
           ? volume * 35.315 // Cubic meters to cubic feet
           : volume,
@@ -119,6 +119,14 @@ const VolumeTool: React.FC = () => {
         cameraParams: cameraParams,
         confidence: 0.6, // Volume measurements are less reliable
         source: 'volume',
+        volumeCubicMeters: volume,
+        areaSquareMeters: dimensions.length * dimensions.width,
+        dimensionsMeters: { ...dimensions },
+        points: points.map(({ x, y }) => ({ x, y })),
+        metadata: {
+          heightMeters: height,
+          worldPointsMeters: points.map((p) => p.worldPoint).filter(Boolean),
+        },
         error: points.length < 2 ? 'Need 2 points for volume measurement' : undefined
       };
 
@@ -158,7 +166,7 @@ const VolumeTool: React.FC = () => {
     <div className={styles['volumeTool']}>
       <div className={styles['toolHeader']}>
         <h3>Volume Measurement Tool</h3>
-        <button onClick={handleClose} className={styles['closeButton']}>×</button>
+        <button onClick={handleClose} className={styles['closeButton']}>Close</button>
       </div>
 
       <div className={styles['toolContent']}>
@@ -194,7 +202,7 @@ const VolumeTool: React.FC = () => {
                 Volume: {displayVolume.toFixed(2)} {volumeUnit}
               </div>
               <div className={styles['dimensions']}>
-                Dimensions: {dimensions.length.toFixed(1)} × {dimensions.width.toFixed(1)} × {dimensions.height.toFixed(1)} {lengthUnit === 'm' ? 'm' : 'ft'}
+                Dimensions: {dimensions.length.toFixed(1)} x {dimensions.width.toFixed(1)} x {dimensions.height.toFixed(1)} {lengthUnit === 'm' ? 'm' : 'ft'}
               </div>
             </div>
           )}
@@ -217,10 +225,10 @@ const VolumeTool: React.FC = () => {
           <div className={styles['cameraInfo']}>
             <h4>Camera Parameters:</h4>
             <ul>
-              <li>Heading: {cameraParams.heading?.toFixed(2)}°</li>
-              <li>Pitch: {cameraParams.pitch?.toFixed(2)}°</li>
+              <li>Heading: {cameraParams.heading?.toFixed(2)} deg</li>
+              <li>Pitch: {cameraParams.pitch?.toFixed(2)} deg</li>
               <li>Zoom: {cameraParams.zoom?.toFixed(2)}</li>
-              <li>FOV: {cameraParams.fov?.toFixed(2)}°</li>
+              <li>FOV: {cameraParams.fov?.toFixed(2)} deg</li>
             </ul>
           </div>
         )}

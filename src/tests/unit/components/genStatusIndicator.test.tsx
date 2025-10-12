@@ -14,7 +14,7 @@ describe('GenStatusIndicator', () => {
     );
 
     const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Generating depth map…');
+    expect(status).toHaveTextContent('Generating depth map...');
     expect(status).toHaveAttribute('aria-live', 'assertive');
   });
 

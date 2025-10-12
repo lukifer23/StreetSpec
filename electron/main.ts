@@ -116,17 +116,17 @@ const store = new Store({
 
 // The built directory structure
 //
-// ├── dist-electron
-// │   ├── main.cjs
-// │   ├── preload.cjs
-// │   └── ...other-support-files
-// ├── dist (frontend build)
-// │   ├── index.html
-// │   ├── assets
-// │   └── ...other-static-files
-// ├── public
-// │   └── vite.svg (example)
-// └──
+// dist-electron/
+//   main.cjs
+//   preload.cjs
+//   ...other-support-files
+// dist/ (frontend build)
+//   index.html
+//   assets/
+//   ...other-static-files
+// public/
+//   vite.svg (example)
+//
 
 // Disable GPU Acceleration for Windows 7
 if (release().startsWith('6.1')) app.disableHardwareAcceleration()
@@ -738,13 +738,13 @@ const preloadScriptPath = join(__dirname, 'preload.cjs');
 // Determine the correct path for index.html
 // In dev, vite-plugin-electron sets VITE_DEV_SERVER_URL.
 // In prod, index.html is in the 'dist' folder adjacent to 'dist-electron'.
-const devServerUrl = process.env.VITE_DEV_SERVER_URL; // Get the potential URL from vite-plugin-electron
+const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173'; // Get the potential URL from vite-plugin-electron or default
 const indexHtmlPath = join(__dirname, '../dist/index.html'); // Path to index.html relative to main.cjs
 
 // --- Model selection logic ---
 const envModelFilename = process.env.DEPTH_MODEL_FILENAME; // optional override via .env
 
-// Primary model we ship with the repo (≈94 MB, outdoor metric)
+// Primary model we ship with the repo (~94 MB, outdoor metric)
 const primaryModelFilename = 'depth_anything_v2_metric_vkitti_vits.onnx';
 // Fallback to tiny (33 MB) if user supplies it manually
 const tinyModelFilename = 'depth_anything_v2_vit_tiny_metric_outdoor.onnx';
@@ -862,9 +862,25 @@ async function createWindow() {
   });
 
   if (devServerUrl && !app.isPackaged) {
-    await win.loadURL(devServerUrl).catch((_err: Error) => {
+    // Retry loading the dev server URL a few times in case it's not ready yet
+    let loaded = false;
+    for (let attempt = 1; attempt <= 5 && !loaded; attempt++) {
+      try {
+        await win.loadURL(devServerUrl);
+        loaded = true;
+        console.log(`[electron] Successfully loaded dev server on attempt ${attempt}`);
+      } catch (err) {
+        console.log(`[electron] Failed to load dev server on attempt ${attempt}, retrying...`);
+        if (attempt < 5) {
+          await sleep(1000); // Wait 1 second before retrying
+        }
+      }
+    }
+
+    if (!loaded) {
       dialog.showErrorBox('Development Load Error', `Could not connect to the Vite development server at:\n${devServerUrl}\n\nPlease ensure 'npm run dev' is running.`);
-    });
+    }
+
     win.webContents.openDevTools();
   } else {
     if (!existsSync(indexHtmlPath)) {

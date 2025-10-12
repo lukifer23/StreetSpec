@@ -6,6 +6,8 @@ import ProjectPanel from './components/ProjectPanel';
 import PolylineTool from './components/PolylineTool';
 import AreaTool from './components/AreaTool';
 import VolumeTool from './components/VolumeTool';
+import MeasurementSidebar from './components/MeasurementSidebar';
+import SearchBox from './components/SearchBox';
 import { AppLayout } from './components/AppLayout';
 import { useAppLogic } from './hooks/useAppLogic';
 import styles from './App.module.css';
@@ -67,13 +69,9 @@ function App() {
     handleCalibrateClick,
     handleAutoCalibrate,
     handleGenerateDepthMap,
-    handleClearMeasurements,
-    handleUnitToggle,
     handleSaveSettingsPanel,
-    handleExportCSV,
 
     // Props for components
-    measurements,
     settings,
     isSettingsOpen,
     isGeneratingMap,
@@ -109,12 +107,16 @@ function App() {
             style={{ marginRight: 10 }}
             onClick={() => setIsProjectPanelOpen(true)}
             title="Projects"
-          >📁</button>
+          >
+            Projects
+          </button>
           <button
             style={{ marginRight: 10 }}
             onClick={() => setIsSettingsOpen(true)}
             title="Settings"
-          >⚙️</button>
+          >
+            Settings
+          </button>
           <Tooltip text="Generate depth map for current Street View location">
             <button style={{marginRight:10}} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}>
               {isGeneratingMap? 'Generating...' : 'Generate Depth Map'}
@@ -152,45 +154,7 @@ function App() {
           )}
         </div>
       }
-      sidebar={
-        <div className={styles['sidebar']}>
-          <div className={styles['sidebarHeader']}>
-            <h4>Measurements</h4>
-            <div className={styles['sidebarControls']}>
-              <button
-                onClick={handleUnitToggle}
-                className={styles['unitToggle']}
-                title={`Toggle units (${settings.defaultUnit === 'metric' ? 'Imperial' : 'Metric'})`}
-              >
-                {settings.defaultUnit === 'metric' ? 'm/ft' : 'ft/m'}
-              </button>
-              {measurements.length > 0 && (
-                <>
-                   <button onClick={handleExportCSV} className={styles['sidebarButton']} title="Export as CSV (Ctrl+E)">Export</button>
-                   <button onClick={handleClearMeasurements} className={`${styles['sidebarButton']} ${styles['dangerButton']}`} title="Clear All Measurements (Ctrl+Shift+Delete)">Clear All</button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* We'll integrate with MeasurementSidebar component later */}
-          <div style={{ flex: 1, padding: '10px' }}>
-            {/* Placeholder for measurement list */}
-            <div style={{ color: '#666', fontStyle: 'italic' }}>
-              {measurements.length === 0 ? 'No measurements yet.' : `${measurements.length} measurements`}
-            </div>
-          </div>
-
-          <div className={styles['sidebarFooter']}>
-            <div>PoleCheck Desktop v0.0.1</div>
-            <div className={styles['shortcuts']}>
-              <span>M: Measure</span>
-              <span>U: Toggle Units</span>
-              <span>Ctrl+E: Export</span>
-            </div>
-          </div>
-        </div>
-      }
+      sidebar={<MeasurementSidebar />}
       mapArea={
         <div className={styles['mapArea']}>
           {isApiLoaded ? (
@@ -241,7 +205,7 @@ function App() {
         ) : undefined
       }
     >
-      {isProjectPanelOpen && <ProjectPanel />}
+      {isProjectPanelOpen && <ProjectPanel onClose={() => setIsProjectPanelOpen(false)} />}
       {isSettingsOpen && (
         <SettingsPanel
           initial={settings}

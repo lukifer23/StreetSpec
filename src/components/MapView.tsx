@@ -29,7 +29,7 @@ export const GenStatusIndicator = React.memo<{
 }>(({ isGeneratingMap, mapGenerationError, onnxDepthMap }) => {
   const message = useMemo(() => {
     if (isGeneratingMap) {
-      return 'Generating depth map…';
+      return 'Generating depth map...';
     } else if (mapGenerationError) {
       return `Error generating depth map: ${mapGenerationError}`;
     } else if (onnxDepthMap) {
@@ -164,8 +164,8 @@ const CameraHUD = React.memo(() => {
 
   return (
     <div style={hudStyle} aria-label="Camera HUD">
-      <div>hFOV: {fov?.toFixed(1) ?? '--'}°  vFOV: {vFov?.toFixed(1) ?? '--'}°</div>
-      <div>Pitch: {pitch?.toFixed(2) ?? '--'}°  ΔCal: {offset.toFixed(2)}°</div>
+      <div>hFOV: {fov?.toFixed(1) ?? '--'} deg  vFOV: {vFov?.toFixed(1) ?? '--'} deg</div>
+      <div>Pitch: {pitch?.toFixed(2) ?? '--'} deg  Cal Offset: {offset.toFixed(2)} deg</div>
       <div>CamH: {camH.toFixed(2)} m  Depth: scale {scale.toFixed(3)} bias {bias.toFixed(3)}</div>
     </div>
   );

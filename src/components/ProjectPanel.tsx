@@ -1,16 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useProjectStore } from '../stores/projectStore';
 import RevisionHistory from './RevisionHistory';
 import styles from './ProjectPanel.module.css';
 
-const ProjectPanel: React.FC = () => {
+interface ProjectPanelProps {
+  onClose: () => void;
+}
+
+const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
   const { projects, createProject, loadProject, deleteProject, currentProjectId, saveRevision } = useProjectStore();
   const [newProjectName, setNewProjectName] = useState('');
 
   useEffect(() => {
     // Load projects from the main process when the component mounts
     useProjectStore.getState().loadProjects();
-  }, []);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const handleCreateProject = () => {
     if (newProjectName.trim()) {
@@ -21,7 +38,10 @@ const ProjectPanel: React.FC = () => {
 
   return (
     <div className={styles['container']}>
-      <h3>Projects</h3>
+      <div className={styles['header']}>
+        <h3>Projects</h3>
+        <button onClick={handleClose} className={styles['closeButton']}>Close</button>
+      </div>
       <div className={styles['newProject']}>
         <input
           type="text"

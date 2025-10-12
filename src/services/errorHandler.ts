@@ -128,7 +128,7 @@ class ErrorHandlerService implements ErrorHandler {
       <div class="error-header">
         <span class="error-icon">!</span>
         <span class="error-title">${this.getErrorTitle(error)}</span>
-        <button class="error-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        <button class="error-close" onclick="this.parentElement.parentElement.remove()">Close</button>
       </div>
       <div class="error-message">${error.userFriendlyMessage}</div>
       ${error.recoverable ? '<div class="error-actions"><button onclick="this.parentElement.parentElement.remove()">Dismiss</button></div>' : ''}

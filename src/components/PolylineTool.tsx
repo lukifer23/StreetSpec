@@ -96,6 +96,7 @@ const PolylineTool: React.FC = () => {
     if (points.length >= 2 && totalDistance > 0) {
       // Create measurement object
       const measurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
+        kind: 'polyline',
         label: `Polyline (${points.length} points)`,
         startPoint: points[0],
         endPoint: points[points.length - 1],
@@ -108,6 +109,10 @@ const PolylineTool: React.FC = () => {
         cameraParams: cameraParams,
         confidence: 0.8, // Polyline measurements are generally reliable
         source: 'polyline',
+        points: points.map(({ x, y }) => ({ x, y })),
+        metadata: {
+          segmentDistancesMeters: segmentDistances,
+        },
         error: points.length < 2 ? 'Need at least 2 points for measurement' : undefined
       };
 
@@ -119,7 +124,7 @@ const PolylineTool: React.FC = () => {
       setTotalDistance(0);
       setSegmentDistances([]);
     }
-  }, [points, totalDistance, settings.defaultUnit, cameraParams, addMeasurement]);
+  }, [points, totalDistance, segmentDistances, settings.defaultUnit, cameraParams, addMeasurement]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {
@@ -146,7 +151,7 @@ const PolylineTool: React.FC = () => {
     <div className={styles['polylineTool']}>
       <div className={styles['toolHeader']}>
         <h3>Polyline Measurement Tool</h3>
-        <button onClick={handleClose} className={styles['closeButton']}>×</button>
+        <button onClick={handleClose} className={styles['closeButton']}>Close</button>
       </div>
 
       <div className={styles['toolContent']}>
@@ -177,7 +182,7 @@ const PolylineTool: React.FC = () => {
                         : distance;
                       return (
                         <li key={index}>
-                          Point {index + 1} → Point {index + 2}: {segmentDistance.toFixed(2)} {unitLabel}
+                          Point {index + 1} -> Point {index + 2}: {segmentDistance.toFixed(2)} {unitLabel}
                         </li>
                       );
                     })}
@@ -205,10 +210,10 @@ const PolylineTool: React.FC = () => {
           <div className={styles['cameraInfo']}>
             <h4>Camera Parameters:</h4>
             <ul>
-              <li>Heading: {cameraParams.heading?.toFixed(2)}°</li>
-              <li>Pitch: {cameraParams.pitch?.toFixed(2)}°</li>
+              <li>Heading: {cameraParams.heading?.toFixed(2)} deg</li>
+              <li>Pitch: {cameraParams.pitch?.toFixed(2)} deg</li>
               <li>Zoom: {cameraParams.zoom?.toFixed(2)}</li>
-              <li>FOV: {cameraParams.fov?.toFixed(2)}°</li>
+              <li>FOV: {cameraParams.fov?.toFixed(2)} deg</li>
             </ul>
           </div>
         )}
@@ -218,3 +223,4 @@ const PolylineTool: React.FC = () => {
 };
 
 export default PolylineTool;
+

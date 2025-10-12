@@ -63,7 +63,7 @@ export default defineConfig(({ mode }) => {
                 external: ['electron'],
                 output: {
                   format: 'cjs',
-                  entryFileNames: '[name].js'
+                  entryFileNames: 'preload.cjs'
                 }
               },
             },

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
-import type { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import type { Point, Measurement } from '../types/common';
+import { UNIT_CONVERSIONS } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
 import styles from './AreaTool.module.css';
 
@@ -123,10 +124,10 @@ const AreaTool: React.FC = () => {
     if (points.length >= 3 && area > 0) {
       // Create area measurement object
       const areaMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
+        kind: 'area',
         label: `Area (${points.length} points)`,
         startPoint: points[0],
         endPoint: points[points.length - 1],
-        distanceMeters: area, // Using distance field to store area
         distance: settings.defaultUnit === 'imperial'
           ? area * 10.764 // Square meters to square feet
           : area,
@@ -135,6 +136,12 @@ const AreaTool: React.FC = () => {
         cameraParams: cameraParams,
         confidence: 0.7, // Area measurements are moderately reliable
         source: 'area',
+        areaSquareMeters: area,
+        perimeterMeters: perimeter,
+        points: points.map(({ x, y }) => ({ x, y })),
+        metadata: {
+          worldPointsMeters: points.map((p) => p.worldPoint).filter(Boolean),
+        },
         error: points.length < 3 ? 'Need at least 3 points for area measurement' : undefined
       };
 
@@ -175,7 +182,7 @@ const AreaTool: React.FC = () => {
     <div className={styles['areaTool']}>
       <div className={styles['toolHeader']}>
         <h3>Area Measurement Tool</h3>
-        <button onClick={handleClose} className={styles['closeButton']}>×</button>
+        <button onClick={handleClose} className={styles['closeButton']}>Close</button>
       </div>
 
       <div className={styles['toolContent']}>
@@ -219,10 +226,10 @@ const AreaTool: React.FC = () => {
           <div className={styles['cameraInfo']}>
             <h4>Camera Parameters:</h4>
             <ul>
-              <li>Heading: {cameraParams.heading?.toFixed(2)}°</li>
-              <li>Pitch: {cameraParams.pitch?.toFixed(2)}°</li>
+              <li>Heading: {cameraParams.heading?.toFixed(2)} deg</li>
+              <li>Pitch: {cameraParams.pitch?.toFixed(2)} deg</li>
               <li>Zoom: {cameraParams.zoom?.toFixed(2)}</li>
-              <li>FOV: {cameraParams.fov?.toFixed(2)}°</li>
+              <li>FOV: {cameraParams.fov?.toFixed(2)} deg</li>
             </ul>
           </div>
         )}

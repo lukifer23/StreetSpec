@@ -55,20 +55,32 @@ export interface Project {
 }
 
 // Represents a single measurement
+export type MeasurementKind = 'distance' | 'polyline' | 'area' | 'volume';
+
 export interface Measurement {
   id: string;           // Unique ID (e.g., uuid)
+  kind: MeasurementKind; // Type of measurement captured
   label: string;        // User-defined label
   name?: string;        // Optional user-defined name
   startPoint: Point;    // Screen coordinates
   endPoint: Point;
-  distanceMeters: number; // Calculated distance in meters
-  distance: number;     // Display distance in the user's selected unit
+  // Length-based measurements (distance, polyline) store base values here
+  distanceMeters?: number;
+  distance?: number;     // Display value in the user's selected unit
   unit: 'metric' | 'imperial'; // Unit at time of calculation
+  // Area metrics
+  areaSquareMeters?: number;
+  perimeterMeters?: number;
+  // Volume metrics
+  volumeCubicMeters?: number;
+  dimensionsMeters?: { length: number; width: number; height: number };
+  // Screen-space path reference for polyline/area tools
+  points?: Point[];
   timestamp: number;    // Creation timestamp
   panoId?: string;       // Pano ID where measurement was taken
   cameraParams?: CameraParams; // Camera state when taken (optional, for context)
   error?: string; // Optional field for storing errors
-  source?: 'planes' | 'onnx' | 'ground';
+  source?: 'planes' | 'onnx' | 'ground' | 'area' | 'volume' | 'polyline';
   confidence?: number; // 0..1 confidence score
   metadata?: Record<string, unknown>;
 }
@@ -93,7 +105,7 @@ export interface OnnxDepthMap {
 }
 
 // Depth plane representation for Street View depth data. Google encodes
-// planes using the equation `n·x + d = 0` where the normal vector points
+// planes using the equation `n dot x + d = 0` where the normal vector points
 // toward the camera and `d` is the signed distance from the origin along that
 // normal (positive for planes in front of the camera).
 export interface DepthPlane {

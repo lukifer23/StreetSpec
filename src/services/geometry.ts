@@ -216,7 +216,7 @@ export function calculateFov(
   zoom: number | undefined | null,
   aspectRatio: number
 ): { hFov: number; vFov: number } {
-  // Default to zoom level 1 (approx. 90° horizontal FOV) if zoom is unknown
+  // Default to zoom level 1 (approx. 90 deg horizontal FOV) if zoom is unknown
   const effectiveZoom = zoom ?? 1;
   // Clamp zoom level for safety
   const clampedZoom = Math.max(0, Math.min(effectiveZoom, 4));
@@ -466,8 +466,8 @@ export function screenToWorldWithDepth(
             const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
             const dotVN = dotProduct(directionVector, normal);
             if (Math.abs(dotVN) >= epsilon) {
-                // Google depth planes follow n·x + d = 0 with normals pointing toward the camera.
-                // The intersection distance along the viewing ray is therefore t = -d / (n · v).
+                // Google depth planes follow n dot x + d = 0 with normals pointing toward the camera.
+                // The intersection distance along the viewing ray is therefore t = -d / (n dot v).
                 const t = -selectedPlane.d / dotVN;
                 if (t > epsilon) {
                     minDistance = t;

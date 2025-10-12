@@ -62,7 +62,7 @@ const AppHeader: React.FC = () => {
         title="Projects"
         className={styles['headerButton']}
       >
-        📁
+        Projects
       </button>
       
       <button
@@ -71,7 +71,7 @@ const AppHeader: React.FC = () => {
         title="Settings"
         className={styles['headerButton']}
       >
-        ⚙️
+        Settings
       </button>
       
       <Tooltip text="Generate depth map for current Street View location">

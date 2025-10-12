@@ -8,3 +8,24 @@
   border-radius: 4px;
   z-index: 100;
 }
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.closeButton {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.closeButton:hover,
+.closeButton:focus {
+  border-color: #fff;
+}

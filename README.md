@@ -52,13 +52,13 @@ PoleCheck Desktop is a cross-platform application for measuring objects in Googl
 
 PoleCheck Desktop is in active development with significant recent improvements:
 
-*   **✅ Performance Optimization:** Virtualized lists, compressed caching, memory management implemented
-*   **✅ Accuracy Enhancement:** Auto-calibration, confidence scoring, measurement validation added
-*   **✅ Advanced Tools:** Polyline, area, and volume measurement tools fully implemented
-*   **🔄 Core Features:** All measurement types functional with confidence indicators
-*   **🔄 Testing:** Unit test coverage expanded to 70%+ with integration tests planned
-*   **✅ State Management:** Robust Zustand architecture with persistence
-*   **🔄 UI/UX:** Modern interface with tooltips, keyboard shortcuts, and responsive design
+*   **[Done] Performance Optimization:** Virtualized lists, compressed caching, and memory management are implemented.
+*   **[Done] Accuracy Enhancement:** Auto-calibration, confidence scoring, and measurement validation are in place.
+*   **[Done] Advanced Tools:** Polyline, area, and volume measurement tools are fully implemented.
+*   **[In Progress] Core Features:** All measurement types function with confidence indicators, with refinements ongoing.
+*   **[In Progress] Testing:** Unit test coverage is above 70%, and additional integration tests are underway.
+*   **[Done] State Management:** Robust Zustand architecture with persistence is live.
+*   **[In Progress] UI and UX:** Interface polish continues with improvements to tooltips, shortcuts, and responsiveness.
 
 See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and remaining priorities.
 
@@ -109,7 +109,7 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
    ```
 
 3. **Configure environment variables**
-   Create a `.env` file in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer (`VITE_…`) and Electron main process (`GOOGLE_…`) so depth requests work everywhere:
+   Create a `.env` file in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer `VITE_GOOGLE_MAPS_API_KEY` and Electron main process `GOOGLE_MAPS_API_KEY` so depth requests work everywhere:
    ```env
    VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
    GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
@@ -148,7 +148,7 @@ This command will:
 ### Basic Workflow
 1. **Search for a location** using the search bar or enter coordinates directly
 2. **Generate a depth map** for the current Street View location (required for measurements)
-   - PoleCheck now requests Street View depth planes directly from Google's depth API. The app retries a limited number of times (configurable under **Settings → Street View Depth Retries**) and surfaces a banner if the request is rate-limited or depth is unavailable, falling back to ONNX depth in the meantime.
+   - PoleCheck now requests Street View depth planes directly from Google's depth API. The app retries a limited number of times (configurable under **Settings -> Street View Depth Retries**) and surfaces a banner if the request is rate-limited or depth is unavailable, falling back to ONNX depth in the meantime.
 3. **Calibrate the horizon** by clicking on the flat horizontal line where sky meets ground
 4. **Click "Estimate Height"** or press 'M' to start a measurement
 5. **Click the base** of the object you want to measure
@@ -247,7 +247,7 @@ npm run validate         # Type checking, linting, and tests
 
 ### Environment & Setup
 - **"Node.js not found"**: Install Node.js from [nodejs.org](https://nodejs.org/) and confirm it is on your PATH.
-- **"Git not found"**: Install Git from [git-scm.com](https://git-scm.com/) and enable the “Add to PATH” option during installation (Windows).
+- **"Git not found"**: Install Git from [git-scm.com](https://git-scm.com/) and enable the "Add to PATH" option during installation (Windows).
 - **"Git LFS not found"**: Install Git LFS from [git-lfs.com](https://git-lfs.com/) or run `git lfs install` after installing the extension.
 - **"Permission denied" when running `setup.sh`**: Make the script executable with `chmod +x setup.sh` (use `sudo` if required by your environment).
 - **Model files did not download**: Run `git lfs pull` manually or fetch them from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small) and place them in the paths listed above.

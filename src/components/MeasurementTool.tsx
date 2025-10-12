@@ -483,6 +483,7 @@ const MeasurementTool: React.FC = () => {
       : finalHeight;
 
     const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
+      kind: 'distance',
       label: 'Est. Height',
       distanceMeters: finalHeight,
       distance: finalDistance,
@@ -613,7 +614,7 @@ const MeasurementTool: React.FC = () => {
     >
       {showEstimatePrompt && (
         <div className={styles['estimatePrompt']} role="status" aria-live="polite">
-          Calibration complete! Press “Estimate Height” (or tap M) to begin measuring.
+          Calibration complete! Press "Estimate Height" (or tap M) to begin measuring.
         </div>
       )}
       <StartButton

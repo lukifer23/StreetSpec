@@ -138,7 +138,7 @@ export const useAppLogic = (apiKey: string) => {
      window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
      setCalibrateMode(false);
      setIsCalibrated(true);
-     alert(`Manual calibration saved ΔPitch ${offset.toFixed(2)}°`);
+    alert(`Manual calibration saved. Pitch offset ${offset.toFixed(2)} deg`);
   }, [currentCameraParams, settings, updateSettings, setCalibrateMode]);
 
   const handleAutoCalibrate = useCallback(async () => {
@@ -159,7 +159,7 @@ export const useAppLogic = (apiKey: string) => {
         updateSettings({ calibrationPitchOffsetDeg: result.pitchOffset });
         await window.electronAPI?.invoke('save-settings', newSettings);
         setIsCalibrated(true);
-        alert(`Auto-calibration successful! ΔPitch ${result.pitchOffset.toFixed(2)}° (confidence: ${(result.confidence * 100).toFixed(0)}%)`);
+        alert(`Auto-calibration successful! Pitch offset ${result.pitchOffset.toFixed(2)} deg (confidence: ${(result.confidence * 100).toFixed(0)}%)`);
       } else {
         alert(`Auto-calibration failed. Confidence too low (${(result.confidence * 100).toFixed(0)}%). Please try manual calibration.`);
       }
