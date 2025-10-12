@@ -1,4 +1,5 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -23,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error details
     console.error('ErrorBoundary caught an error:', error, errorInfo);
 
@@ -44,7 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       // Custom fallback UI or default error UI
       if (this.props.fallback) {

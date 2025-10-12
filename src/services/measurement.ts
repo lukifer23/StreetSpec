@@ -4,11 +4,11 @@ import {
     screenToWorld,
     calculateDistance3D,
     screenToWorldWithDepth,
-    estimateGroundPlaneIntersectionWithConfidence,
-    GroundPlaneResult
+    estimateGroundPlaneIntersectionWithConfidence
 } from './geometry';
+import type { GroundPlaneResult } from './geometry';
 import { v4 as uuidv4 } from 'uuid'; // Assuming uuid is installed
-import { DecodedDepthData } from '../types/common'; // Import from common types
+import type { DecodedDepthData } from '../types/common'; // Import from common types
 
 /**
  * Creates a new measurement object.

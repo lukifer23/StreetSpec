@@ -1,4 +1,4 @@
-import type { CameraParams, OnnxDepthMap } from '../types/common';
+import type { CameraParams } from '../types/common';
 import { generateDepthMap, createDepthMapFetcher, type DepthGenerationDeps } from './depthGeneration';
 import { getCachedDepthMap, cacheDepthMap } from './depth';
 

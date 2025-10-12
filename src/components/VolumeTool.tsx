@@ -120,6 +120,7 @@ const VolumeTool: React.FC = () => {
       document.addEventListener('click', handleClick);
       return () => document.removeEventListener('click', handleClick);
     }
+    return undefined;
   }, [isVolumeToolActive, handleCanvasClick]);
 
   // Complete the measurement
@@ -144,7 +145,7 @@ const VolumeTool: React.FC = () => {
           : volume,
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
-        cameraParams: cameraParams,
+        cameraParams: cameraParams || undefined,
         confidence,
         source: 'volume',
         volumeCubicMeters: volume,

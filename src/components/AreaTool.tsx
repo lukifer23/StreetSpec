@@ -162,7 +162,7 @@ const AreaTool: React.FC = () => {
           : area,
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
-        cameraParams: cameraParams,
+        cameraParams: cameraParams || undefined,
         confidence,
         source: 'area',
         areaSquareMeters: area,

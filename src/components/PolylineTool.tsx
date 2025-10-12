@@ -109,6 +109,7 @@ const PolylineTool: React.FC = () => {
       document.addEventListener('click', handleClick);
       return () => document.removeEventListener('click', handleClick);
     }
+    return undefined;
   }, [isPolylineToolActive, handleCanvasClick]);
 
   // Complete the measurement
@@ -134,7 +135,7 @@ const PolylineTool: React.FC = () => {
           : totalDistance,
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
-        cameraParams: cameraParams,
+        cameraParams: cameraParams || undefined,
         confidence,
         source: 'polyline',
         points: points.map(({ x, y }) => ({ x, y })),
