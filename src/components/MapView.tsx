@@ -321,7 +321,7 @@ const MapView: React.FC<{
 
         // Get adjacent pano IDs
         const adjacentPanoIds = links
-          .filter(link => link.pano)
+          .filter(link => link && link.pano)
           .map(link => link.pano!)
           .slice(0, 3); // Limit to first 3 adjacent panos
 
@@ -430,10 +430,12 @@ const MapView: React.FC<{
       <div style={containerStyle}>
         <div ref={mapContainerRef} data-testid="map-view" style={mapContainerStyle} />
         <CameraHUD />
-        <CalibrationOverlay
-          calibrateMode={calibrateMode}
-          onCalibrateClick={onCalibrateClick}
-        />
+        {onCalibrateClick && (
+          <CalibrationOverlay
+            calibrateMode={calibrateMode}
+            onCalibrateClick={onCalibrateClick}
+          />
+        )}
         <GenStatusIndicator
           isGeneratingMap={isGeneratingMap}
           mapGenerationError={mapGenerationError}

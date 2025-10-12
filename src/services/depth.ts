@@ -10,8 +10,8 @@ interface MemoryStats {
 }
 
 function getMemoryUsage(): MemoryStats {
-  if (typeof performance !== 'undefined' && performance.memory) {
-    const { usedJSHeapSize, totalJSHeapSize } = performance.memory;
+  if (typeof performance !== 'undefined' && (performance as any).memory) {
+    const { usedJSHeapSize, totalJSHeapSize } = (performance as any).memory;
     return {
       used: usedJSHeapSize / (1024 * 1024), // Convert to MB
       total: totalJSHeapSize / (1024 * 1024),

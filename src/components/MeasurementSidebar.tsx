@@ -106,8 +106,7 @@ const MeasurementSidebar: React.FC = () => {
         settings: state.settings,
       }),
       []
-    ),
-    shallow
+    )
   );
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();
   const { toggleUnit } = useSettingsActions();

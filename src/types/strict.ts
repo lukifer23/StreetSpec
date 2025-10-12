@@ -249,7 +249,7 @@ export const isError = <T, E>(result: Result<T, E>): result is { success: false;
 
 // Strict validation decorators
 export const validateInput = <T>(schema: z.ZodSchema<T>) => {
-  return (target: any, propertyKey: string, descriptor: PropertyDescriptor) => {
+  return (_target: any, _propertyKey: string, descriptor: PropertyDescriptor) => {
     const originalMethod = descriptor.value;
     descriptor.value = function (...args: unknown[]) {
       const validatedArgs = args.map(arg => schema.parse(arg));

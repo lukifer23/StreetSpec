@@ -109,7 +109,7 @@ const AreaTool: React.FC = () => {
       return;
     }
 
-    const worldPoints = points.map(p => p.worldPoint!).filter(Boolean);
+    const worldPoints = points.map(p => p.worldPoint).filter((p): p is { x: number; y: number; z: number } => p !== undefined);
     if (worldPoints.length < 3) {
       setArea(0);
       setPerimeter(0);
@@ -155,8 +155,8 @@ const AreaTool: React.FC = () => {
       const areaMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'area',
         label: `Area (${points.length} points)`,
-        startPoint: points[0],
-        endPoint: points[points.length - 1],
+        startPoint: points[0]!,
+        endPoint: points[points.length - 1]!,
         distance: settings.defaultUnit === 'imperial'
           ? area * 10.764 // Square meters to square feet
           : area,

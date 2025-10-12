@@ -87,7 +87,8 @@ const MeasurementCanvas = React.memo<{
       context.shadowBlur = 4;
       
       const unitLabel = m.unit === 'metric' ? 'm' : 'ft';
-      context.fillText(`${m.label}: ${m.distance.toFixed(2)}${unitLabel}`, midX + 10, midY);
+      const distanceText = m.distance !== undefined ? m.distance.toFixed(2) : 'N/A';
+      context.fillText(`${m.label}: ${distanceText}${unitLabel}`, midX + 10, midY);
       context.shadowBlur = 0;
       context.fillStyle = '#ff00ff';
     });
@@ -182,7 +183,7 @@ const MeasurementCanvas = React.memo<{
         );
 
         if (estimatedHeight !== null) {
-          const { value: finalDistance, unitLabel } = convertLengthToDisplay(estimatedHeight, defaultUnit);
+          const { value: finalDistance, unitLabel } = convertLengthToDisplay(estimatedHeight, defaultUnit as 'metric' | 'imperial');
 
           if (finalDistance !== undefined) {
             // Draw background rectangle for better readability
@@ -326,7 +327,7 @@ const StartButton = React.memo<{
     transition: 'all 0.2s ease',
     minWidth: '140px',
     textAlign: 'center' as const
-  }), [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+  } as React.CSSProperties), [cameraParams, onnxDepthMap, depthData, isCalibrated]);
 
   const isDisabled = !cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated;
   
@@ -358,7 +359,7 @@ const StartButton = React.memo<{
 
       // Add hover effect
       if (cameraParams && (onnxDepthMap || depthData) && isCalibrated) {
-        baseStyles.boxShadow = '0 4px 12px rgba(0,123,255,0.3)';
+        (baseStyles as any).boxShadow = '0 4px 12px rgba(0,123,255,0.3)';
       }
     }
 
@@ -650,7 +651,7 @@ const MeasurementTool: React.FC = () => {
     }
 
     // Convert to display value
-    const { value: finalDistance } = convertLengthToDisplay(finalHeight, defaultUnit);
+    const { value: finalDistance } = convertLengthToDisplay(finalHeight, defaultUnit as 'metric' | 'imperial');
     const measurementConfidence = Math.min(1, Math.max(0, confidence));
 
     const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {

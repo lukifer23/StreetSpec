@@ -48,6 +48,7 @@ export const useAppLogic = (apiKey: string) => {
   const store = useRootStore(
     useCallback(
       (state) => ({
+        // State values
         measurements: state.measurements,
         settings: state.settings,
         isSettingsOpen: state.isSettingsOpen,
@@ -61,6 +62,8 @@ export const useAppLogic = (apiKey: string) => {
         onnxDepthMap: state.onnxDepthMap,
         depthData: state.depthData,
         currentProjectId: state.currentProjectId,
+
+        // Actions (these are stable references in Zustand)
         loadProjects: state.loadProjects,
         deleteMeasurement: state.deleteMeasurement,
         renameMeasurement: state.renameMeasurement,

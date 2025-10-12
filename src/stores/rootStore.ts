@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
-import { shallow } from 'zustand/shallow';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Measurement,
@@ -514,56 +513,44 @@ export const useUIState = () => useRootStore((state) => ({
 
 // Action hooks
 export const useSettingsActions = () =>
-  useRootStore(
-    (state) => ({
-      setSettings: state.setSettings,
-      updateSettings: state.updateSettings,
-      toggleUnit: state.toggleUnit,
-    }),
-    shallow
-  );
+  useRootStore((state) => ({
+    setSettings: state.setSettings,
+    updateSettings: state.updateSettings,
+    toggleUnit: state.toggleUnit,
+  }));
 
 export const useMeasurementActions = () =>
-  useRootStore(
-    (state) => ({
-      addMeasurement: state.addMeasurement,
-      deleteMeasurement: state.deleteMeasurement,
-      renameMeasurement: state.renameMeasurement,
-      clearMeasurements: state.clearMeasurements,
-      setMeasurements: state.setMeasurements,
-    }),
-    shallow
-  );
+  useRootStore((state) => ({
+    addMeasurement: state.addMeasurement,
+    deleteMeasurement: state.deleteMeasurement,
+    renameMeasurement: state.renameMeasurement,
+    clearMeasurements: state.clearMeasurements,
+    setMeasurements: state.setMeasurements,
+  }));
 
 export const useProjectActions = () =>
-  useRootStore(
-    (state) => ({
-      loadProjects: state.loadProjects,
-      createProject: state.createProject,
-      loadProject: state.loadProject,
-      deleteProject: state.deleteProject,
-      saveRevision: state.saveRevision,
-      revertToRevision: state.revertToRevision,
-      saveCurrentProject: state.saveCurrentProject,
-    }),
-    shallow
-  );
+  useRootStore((state) => ({
+    loadProjects: state.loadProjects,
+    createProject: state.createProject,
+    loadProject: state.loadProject,
+    deleteProject: state.deleteProject,
+    saveRevision: state.saveRevision,
+    revertToRevision: state.revertToRevision,
+    saveCurrentProject: state.saveCurrentProject,
+  }));
 
 export const useUIActions = () =>
-  useRootStore(
-    (state) => ({
-      setIsSettingsOpen: state.setIsSettingsOpen,
-      setIsGeneratingMap: state.setIsGeneratingMap,
-      setCalibrateMode: state.setCalibrateMode,
-      setIsPolylineToolActive: state.setIsPolylineToolActive,
-      setIsAreaToolActive: state.setIsAreaToolActive,
-      setIsVolumeToolActive: state.setIsVolumeToolActive,
-      setIsProjectPanelOpen: state.setIsProjectPanelOpen,
-      setError: state.setError,
-      setMapGenerationError: state.setMapGenerationError,
-      setIsCalibrated: state.setIsCalibrated,
-      setLoading: state.setLoading,
-      setOnGenerateDepthMap: state.setOnGenerateDepthMap,
-    }),
-    shallow
-  );
+  useRootStore((state) => ({
+    setIsSettingsOpen: state.setIsSettingsOpen,
+    setIsGeneratingMap: state.setIsGeneratingMap,
+    setCalibrateMode: state.setCalibrateMode,
+    setIsPolylineToolActive: state.setIsPolylineToolActive,
+    setIsAreaToolActive: state.setIsAreaToolActive,
+    setIsVolumeToolActive: state.setIsVolumeToolActive,
+    setIsProjectPanelOpen: state.setIsProjectPanelOpen,
+    setError: state.setError,
+    setMapGenerationError: state.setMapGenerationError,
+    setIsCalibrated: state.setIsCalibrated,
+    setLoading: state.setLoading,
+    setOnGenerateDepthMap: state.setOnGenerateDepthMap,
+  }));
