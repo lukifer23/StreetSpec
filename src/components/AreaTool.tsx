@@ -137,6 +137,7 @@ const AreaTool: React.FC = () => {
       document.addEventListener('click', handleClick);
       return () => document.removeEventListener('click', handleClick);
     }
+    return undefined;
   }, [isAreaToolActive, handleCanvasClick]);
 
   // Complete the measurement

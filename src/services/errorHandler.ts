@@ -115,7 +115,7 @@ class ErrorHandlerService implements ErrorHandler {
     }
 
     // In production, you might want to send to a logging service
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env['NODE_ENV'] === 'production') {
       this.sendToLoggingService(logEntry);
     }
   }

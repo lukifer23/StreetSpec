@@ -1,4 +1,3 @@
-import React from 'react';
 import MapView from './components/MapView';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
@@ -16,7 +15,7 @@ import styles from './App.module.css';
 import './App.css';
 
 function App() {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  const apiKey = import.meta.env['VITE_GOOGLE_MAPS_API_KEY'] || '';
 
   const {
     // State

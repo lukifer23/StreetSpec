@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     // Report to error tracking service in production
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env['NODE_ENV'] === 'production') {
       // Example: Send to error tracking service
       // errorTracker.captureException(error, { extra: errorInfo });
     }

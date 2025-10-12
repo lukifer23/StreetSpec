@@ -171,6 +171,7 @@ export const useAppLogic = (apiKey: string) => {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
     }
+    return undefined;
   }, [settings.theme]);
 
   // Auto-save measurements when they change

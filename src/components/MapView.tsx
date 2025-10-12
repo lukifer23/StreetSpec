@@ -328,7 +328,7 @@ const MapView: React.FC<{
         if (adjacentPanoIds.length === 0) return;
 
         // Get API key from env
-        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+        const apiKey = import.meta.env['VITE_GOOGLE_MAPS_API_KEY'] || '';
         if (!apiKey) return;
 
         // Get current camera params

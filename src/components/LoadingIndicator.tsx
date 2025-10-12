@@ -112,6 +112,7 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
         return () => clearTimeout(timer);
       }
     }
+    return undefined;
   }, [isLoading, show, onComplete]);
 
   // Auto-hide progress when complete
@@ -126,6 +127,7 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
       }, 500);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [progress, onComplete]);
 
   const containerStyle = useMemo(() => {
@@ -190,47 +192,6 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
 
 LoadingIndicator.displayName = 'LoadingIndicator';
 
-// Hook for managing loading states
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const useLoadingState = (initialState: LoadingState = { isLoading: false }) => {
-  const [loadingState, setLoadingState] = useState<LoadingState>(initialState);
-
-  const startLoading = useMemo(() => (message?: string, type?: LoadingState['type']) => {
-    setLoadingState({
-      isLoading: true,
-      progress: 0,
-      message,
-      type: type || 'spinner'
-    });
-  }, []);
-
-  const updateProgress = useMemo(() => (progress: number, message?: string) => {
-    setLoadingState(prev => ({
-      ...prev,
-      progress,
-      message: message || prev.message
-    }));
-  }, []);
-
-  const stopLoading = useMemo(() => () => {
-    setLoadingState(prev => ({
-      ...prev,
-      isLoading: false
-    }));
-  }, []);
-
-  const setLoadingStateDirect = useMemo(() => (state: LoadingState) => {
-    setLoadingState(state);
-  }, []);
-
-  return {
-    loadingState,
-    startLoading,
-    updateProgress,
-    stopLoading,
-    setLoadingState: setLoadingStateDirect
-  };
-};
 
 // Global loading context
 interface LoadingContextType {
@@ -289,13 +250,5 @@ export const LoadingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const useGlobalLoading = () => {
-  const context = React.useContext(LoadingContext);
-  if (!context) {
-    throw new Error('useGlobalLoading must be used within a LoadingProvider');
-  }
-  return context;
-};
 
 export default LoadingIndicator;
