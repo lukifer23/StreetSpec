@@ -5,13 +5,15 @@ import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
 import { existsSync } from 'node:fs';
 import * as fs from 'fs';
-import Store from 'electron-store';
 import { inflateSync } from 'node:zlib';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseProto } from 'protobufjs';
 import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
 import type { HeadersInit, RequestInit } from 'node-fetch';
 import type { DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
+
+type StoreConstructor = typeof import('electron-store')['default'];
+type ElectronStoreInstance = InstanceType<StoreConstructor>;
 
 type NodeFetch = typeof import('node-fetch')['default'];
 type FetchArgs = Parameters<NodeFetch>;
@@ -39,97 +41,108 @@ const __dirname = dirname(__filename);
 const DEFAULT_DEPTH_API_MAX_RETRIES = 5;
 const DEFAULT_DEPTH_API_RETRY_DELAY_MS = 1000;
 
-// Initialize electron-store for persistence
-const store = new Store({
-  defaults: {
-    projects: {},
-    measurements: [],
-    settings: {
-      defaultUnit: 'metric',
-      autoSave: true,
-      theme: 'light',
-      language: 'en',
-      measurementHistoryLimit: 1000,
-      useGPU: false,
-      calibrationPitchOffsetDeg: 0,
-      depthScale: 1,
-      depthBias: 0,
-      depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
-    }
-  },
-  schema: {
-    projects: {
-      type: 'object',
-      patternProperties: {
-        '.*': {
-          type: 'object',
-          properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            measurements: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  label: { type: 'string' },
-                  name: { type: 'string' },
-                  startPoint: { type: 'object' },
-                  endPoint: { type: 'object' },
-                  distance: { type: 'number' },
-                  unit: { type: 'string', enum: ['metric', 'imperial'] },
-                  timestamp: { type: 'number' },
-                  panoId: { type: 'string' },
-                  cameraParams: { type: 'object' },
-                  error: { type: 'string' }
+let store: ElectronStoreInstance | null = null;
+const storeReady: Promise<ElectronStoreInstance> = (async () => {
+  const { default: Store } = await import('electron-store');
+  store = new Store({
+    defaults: {
+      projects: {},
+      measurements: [],
+      settings: {
+        defaultUnit: 'metric',
+        autoSave: true,
+        theme: 'light',
+        language: 'en',
+        measurementHistoryLimit: 1000,
+        useGPU: false,
+        calibrationPitchOffsetDeg: 0,
+        depthScale: 1,
+        depthBias: 0,
+        depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
+      }
+    },
+    schema: {
+      projects: {
+        type: 'object',
+        patternProperties: {
+          '.*': {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              measurements: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    label: { type: 'string' },
+                    name: { type: 'string' },
+                    startPoint: { type: 'object' },
+                    endPoint: { type: 'object' },
+                    distance: { type: 'number' },
+                    unit: { type: 'string', enum: ['metric', 'imperial'] },
+                    timestamp: { type: 'number' },
+                    panoId: { type: 'string' },
+                    cameraParams: { type: 'object' },
+                    error: { type: 'string' }
+                  }
                 }
               }
             }
           }
         }
-      }
-    },
-    measurements: {
-      type: 'array',
-      items: {
+      },
+      measurements: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            label: { type: 'string' },
+            name: { type: 'string' },
+            startPoint: { type: 'object' },
+            endPoint: { type: 'object' },
+            distance: { type: 'number' },
+            unit: { type: 'string', enum: ['metric', 'imperial'] },
+            timestamp: { type: 'number' },
+            panoId: { type: 'string' },
+            cameraParams: { type: 'object' },
+            error: { type: 'string' }
+          }
+        }
+      },
+      settings: {
         type: 'object',
         properties: {
-          id: { type: 'string' },
-          label: { type: 'string' },
-          name: { type: 'string' },
-          startPoint: { type: 'object' },
-          endPoint: { type: 'object' },
-          distance: { type: 'number' },
-          unit: { type: 'string', enum: ['metric', 'imperial'] },
-          timestamp: { type: 'number' },
-          panoId: { type: 'string' },
-          cameraParams: { type: 'object' },
-          error: { type: 'string' }
+          defaultUnit: { type: 'string', enum: ['metric', 'imperial'] },
+          autoSave: { type: 'boolean' },
+          theme: { type: 'string', enum: ['light', 'dark', 'system'] },
+          language: { type: 'string' },
+          measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 },
+          useGPU: { type: 'boolean' },
+          calibrationPitchOffsetDeg: { type: 'number' },
+          depthScale: { type: 'number' },
+          depthBias: { type: 'number' },
+          depthKernelSize: { type: 'number', enum: [3, 5, 7] },
+          depthUseBilinear: { type: 'boolean' },
+          depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
+          autoCalibrateDepth: { type: 'boolean' },
+          showDebugOverlay: { type: 'boolean' },
+          depthApiMaxRetries: { type: 'number', minimum: 1, maximum: 10 }
         }
       }
-    },
-    settings: {
-      type: 'object',
-      properties: {
-        defaultUnit: { type: 'string', enum: ['metric', 'imperial'] },
-        autoSave: { type: 'boolean' },
-        theme: { type: 'string', enum: ['light', 'dark', 'system'] },
-        language: { type: 'string' },
-        measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 },
-        useGPU: { type: 'boolean' },
-        calibrationPitchOffsetDeg: { type: 'number' },
-        depthScale: { type: 'number' },
-        depthBias: { type: 'number' },
-        depthKernelSize: { type: 'number', enum: [3,5,7] },
-        depthUseBilinear: { type: 'boolean' },
-        depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
-        autoCalibrateDepth: { type: 'boolean' },
-        showDebugOverlay: { type: 'boolean' },
-        depthApiMaxRetries: { type: 'number', minimum: 1, maximum: 10 }
-      }
     }
+  });
+  return store;
+})();
+
+const getStore = (): ElectronStoreInstance => {
+  if (!store) {
+    throw new Error('Electron store not initialized yet');
   }
-});
+  return store;
+};
 
 // The built directory structure
 //
@@ -1000,7 +1013,7 @@ async function createWindow() {
         offsetX: 0,
         offsetY: 0
       };
-      const settings = store.get('settings', {} as any) as any;
+      const settings = getStore().get('settings', {} as any) as any;
       const scale = (settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1) as number;
       const bias = (settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0) as number;
       
@@ -1089,7 +1102,7 @@ async function createWindow() {
   // Persistence handlers
   ipcMain.handle('get-projects', async () => {
     try {
-      return store.get('projects', {});
+      return getStore().get('projects', {});
     } catch (error) {
       return {};
     }
@@ -1098,7 +1111,7 @@ async function createWindow() {
   // Measurements persistence handlers
   ipcMain.handle('get-measurements', async () => {
     try {
-      return store.get('measurements', []);
+      return getStore().get('measurements', []);
     } catch (_error) {
       return [];
     }
@@ -1106,7 +1119,7 @@ async function createWindow() {
 
   ipcMain.handle('save-measurements', async (_event: IpcMainInvokeEvent, measurements: any[]) => {
     try {
-      store.set('measurements', measurements);
+      getStore().set('measurements', measurements);
       return true;
     } catch (_error) {
       return false;
@@ -1115,9 +1128,9 @@ async function createWindow() {
 
   ipcMain.handle('save-project', async (event: IpcMainInvokeEvent, project: any) => {
     try {
-      const projects = store.get('projects', {});
+      const projects = getStore().get('projects', {});
       projects[project.id] = project;
-      store.set('projects', projects);
+      getStore().set('projects', projects);
       return true;
     } catch (_error) {
       return false;
@@ -1126,9 +1139,9 @@ async function createWindow() {
 
   ipcMain.handle('delete-project', async (event: IpcMainInvokeEvent, projectId: string) => {
     try {
-      const projects = store.get('projects', {});
+      const projects = getStore().get('projects', {});
       delete projects[projectId];
-      store.set('projects', projects);
+      getStore().set('projects', projects);
       return true;
     } catch (_error) {
       return false;
@@ -1137,7 +1150,7 @@ async function createWindow() {
 
   ipcMain.handle('get-settings', async () => {
     try {
-      return store.get('settings', {
+      return getStore().get('settings', {
         defaultUnit: 'metric',
         autoSave: true,
         theme: 'light',
@@ -1167,7 +1180,7 @@ async function createWindow() {
 
   ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: any) => {
     try {
-      store.set('settings', settings);
+      getStore().set('settings', settings);
       return true;
     } catch (_error) {
       return false;
@@ -1176,7 +1189,7 @@ async function createWindow() {
 
   ipcMain.handle('clear-data', async () => {
     try {
-      store.delete('measurements');
+      getStore().delete('measurements');
       return true;
     } catch (_error) {
       return false;
@@ -1245,6 +1258,7 @@ async function cleanupOldLogs(logDir: string, daysToKeep: number): Promise<void>
 // Modify app.whenReady() to ensure proper initialization
 app.whenReady().then(async () => {
   try {
+    await storeReady;
     await loadModel();
   } catch (_error) {
     // Continue anyway, as we want the app to at least start
