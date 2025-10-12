@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
-import type { Point, Measurement, UNIT_CONVERSIONS } from '../types/common';
+import type { Point, Measurement } from '../types/common';
+import { UNIT_CONVERSIONS } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
 import styles from './VolumeTool.module.css';
 

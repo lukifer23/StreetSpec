@@ -48,6 +48,7 @@ describe('createMeasurement', () => {
       'metric'
     );
 
+    expect(measurement.kind).toBe('distance');
     expect(measurement.distanceMeters).toBe(mockDistanceMeters);
     expect(measurement.distance).toBeCloseTo(mockDistanceMeters);
     expect(measurement.unit).toBe('metric');
@@ -65,6 +66,7 @@ describe('createMeasurement', () => {
       'imperial'
     );
 
+    expect(measurement.kind).toBe('distance');
     expect(measurement.distanceMeters).toBe(mockDistanceMeters);
     expect(measurement.distance).toBeCloseTo(UNIT_CONVERSIONS.metersToFeet(mockDistanceMeters));
     expect(measurement.unit).toBe('imperial');

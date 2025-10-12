@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useProjectStore } from '../stores/projectStore';
+import { useRootStore, useProjectActions } from '../stores/rootStore';
 import RevisionHistory from './RevisionHistory';
 import styles from './ProjectPanel.module.css';
 
@@ -8,12 +8,22 @@ interface ProjectPanelProps {
 }
 
 const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
-  const { projects, createProject, loadProject, deleteProject, currentProjectId, saveRevision } = useProjectStore();
+  const { projects, currentProjectId } = useRootStore((state) => ({
+    projects: state.projects,
+    currentProjectId: state.currentProjectId,
+  }));
+  const {
+    loadProjects,
+    createProject,
+    loadProject,
+    deleteProject,
+    saveRevision,
+  } = useProjectActions();
   const [newProjectName, setNewProjectName] = useState('');
 
   useEffect(() => {
     // Load projects from the main process when the component mounts
-    useProjectStore.getState().loadProjects();
+    loadProjects();
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -23,7 +33,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [loadProjects, onClose]);
 
   const handleClose = useCallback(() => {
     onClose();

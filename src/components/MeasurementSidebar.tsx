@@ -1,60 +1,24 @@
 import React, { useCallback } from 'react';
 import { useRootStore, useMeasurementActions, useSettingsActions } from '../stores/rootStore';
 import type { Measurement } from '../types/common';
-import { UNIT_CONVERSIONS } from '../types/common';
+import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
 import styles from './MeasurementSidebar.module.css';
-
-const SQUARE_METERS_TO_SQUARE_FEET = 10.7639;
-const CUBIC_METERS_TO_CUBIC_FEET = 35.3147;
-
-const toLengthDisplay = (meters: number | undefined, unit: 'metric' | 'imperial') => {
-  if (!Number.isFinite(meters)) {
-    return { value: undefined, unitLabel: unit === 'imperial' ? 'ft' : 'm' };
-  }
-  const base = meters ?? 0;
-  if (unit === 'imperial') {
-    return { value: UNIT_CONVERSIONS.metersToFeet(base), unitLabel: 'ft' };
-  }
-  return { value: base, unitLabel: 'm' };
-};
-
-const toAreaDisplay = (squareMeters: number | undefined, unit: 'metric' | 'imperial') => {
-  if (!Number.isFinite(squareMeters)) {
-    return { value: undefined, unitLabel: unit === 'imperial' ? 'sq ft' : 'sq m' };
-  }
-  const base = squareMeters ?? 0;
-  if (unit === 'imperial') {
-    return { value: base * SQUARE_METERS_TO_SQUARE_FEET, unitLabel: 'sq ft' };
-  }
-  return { value: base, unitLabel: 'sq m' };
-};
-
-const toVolumeDisplay = (cubicMeters: number | undefined, unit: 'metric' | 'imperial') => {
-  if (!Number.isFinite(cubicMeters)) {
-    return { value: undefined, unitLabel: unit === 'imperial' ? 'cu ft' : 'cu m' };
-  }
-  const base = cubicMeters ?? 0;
-  if (unit === 'imperial') {
-    return { value: base * CUBIC_METERS_TO_CUBIC_FEET, unitLabel: 'cu ft' };
-  }
-  return { value: base, unitLabel: 'cu m' };
-};
 
 const formatPrimaryLine = (measurement: Measurement): string => {
   switch (measurement.kind) {
     case 'distance':
     case 'polyline': {
-      const { value, unitLabel } = toLengthDisplay(measurement.distanceMeters, measurement.unit);
+      const { value, unitLabel } = convertLengthToDisplay(measurement.distanceMeters, measurement.unit);
       const numeric = value !== undefined ? value.toFixed(2) : '--';
       return `${measurement.label}: ${numeric} ${unitLabel}`;
     }
     case 'area': {
-      const { value, unitLabel } = toAreaDisplay(measurement.areaSquareMeters, measurement.unit);
+      const { value, unitLabel } = convertAreaToDisplay(measurement.areaSquareMeters, measurement.unit);
       const numeric = value !== undefined ? value.toFixed(2) : '--';
       return `${measurement.label}: ${numeric} ${unitLabel}`;
     }
     case 'volume': {
-      const { value, unitLabel } = toVolumeDisplay(measurement.volumeCubicMeters, measurement.unit);
+      const { value, unitLabel } = convertVolumeToDisplay(measurement.volumeCubicMeters, measurement.unit);
       const numeric = value !== undefined ? value.toFixed(2) : '--';
       return `${measurement.label}: ${numeric} ${unitLabel}`;
     }
@@ -71,7 +35,7 @@ const formatSecondaryLine = (measurement: Measurement): string | undefined => {
   }
 
   if (measurement.kind === 'area' && Number.isFinite(measurement.perimeterMeters)) {
-    const { value, unitLabel } = toLengthDisplay(measurement.perimeterMeters, measurement.unit);
+    const { value, unitLabel } = convertLengthToDisplay(measurement.perimeterMeters, measurement.unit);
     if (value !== undefined) {
       parts.push(`Perimeter ${value.toFixed(2)} ${unitLabel}`);
     }
@@ -79,9 +43,9 @@ const formatSecondaryLine = (measurement: Measurement): string | undefined => {
 
   if (measurement.kind === 'volume' && measurement.dimensionsMeters) {
     const { length, width, height } = measurement.dimensionsMeters;
-    const lengthDisplay = toLengthDisplay(length, measurement.unit);
-    const widthDisplay = toLengthDisplay(width, measurement.unit);
-    const heightDisplay = toLengthDisplay(height, measurement.unit);
+    const lengthDisplay = convertLengthToDisplay(length, measurement.unit);
+    const widthDisplay = convertLengthToDisplay(width, measurement.unit);
+    const heightDisplay = convertLengthToDisplay(height, measurement.unit);
     if (
       lengthDisplay.value !== undefined &&
       widthDisplay.value !== undefined &&
@@ -110,11 +74,11 @@ const getDisplayValue = (measurement: Measurement): { value?: number; unitLabel:
   switch (measurement.kind) {
     case 'distance':
     case 'polyline':
-      return toLengthDisplay(measurement.distanceMeters, measurement.unit);
+      return convertLengthToDisplay(measurement.distanceMeters, measurement.unit);
     case 'area':
-      return toAreaDisplay(measurement.areaSquareMeters, measurement.unit);
+      return convertAreaToDisplay(measurement.areaSquareMeters, measurement.unit);
     case 'volume':
-      return toVolumeDisplay(measurement.volumeCubicMeters, measurement.unit);
+      return convertVolumeToDisplay(measurement.volumeCubicMeters, measurement.unit);
     default:
       return { value: undefined, unitLabel: measurement.unit === 'imperial' ? 'imperial' : 'metric' };
   }
@@ -299,11 +263,12 @@ const MeasurementSidebar: React.FC = () => {
       )}
       
       <div className={styles['sidebarFooter']}>
-        <div>PoleCheck Desktop v0.0.1</div>
+        <div>Street Spec Desktop v0.0.1</div>
         <div className={styles['shortcuts']}>
-          <span>M: Measure</span>
-          <span>U: Toggle Units</span>
-          <span>Ctrl+E: Export</span>
+          <span title="Start height measurement (M key)">M: Measure</span>
+          <span title="Toggle measurement units (U key)">U: Units</span>
+          <span title="Export measurements to CSV (Ctrl+E)">Ctrl+E: Export</span>
+          <span title="Clear all measurements (Ctrl+Shift+Delete)">Ctrl+Shift+Del: Clear</span>
         </div>
       </div>
     </div>

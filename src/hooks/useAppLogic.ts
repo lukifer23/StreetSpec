@@ -6,7 +6,36 @@ import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
 import { getCachedDepthMap, cacheDepthMap } from '../services/depth';
 import { createDepthMapFetcher, generateDepthMap } from '../services/depthGeneration';
 import { detectHorizonFromDepth } from '../services/geometry';
-import type { CameraParams, DepthDataFetchResult } from '../types/common';
+import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
+import type { CameraParams, DepthDataFetchResult, Measurement } from '../types/common';
+
+const getExportValue = (measurement: Measurement) => {
+  switch (measurement.kind) {
+    case 'distance':
+    case 'polyline':
+      return convertLengthToDisplay(measurement.distanceMeters, measurement.unit);
+    case 'area':
+      return convertAreaToDisplay(measurement.areaSquareMeters, measurement.unit);
+    case 'volume':
+      return convertVolumeToDisplay(measurement.volumeCubicMeters, measurement.unit);
+    default:
+      return { value: undefined, unitLabel: measurement.unit === 'imperial' ? 'imperial' : 'metric' };
+  }
+};
+
+const getExportSegments = (measurement: Measurement) => {
+  const meta = measurement.metadata as { segmentDistancesMeters?: unknown } | undefined;
+  const segments = meta?.segmentDistancesMeters;
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return '';
+  }
+  return segments
+    .map((segment) => (typeof segment === 'number' && Number.isFinite(segment) ? segment.toFixed(3) : ''))
+    .filter(Boolean)
+    .join('|');
+};
+
+const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
 
 export const useAppLogic = (apiKey: string) => {
   const [isApiLoaded, setIsApiLoaded] = useState(false);
@@ -148,9 +177,10 @@ export const useAppLogic = (apiKey: string) => {
     }
 
     try {
-      // Get viewport dimensions (assume standard MapView size)
-      const viewWidth = 800; // Approximate viewport width
-      const viewHeight = 600; // Approximate viewport height
+      // Measure the current Street View viewport
+      const mapViewElement = document.querySelector('[data-testid="map-view"]') as HTMLElement | null;
+      const viewWidth = mapViewElement?.clientWidth ?? 800;
+      const viewHeight = mapViewElement?.clientHeight ?? 600;
 
       const result = detectHorizonFromDepth(depthData, currentCameraParams, viewWidth, viewHeight);
 
@@ -332,11 +362,58 @@ export const useAppLogic = (apiKey: string) => {
       return;
     }
 
-    const header = "ID,Timestamp,Label,Name,Distance (m),Start X,Start Y,End X,End Y,Source,Confidence";
-    const rows = measurements.map(m =>
-      `${m.id},${new Date(m.timestamp).toISOString()},${m.label},"${m.name || ''}",${m.distance.toFixed(3)},${m.startPoint.x},${m.startPoint.y},${m.endPoint.x},${m.endPoint.y},${m.source ?? ''},${m.confidence !== undefined ? Math.round((m.confidence || 0) * 100) + '%' : ''}`
-    );
-    const csvContent = `${header}\n${rows.join('\n')}`;
+    const header = [
+      'ID',
+      'Timestamp',
+      'Type',
+      'Label',
+      'Name',
+      'Value',
+      'Display Unit',
+      'DistanceMeters',
+      'AreaSquareMeters',
+      'VolumeCubicMeters',
+      'PerimeterMeters',
+      'SegmentsMeters',
+      'StartX',
+      'StartY',
+      'EndX',
+      'EndY',
+      'Source',
+      'Confidence'
+    ].join(',');
+    const rows = measurements.map((m) => {
+      const display = getExportValue(m);
+      const valueString =
+        display.value !== undefined && Number.isFinite(display.value)
+          ? display.value.toFixed(3)
+          : '';
+      const segmentSummary = getExportSegments(m);
+
+      const raw = [
+        m.id,
+        new Date(m.timestamp).toISOString(),
+        m.kind,
+        m.label,
+        m.name ?? '',
+        valueString,
+        display.unitLabel,
+        m.distanceMeters ?? '',
+        m.areaSquareMeters ?? '',
+        m.volumeCubicMeters ?? '',
+        m.perimeterMeters ?? '',
+        segmentSummary,
+        m.startPoint.x,
+        m.startPoint.y,
+        m.endPoint.x,
+        m.endPoint.y,
+        m.source ?? '',
+        m.confidence !== undefined ? m.confidence.toFixed(2) : ''
+      ];
+
+      return raw.map((value) => escapeCsv(String(value ?? ''))).join(',');
+    });
+    const csvContent = [header, ...rows].join('\n');
 
     try {
       if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {

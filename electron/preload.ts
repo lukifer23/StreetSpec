@@ -92,6 +92,3 @@ try {
 } catch (error) {
   throw error;
 }
-
-// Export for module compatibility (CommonJS style)
-module.exports = electronAPI;

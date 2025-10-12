@@ -33,10 +33,11 @@ export const StrictCoordinates = z.object({
 // Strict measurement validation
 export const MeasurementSchema = z.object({
   id: z.string().uuid().transform((val): MeasurementId => val as MeasurementId),
-  name: z.string().min(1).max(100),
+  kind: z.enum(['distance', 'polyline', 'area', 'volume']),
+  name: z.string().max(100).optional(),
   label: z.string().min(1).max(50),
-  distanceMeters: z.number().nonnegative().transform((val): Distance => val as Distance),
-  distance: z.number().positive().transform((val): Distance => val as Distance),
+  distanceMeters: z.number().nonnegative().optional().transform((val): Distance | undefined => val as Distance | undefined),
+  distance: z.number().nonnegative().optional().transform((val): Distance | undefined => val as Distance | undefined),
   unit: z.enum(['metric', 'imperial']),
   startPoint: z.object({
     x: z.number().nonnegative(),
@@ -46,6 +47,15 @@ export const MeasurementSchema = z.object({
     x: z.number().nonnegative(),
     y: z.number().nonnegative()
   }),
+  areaSquareMeters: z.number().nonnegative().optional(),
+  perimeterMeters: z.number().nonnegative().optional(),
+  volumeCubicMeters: z.number().nonnegative().optional(),
+  dimensionsMeters: z.object({
+    length: z.number().nonnegative(),
+    width: z.number().nonnegative(),
+    height: z.number().nonnegative()
+  }).optional(),
+  points: z.array(z.object({ x: z.number(), y: z.number() })).optional(),
   timestamp: z.number().positive(),
   projectId: z.string().uuid().optional().transform((val): ProjectId | undefined => val as ProjectId | undefined)
 });

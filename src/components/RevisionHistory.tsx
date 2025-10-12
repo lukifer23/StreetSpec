@@ -1,9 +1,13 @@
 import React from 'react';
-import { useProjectStore } from '../stores/projectStore';
+import { useRootStore, useProjectActions } from '../stores/rootStore';
 import styles from './RevisionHistory.module.css';
 
 const RevisionHistory: React.FC = () => {
-  const { projects, currentProjectId, revertToRevision } = useProjectStore();
+  const { projects, currentProjectId } = useRootStore((state) => ({
+    projects: state.projects,
+    currentProjectId: state.currentProjectId,
+  }));
+  const { revertToRevision } = useProjectActions();
   const project = currentProjectId ? projects[currentProjectId] : null;
 
   if (!project) {

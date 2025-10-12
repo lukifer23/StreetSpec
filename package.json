@@ -1,9 +1,9 @@
 {
-  "name": "polecheck-desktop",
+  "name": "street-spec-desktop",
   "private": true,
   "version": "0.0.1",
   "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
-  "author": "PoleCheck Team <support@polecheck.app>",
+  "author": "Street Spec Team <support@streetspec.app>",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -107,7 +107,7 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.polecheck.desktop",
+    "appId": "com.streetspec.desktop",
     "asar": true,
     "asarUnpack": [
       "**/*.onnx"
@@ -136,7 +136,7 @@
           ]
         }
       ],
-      "artifactName": "PoleCheck-Setup-${version}.${ext}",
+      "artifactName": "Street-Spec-Setup-${version}.${ext}",
       "sign": false
     }
   },

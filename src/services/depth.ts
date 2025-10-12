@@ -2,7 +2,11 @@ import { get, set, del, keys } from 'idb-keyval';
 import { compress, decompress } from 'lz-string';
 import type { OnnxDepthMap, CameraParams } from '../types/common';
 
-interface CachedDepthMap extends OnnxDepthMap {
+interface CachedDepthMap {
+  width: number;
+  height: number;
+  data: number[] | string;
+  transform?: OnnxDepthMap['transform'];
   lastUsed: number;
   compressed: boolean;
   sizeBytes: number;
@@ -48,22 +52,44 @@ function generateCacheKey(params: CameraParams): string {
 }
 
 // Compress depth data if needed
-function compressDepthData(data: number[]): { compressed: string; isCompressed: boolean } {
+function compressDepthData(
+  data: number[]
+): { payload: number[] | string; isCompressed: boolean; sizeBytes: number } {
   const jsonString = JSON.stringify(data);
   if (jsonString.length > COMPRESSION_THRESHOLD) {
     const compressed = compress(jsonString);
-    return { compressed, isCompressed: true };
+    return {
+      payload: compressed,
+      isCompressed: true,
+      sizeBytes: compressed.length
+    };
   }
-  return { compressed: jsonString, isCompressed: false };
+  return {
+    payload: data,
+    isCompressed: false,
+    sizeBytes: data.length * 8 // Approximate bytes for Float64 array
+  };
 }
 
 // Decompress depth data if needed
-function decompressDepthData(data: string, isCompressed: boolean): number[] {
-  const jsonString = isCompressed ? decompress(data) : data;
-  if (!jsonString) {
-    throw new Error('Failed to decompress cached data');
+function decompressDepthData(data: number[] | string, isCompressed: boolean): number[] {
+  if (isCompressed) {
+    if (typeof data !== 'string') {
+      throw new Error('Expected compressed payload to be a string');
+    }
+    const jsonString = decompress(data);
+    if (!jsonString) {
+      throw new Error('Failed to decompress cached data');
+    }
+    return JSON.parse(jsonString);
   }
-  return JSON.parse(jsonString);
+
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  // Fallback for legacy uncompressed string payloads
+  return JSON.parse(data);
 }
 
 // Check if depth map is cached
@@ -79,11 +105,7 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
       // Decompress data if needed
       let data: number[];
       try {
-        if (cached.compressed) {
-          data = decompressDepthData(cached.data as any, cached.compressed);
-        } else {
-          data = cached.data;
-        }
+        data = decompressDepthData(cached.data, cached.compressed);
       } catch (error) {
         console.warn('[cache] Failed to decompress cached data, removing:', error);
         await del(cacheKey);
@@ -95,16 +117,17 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
       const compressedData = compressDepthData(data);
       const toStore = {
         ...cached,
-        data: compressedData.compressed,
+        data: compressedData.payload,
         compressed: compressedData.isCompressed,
-        sizeBytes: compressedData.compressed.length
+        sizeBytes: compressedData.sizeBytes
       };
       await set(cacheKey, toStore);
 
       return {
         data,
         width: cached.width,
-        height: cached.height
+        height: cached.height,
+        transform: cached.transform
       };
     }
 
@@ -122,20 +145,20 @@ export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap
     if (!cacheKey) return;
 
     // Compress data if beneficial
-    const { compressed, isCompressed } = compressDepthData(depthMap.data);
-    const sizeBytes = compressed.length;
+    const { payload, isCompressed, sizeBytes } = compressDepthData(depthMap.data);
 
     const toStore: CachedDepthMap = {
-      data: isCompressed ? compressed : depthMap.data,
+      data: payload,
       width: depthMap.width,
       height: depthMap.height,
+      transform: depthMap.transform,
       lastUsed: Date.now(),
       compressed: isCompressed,
       sizeBytes
     };
 
     await set(cacheKey, toStore);
-    console.log('[cache] Stored depth map for key:', cacheKey, isCompressed ? '(compressed)' : '(uncompressed)', `~${(sizeBytes / 1024).toFixed(1)}KB`);
+    console.log('[cache] Stored depth map for key:', cacheKey, isCompressed ? '(compressed)' : '(raw)', `~${(sizeBytes / 1024).toFixed(1)}KB`);
 
     // Implement LRU by limiting cache size and memory usage
     await enforceCacheSizeLimit();

@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import type { CameraParams } from '../types/common';
 import { calculateFov } from '../services/geometry';
+import { ErrorBoundary } from './ErrorBoundary';
 
 import { useRootStore } from '../stores/rootStore';
 
@@ -315,19 +316,55 @@ const MapView: React.FC<{
   }), []);
 
   return (
-    <div style={containerStyle}>
-      <div ref={mapContainerRef} style={mapContainerStyle} />
-      <CameraHUD />
-      <CalibrationOverlay
-        calibrateMode={calibrateMode}
-        onCalibrateClick={onCalibrateClick}
-      />
-      <GenStatusIndicator
-        isGeneratingMap={isGeneratingMap}
-        mapGenerationError={mapGenerationError}
-        onnxDepthMap={onnxDepthMap}
-      />
-    </div>
+    <ErrorBoundary
+      fallback={
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          padding: '20px',
+          textAlign: 'center',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '8px',
+          color: '#6c757d'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🗺️</div>
+          <h3 style={{ margin: '0 0 8px 0', color: '#495057' }}>Map Loading Error</h3>
+          <p style={{ margin: '0 0 16px 0', maxWidth: '400px' }}>
+            Unable to load Google Maps. This might be due to network issues or missing API key.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      }
+    >
+      <div style={containerStyle}>
+        <div ref={mapContainerRef} data-testid="map-view" style={mapContainerStyle} />
+        <CameraHUD />
+        <CalibrationOverlay
+          calibrateMode={calibrateMode}
+          onCalibrateClick={onCalibrateClick}
+        />
+        <GenStatusIndicator
+          isGeneratingMap={isGeneratingMap}
+          mapGenerationError={mapGenerationError}
+          onnxDepthMap={onnxDepthMap}
+        />
+      </div>
+    </ErrorBoundary>
   );
 });
 

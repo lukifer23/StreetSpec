@@ -8,52 +8,11 @@ import AreaTool from './components/AreaTool';
 import VolumeTool from './components/VolumeTool';
 import MeasurementSidebar from './components/MeasurementSidebar';
 import SearchBox from './components/SearchBox';
+import { Tooltip } from './components/Tooltip';
 import { AppLayout } from './components/AppLayout';
 import { useAppLogic } from './hooks/useAppLogic';
 import styles from './App.module.css';
 import './App.css';
-
-// Tooltip component for better UX
-const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
-  const [isVisible, setIsVisible] = useState(false);
-
-  return (
-    <div
-      style={{ position: 'relative', display: 'inline-block' }}
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-      {children}
-      {isVisible && (
-        <div style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          color: 'white',
-          padding: '8px 12px',
-          borderRadius: '4px',
-          fontSize: '12px',
-          whiteSpace: 'nowrap',
-          zIndex: 1000,
-          marginBottom: '8px',
-          pointerEvents: 'none'
-        }}>
-          {text}
-          <div style={{
-            position: 'absolute',
-            top: '100%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            border: '4px solid transparent',
-            borderTopColor: 'rgba(0, 0, 0, 0.8)'
-          }} />
-        </div>
-      )}
-    </div>
-  );
-};
 
 function App() {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -103,46 +62,50 @@ function App() {
     <AppLayout
       header={
         <div className={styles['header']}>
-          <button
-            style={{ marginRight: 10 }}
-            onClick={() => setIsProjectPanelOpen(true)}
-            title="Projects"
-          >
-            Projects
-          </button>
-          <button
-            style={{ marginRight: 10 }}
-            onClick={() => setIsSettingsOpen(true)}
-            title="Settings"
-          >
-            Settings
-          </button>
-          <Tooltip text="Generate depth map for current Street View location">
+          <Tooltip text="Manage projects and measurement history" position="bottom">
+            <button
+              style={{ marginRight: 10 }}
+              onClick={() => setIsProjectPanelOpen(true)}
+              title="Projects"
+            >
+              Projects
+            </button>
+          </Tooltip>
+          <Tooltip text="Application settings and preferences" position="bottom">
+            <button
+              style={{ marginRight: 10 }}
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings"
+            >
+              Settings
+            </button>
+          </Tooltip>
+          <Tooltip text="Generate depth map for current Street View location (Required for measurements)" position="bottom">
             <button style={{marginRight:10}} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}>
               {isGeneratingMap? 'Generating...' : 'Generate Depth Map'}
             </button>
           </Tooltip>
-          <Tooltip text="Automatically detect the horizon using depth data for accurate measurements. Requires depth map to be generated first.">
+          <Tooltip text="Automatically detect the horizon using depth data for accurate measurements. Requires depth map to be generated first." position="bottom">
             <button style={{marginRight:10}} onClick={handleAutoCalibrate} disabled={!currentCameraParams || !onnxDepthMap} className={!isCalibrated ? styles['highlight'] : ''}>
               Auto-Calibrate
             </button>
           </Tooltip>
-          <Tooltip text="Manually calibrate the horizon for accurate measurements. Click on the flat horizontal line where the sky meets the ground - like where the ocean meets the sky, or where a flat field meets the sky, or where distant mountains meet the sky. This tells the app what 'level' means in your view so measurements are accurate.">
+          <Tooltip text="Manually calibrate the horizon for accurate measurements. Click on the flat horizontal line where the sky meets the ground - like where the ocean meets the sky, or where a flat field meets the sky, or where distant mountains meet the sky. This tells the app what 'level' means in your view so measurements are accurate." position="bottom">
             <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>
               Manual Calibrate
             </button>
           </Tooltip>
-          <Tooltip text="Measure distances along a path">
+          <Tooltip text="Measure distances along a path (P key)" position="bottom">
             <button style={{marginRight:10}} onClick={() => setIsPolylineToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
               Polyline Tool
             </button>
           </Tooltip>
-          <Tooltip text="Measure area on the ground plane">
+          <Tooltip text="Measure area on the ground plane (A key)" position="bottom">
             <button style={{marginRight:10}} onClick={() => setIsAreaToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
               Area Tool
             </button>
           </Tooltip>
-          <Tooltip text="Measure volume on the ground plane">
+          <Tooltip text="Measure volume on the ground plane (V key)" position="bottom">
             <button style={{marginRight:10}} onClick={() => setIsVolumeToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
               Volume Tool
             </button>

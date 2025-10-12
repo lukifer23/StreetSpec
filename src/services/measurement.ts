@@ -111,6 +111,7 @@ export function createMeasurement(
     // Return a measurement object indicating failure
     return {
       id: uuidv4(),
+      kind: 'distance',
       label: "Measurement Failed",
       startPoint,
       endPoint,
@@ -142,6 +143,7 @@ export function createMeasurement(
   // 4. Create the measurement object with enhanced metadata
   const measurement: Measurement = {
     id: uuidv4(),
+    kind: 'distance',
     label: `Measurement ${new Date().toLocaleTimeString()}`,
     startPoint,
     endPoint,

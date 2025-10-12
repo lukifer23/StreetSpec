@@ -6,10 +6,11 @@ import type {
   OnnxDepthMap,
   DecodedDepthData,
 } from '../types/common';
-import { UNIT_CONVERSIONS } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { calibrationManager } from '../services/depthCalibration';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
+import { ErrorBoundary } from './ErrorBoundary';
+import { convertLengthToDisplay } from '../utils/units';
 import styles from './MeasurementTool.module.css';
 
 import { useRootStore } from '../stores/rootStore';
@@ -61,6 +62,7 @@ const MeasurementCanvas = React.memo<{
     context.textBaseline = 'bottom';
 
     measurements.forEach(m => {
+      if (m.kind !== 'distance') return;
       if (!m.startPoint || !m.endPoint) return;
 
       context.beginPath();
@@ -148,22 +150,20 @@ const MeasurementCanvas = React.memo<{
         );
 
         if (estimatedHeight !== null) {
-          const finalDistance =
-            defaultUnit === 'imperial'
-              ? UNIT_CONVERSIONS.metersToFeet(estimatedHeight)
-              : estimatedHeight;
-          const unitLabel = defaultUnit === 'metric' ? 'm' : 'ft';
+          const { value: finalDistance, unitLabel } = convertLengthToDisplay(estimatedHeight, defaultUnit);
 
-          context.fillStyle = 'white';
-          context.shadowColor = 'black';
-          context.shadowBlur = 4;
-          context.fillText(
-            `${finalDistance.toFixed(2)}${unitLabel}`,
-            currentMousePos.x + 10,
-            currentMousePos.y - 10
-          );
-          context.shadowBlur = 0;
-          context.fillStyle = '#00ffff';
+          if (finalDistance !== undefined) {
+            context.fillStyle = 'white';
+            context.shadowColor = 'black';
+            context.shadowBlur = 4;
+            context.fillText(
+              `${finalDistance.toFixed(2)}${unitLabel}`,
+              currentMousePos.x + 10,
+              currentMousePos.y - 10
+            );
+            context.shadowBlur = 0;
+            context.fillStyle = '#00ffff';
+          }
         }
       }
     }
@@ -207,7 +207,9 @@ const StatusIndicator = React.memo<{
   }), []);
 
   const message = useMemo(() => {
-    return !startPoint ? 'Step 1: Click object BASE' : 'Step 2: Click object TOP';
+    return !startPoint
+      ? 'Step 1: Click the BASE of the object you want to measure'
+      : 'Step 2: Click the TOP of the object to complete measurement';
   }, [startPoint]);
 
   if (phase === 'idle') return null;
@@ -477,16 +479,14 @@ const MeasurementTool: React.FC = () => {
       return;
     }
 
-    // Convert to imperial if needed
-    const finalDistance = defaultUnit === 'imperial'
-      ? UNIT_CONVERSIONS.metersToFeet(finalHeight)
-      : finalHeight;
+    // Convert to display value
+    const { value: finalDistance, unitLabel } = convertLengthToDisplay(finalHeight, defaultUnit);
 
     const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
       kind: 'distance',
       label: 'Est. Height',
       distanceMeters: finalHeight,
-      distance: finalDistance,
+      distance: finalDistance ?? 0,
       startPoint: startPoint,
       endPoint: coords,
       unit: defaultUnit,
@@ -601,44 +601,80 @@ const MeasurementTool: React.FC = () => {
   );
 
   return (
-    <div
-      ref={overlayRef}
-      className={overlayClassName}
-      onClick={handleOverlayClick}
-      onMouseMove={handleMouseMove}
-      role="button"
-      tabIndex={0}
-      aria-label="Measurement overlay - click to place measurement points"
-      aria-disabled={phase === 'idle'}
-      data-testid="measurement-overlay"
-    >
-      {showEstimatePrompt && (
-        <div className={styles['estimatePrompt']} role="status" aria-live="polite">
-          Calibration complete! Press "Estimate Height" (or tap M) to begin measuring.
+    <ErrorBoundary
+      fallback={
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          padding: '20px',
+          textAlign: 'center',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '8px',
+          color: '#6c757d'
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📏</div>
+          <h3 style={{ margin: '0 0 8px 0', color: '#495057' }}>Measurement Tool Error</h3>
+          <p style={{ margin: '0 0 16px 0', maxWidth: '400px' }}>
+            The measurement tool encountered an error. Please try refreshing the page or contact support if the problem persists.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Refresh Page
+          </button>
         </div>
-      )}
-      <StartButton
-        phase={phase}
-        cameraParams={currentCameraParams}
-        onnxDepthMap={onnxDepthMap}
-        depthData={depthData}
-        isCalibrated={isCalibrated}
-        onStartMeasurement={startMeasurement}
-      />
-      <StatusIndicator phase={phase} startPoint={startPoint} />
-      <MeasurementCanvas
-        measurements={measurements}
-        phase={phase}
-        startPoint={startPoint}
-        currentMousePos={currentMousePos}
-        cameraParams={currentCameraParams}
-        onnxDepthMap={onnxDepthMap}
-        depthData={depthData}
-        defaultUnit={defaultUnit}
-        canvasRef={canvasRef}
-        overlayRef={overlayRef}
-      />
-    </div>
+      }
+    >
+      <div
+        ref={overlayRef}
+        className={overlayClassName}
+        onClick={handleOverlayClick}
+        onMouseMove={handleMouseMove}
+        role="button"
+        tabIndex={0}
+        aria-label="Measurement overlay - click to place measurement points"
+        aria-disabled={phase === 'idle'}
+        data-testid="measurement-overlay"
+      >
+        {showEstimatePrompt && (
+          <div className={styles['estimatePrompt']} role="status" aria-live="polite">
+            Calibration complete! Press "Estimate Height" (or tap <kbd>M</kbd>) to begin measuring.
+          </div>
+        )}
+        <StartButton
+          phase={phase}
+          cameraParams={currentCameraParams}
+          onnxDepthMap={onnxDepthMap}
+          depthData={depthData}
+          isCalibrated={isCalibrated}
+          onStartMeasurement={startMeasurement}
+        />
+        <StatusIndicator phase={phase} startPoint={startPoint} />
+        <MeasurementCanvas
+          measurements={measurements}
+          phase={phase}
+          startPoint={startPoint}
+          currentMousePos={currentMousePos}
+          cameraParams={currentCameraParams}
+          onnxDepthMap={onnxDepthMap}
+          depthData={depthData}
+          defaultUnit={defaultUnit}
+          canvasRef={canvasRef}
+          overlayRef={overlayRef}
+        />
+      </div>
+    </ErrorBoundary>
   );
 };
 

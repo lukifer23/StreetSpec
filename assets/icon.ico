@@ -1,0 +1,3 @@
+# This is a placeholder for the Street Spec Desktop icon
+# In a real implementation, you would create a proper .ico file
+# For now, the installer will use the default Electron icon

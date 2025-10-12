@@ -1,8 +1,8 @@
-# PoleCheck Desktop
+# Street Spec Desktop
 
 ## Overview
 
-PoleCheck Desktop is a cross-platform application for measuring objects in Google Street View imagery. Built with Electron, React, and TypeScript, it provides:
+Street Spec Desktop is a cross-platform application for measuring objects in Google Street View imagery. Built with Electron, React, and TypeScript, it provides:
 
 *   Location search using text or coordinates
 *   Google Street View panorama integration
@@ -50,7 +50,7 @@ PoleCheck Desktop is a cross-platform application for measuring objects in Googl
 
 ## Development Status
 
-PoleCheck Desktop is in active development with significant recent improvements:
+Street Spec Desktop is in active development with significant recent improvements:
 
 *   **[Done] Performance Optimization:** Virtualized lists, compressed caching, and memory management are implemented.
 *   **[Done] Accuracy Enhancement:** Auto-calibration, confidence scoring, and measurement validation are in place.
@@ -69,8 +69,8 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
 #### Windows
 1. Clone the repository:
    ```bash
-   git clone https://github.com/lukifer23/PoleCheck-Desktop.git
-   cd PoleCheck-Desktop
+   git clone https://github.com/lukifer23/Street-Spec-Desktop.git
+   cd Street Spec-Desktop
    ```
 2. Double-click `setup.bat`.
    - Verifies Node.js, npm, Git, and Git LFS are installed.
@@ -83,8 +83,8 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
 #### macOS/Linux
 1. Clone the repository:
    ```bash
-   git clone https://github.com/lukifer23/PoleCheck-Desktop.git
-   cd PoleCheck-Desktop
+   git clone https://github.com/lukifer23/Street-Spec-Desktop.git
+   cd Street Spec-Desktop
    ```
 2. Make the setup script executable (first run only) and execute it:
    ```bash
@@ -101,15 +101,15 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
 
 2. **Clone the repository and install dependencies**
    ```bash
-   git clone https://github.com/lukifer23/PoleCheck-Desktop.git
-   cd PoleCheck-Desktop
+   git clone https://github.com/lukifer23/Street-Spec-Desktop.git
+   cd Street Spec-Desktop
    git lfs install       # Initializes Git LFS locally (once per machine)
    git lfs pull          # Downloads the depth model assets
    npm install
    ```
 
 3. **Configure environment variables**
-   Create a `.env` file in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer `VITE_GOOGLE_MAPS_API_KEY` and Electron main process `GOOGLE_MAPS_API_KEY` so depth requests work everywhere:
+   Copy `.env.example` to `.env` in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer `VITE_GOOGLE_MAPS_API_KEY` and Electron main process `GOOGLE_MAPS_API_KEY` so depth requests work everywhere:
    ```env
    VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
    GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
@@ -148,7 +148,7 @@ This command will:
 ### Basic Workflow
 1. **Search for a location** using the search bar or enter coordinates directly
 2. **Generate a depth map** for the current Street View location (required for measurements)
-   - PoleCheck now requests Street View depth planes directly from Google's depth API. The app retries a limited number of times (configurable under **Settings -> Street View Depth Retries**) and surfaces a banner if the request is rate-limited or depth is unavailable, falling back to ONNX depth in the meantime.
+   - Street Spec now requests Street View depth planes directly from Google's depth API. The app retries a limited number of times (configurable under **Settings -> Street View Depth Retries**) and surfaces a banner if the request is rate-limited or depth is unavailable, falling back to ONNX depth in the meantime.
 3. **Calibrate the horizon** by clicking on the flat horizontal line where sky meets ground
 4. **Click "Estimate Height"** or press 'M' to start a measurement
 5. **Click the base** of the object you want to measure
@@ -176,7 +176,7 @@ Access settings via the gear icon in the header:
 
 ## Measurement Accuracy
 
-PoleCheck Desktop uses multiple data sources and validation techniques for highly accurate measurements:
+Street Spec Desktop uses multiple data sources and validation techniques for highly accurate measurements:
 
 ### Measurement Types
 - **Point-to-Point**: Height measurements between two points
@@ -213,7 +213,7 @@ PoleCheck Desktop uses multiple data sources and validation techniques for highl
 *   `electron/`: Electron main process and preload scripts
 *   `src/`: React frontend source code
     *   `components/`: UI components (MapView, MeasurementTool, SearchBox, SettingsPanel, etc.)
-    *   `stores/`: Zustand state management (rootStore.ts, projectStore.ts, settingsStore.ts)
+    *   `stores/`: Zustand state management (rootStore.ts, settingsStore.ts)
     *   `services/`: Business logic (geometry, measurement, depth, error handling)
     *   `types/`: TypeScript type definitions
     *   `utils/`: Utility functions
@@ -276,3 +276,4 @@ npm run validate         # Type checking, linting, and tests
 ## License
 
 This project is licensed under the MIT License.
+
