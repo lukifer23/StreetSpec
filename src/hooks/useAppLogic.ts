@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useRootStore } from '../stores/rootStore';
-import { shallow } from 'zustand/shallow';
 import { pushNotification } from '../stores/notificationStore';
 import { calibrationManager } from '../services/depthCalibration';
 import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
@@ -84,8 +83,7 @@ export const useAppLogic = (apiKey: string) => {
         saveCurrentProject: state.saveCurrentProject,
       }),
       []
-    ),
-    shallow
+    )
   );
 
   const {
@@ -217,18 +215,38 @@ export const useAppLogic = (apiKey: string) => {
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
-    if (params.panoId !== currentCameraParams?.panoId) {
-      setIsCalibrated(false);
-      updateSettings({ calibrationPitchOffsetDeg: 0 });
-    }
 
+    // Prevent infinite loops by checking if params actually changed
     const merged = {
       ...params,
       calibrationPitchOffsetDeg: settings.calibrationPitchOffsetDeg ?? 0,
       cameraHeight: params.cameraHeight ?? settings.cameraHeight ?? 2.5,
     };
+
+    const hasChanged =
+      !currentCameraParams ||
+      merged.panoId !== currentCameraParams.panoId ||
+      merged.lat !== currentCameraParams.lat ||
+      merged.lng !== currentCameraParams.lng ||
+      merged.heading !== currentCameraParams.heading ||
+      merged.pitch !== currentCameraParams.pitch ||
+      merged.zoom !== currentCameraParams.zoom ||
+      merged.fov !== currentCameraParams.fov ||
+      merged.vFov !== currentCameraParams.vFov ||
+      merged.calibrationPitchOffsetDeg !== currentCameraParams.calibrationPitchOffsetDeg ||
+      merged.cameraHeight !== currentCameraParams.cameraHeight;
+
+    if (!hasChanged) {
+      return;
+    }
+
+    if (params.panoId !== currentCameraParams?.panoId) {
+      setIsCalibrated(false);
+      updateSettings({ calibrationPitchOffsetDeg: 0 });
+    }
+
     setCurrentCameraParams(merged);
-  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams?.panoId, updateSettings]);
+  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams, updateSettings]);
 
   const handleCalibrateClick = useCallback((pixelY: number, viewH: number) => {
      if (
@@ -632,14 +650,6 @@ export const useAppLogic = (apiKey: string) => {
     isApiLoaded,
     isCalibrated,
     depthFetchStatus,
-    handleCameraChange,
-    handleCalibrateClick,
-    handleAutoCalibrate,
-    handleGenerateDepthMap,
-    handleClearMeasurements,
-    handleUnitToggle,
-    handleSaveSettingsPanel,
-    handleExportCSV,
     measurements,
     settings,
     isSettingsOpen,
@@ -652,12 +662,6 @@ export const useAppLogic = (apiKey: string) => {
     currentCameraParams,
     onnxDepthMap,
     depthData,
-    setIsSettingsOpen,
-    setCalibrateMode,
-    setIsPolylineToolActive,
-    setIsAreaToolActive,
-    setIsVolumeToolActive,
-    setIsProjectPanelOpen,
     deleteMeasurement,
     renameMeasurement,
   ]);

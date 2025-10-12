@@ -1,10 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { useRootStore, useMeasurementActions, useSettingsActions } from '../stores/rootStore';
 import type { Measurement } from '../types/common';
 import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-import { VariableSizeList as List } from 'react-window';
-import type { ListChildComponentProps, VariableSizeList } from 'react-window';
 import { shallow } from 'zustand/shallow';
 import styles from './MeasurementSidebar.module.css';
 
@@ -113,9 +111,6 @@ const MeasurementSidebar: React.FC = () => {
   );
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();
   const { toggleUnit } = useSettingsActions();
-  const measurementCount = measurements.length;
-  const listRef = useRef<VariableSizeList | null>(null);
-
   const handleUnitToggle = useCallback(() => {
     toggleUnit();
     if (window.electronAPI?.invoke) {
@@ -137,7 +132,7 @@ const MeasurementSidebar: React.FC = () => {
   }, [clearMeasurements]);
 
   const handleExportCSV = useCallback(async () => {
-    if (measurementCount === 0) {
+    if (measurements.length === 0) {
       pushNotification({
         kind: 'info',
         message: 'No measurements available to export.',
@@ -223,69 +218,7 @@ const MeasurementSidebar: React.FC = () => {
         message: error instanceof Error ? error.message : 'Unexpected export error.',
       });
     }
-  }, [measurements, measurementCount]);
-
-  const getItemSize = useCallback(
-    (index: number) => {
-      const measurement = measurements[index];
-      if (!measurement) {
-        return 80;
-      }
-      const hasSecondary = Boolean(formatSecondaryLine(measurement));
-      return hasSecondary ? 116 : 90;
-    },
-    [measurements]
-  );
-
-  useEffect(() => {
-    listRef.current?.resetAfterIndex(0, true);
   }, [measurements]);
-
-  const listHeight = useMemo(() => {
-    if (measurementCount === 0) return 0;
-    const visibleRows = Math.min(measurementCount, 6);
-    const avgRowHeight = 100;
-    const estimated = visibleRows * avgRowHeight + 12;
-    return Math.min(Math.max(estimated, 240), 480);
-  }, [measurementCount]);
-
-  const renderMeasurement = useCallback(
-    ({ index, style }: ListChildComponentProps) => {
-      const measurement = measurements[index];
-      if (!measurement) {
-        return null;
-      }
-
-      const secondary = formatSecondaryLine(measurement);
-
-      return (
-        <div style={{ ...style, padding: '0 12px' }}>
-          <div className={styles['measurementItem']}>
-            <input
-              type="text"
-              placeholder="Add Name..."
-              value={measurement.name || ''}
-              onChange={(event) => renameMeasurement(measurement.id, event.target.value)}
-              className={styles['nameInput']}
-              title="Rename Measurement"
-            />
-            <div className={styles['measurementSummary']}>
-              <div className={styles['measurementValue']}>{formatPrimaryLine(measurement)}</div>
-              {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
-            </div>
-            <button
-              onClick={() => deleteMeasurement(measurement.id)}
-              className={styles['deleteButton']}
-              title="Delete Measurement"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      );
-    },
-    [measurements, renameMeasurement, deleteMeasurement]
-  );
 
   return (
     <div className={styles['sidebar']}>
@@ -320,23 +253,40 @@ const MeasurementSidebar: React.FC = () => {
         </div>
       </div>
 
-      {measurementCount === 0 ? (
+      {measurements.length === 0 ? (
         <div className={styles['noMeasurements']}>
           No measurements yet.
         </div>
       ) : (
-        <div className={styles['measurementList']}>
-          <List
-            height={listHeight}
-            width="100%"
-            itemCount={measurementCount}
-            itemSize={getItemSize}
-            overscanCount={3}
-            ref={listRef}
-          >
-            {renderMeasurement}
-          </List>
-        </div>
+        <ul className={styles['measurementList']}>
+          {measurements.map((measurement) => {
+            const secondary = formatSecondaryLine(measurement);
+
+            return (
+              <li key={measurement.id} className={styles['measurementItem']}>
+                <input
+                  type="text"
+                  placeholder="Add Name..."
+                  value={measurement.name || ''}
+                  onChange={(event) => renameMeasurement(measurement.id, event.target.value)}
+                  className={styles['nameInput']}
+                  title="Rename Measurement"
+                />
+                <div className={styles['measurementSummary']}>
+                  <div className={styles['measurementValue']}>{formatPrimaryLine(measurement)}</div>
+                  {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
+                </div>
+                <button
+                  onClick={() => deleteMeasurement(measurement.id)}
+                  className={styles['deleteButton']}
+                  title="Delete Measurement"
+                >
+                  Delete
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
       
       <div className={styles['sidebarFooter']}>

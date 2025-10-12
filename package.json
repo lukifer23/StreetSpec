@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
   "author": "Street Spec Team <support@streetspec.app>",
-  "type": "module",
+  "type": "commonjs",
   "main": "dist-electron/main.js",
   "scripts": {
     "clean": "if exist dist rmdir /s /q dist && if exist dist-electron rmdir /s /q dist-electron",
@@ -160,7 +160,6 @@
     "nsis": {
       "oneClick": false,
       "allowElevation": true,
-      "allowToChangeInstallationDirectory": true,
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico",
       "installerHeaderIcon": "assets/icon.ico",
@@ -174,7 +173,6 @@
       "include": "StreetSpecInstaller.iss",
       "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}",
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
       "license": null
     }
   },
