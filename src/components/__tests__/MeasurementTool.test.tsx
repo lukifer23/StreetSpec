@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import MeasurementTool from '../MeasurementTool';
 import { useRootStore } from '../../stores/rootStore';
 import type { CameraParams, DecodedDepthData } from '../../types/common';
+import { useNotificationStore } from '../../stores/notificationStore';
 
 const mockCameraParams: CameraParams = { heading: 0 };
 const mockDepthData: DecodedDepthData = {
@@ -13,7 +14,6 @@ const mockDepthData: DecodedDepthData = {
 };
 
 describe('MeasurementTool interactions', () => {
-  let alertSpy: jest.SpyInstance;
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
 
   beforeEach(() => {
@@ -23,8 +23,8 @@ describe('MeasurementTool interactions', () => {
         state.currentCameraParams = null;
         state.settings.defaultUnit = 'metric';
       });
+      useNotificationStore.getState().clear();
     });
-    alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
     HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
       clearRect: jest.fn(),
       beginPath: jest.fn(),
@@ -41,7 +41,6 @@ describe('MeasurementTool interactions', () => {
   });
 
   afterEach(() => {
-    alertSpy.mockRestore();
     HTMLCanvasElement.prototype.getContext = originalGetContext;
   });
 
@@ -70,7 +69,12 @@ describe('MeasurementTool interactions', () => {
 
     fireEvent.keyDown(window, { key: 'm' });
 
-    expect(alertSpy).toHaveBeenCalledWith('Calibrate the horizon before estimating height.');
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      message: 'Please calibrate the horizon first. Use Manual Calibrate on the horizon line.',
+      kind: 'warning',
+    });
     expect(screen.queryByText(/Step 1: Click object BASE/i)).not.toBeInTheDocument();
   });
 
@@ -80,9 +84,12 @@ describe('MeasurementTool interactions', () => {
 
     fireEvent.keyDown(window, { key: 'm' });
 
-    expect(alertSpy).toHaveBeenCalledWith(
-      'Depth data is required before estimating height. Generate or load a depth map first.'
-    );
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      message: 'Depth data is required. Generate a depth map for this location.',
+      kind: 'warning',
+    });
     expect(screen.queryByText(/Step 1: Click object BASE/i)).not.toBeInTheDocument();
   });
 
@@ -100,7 +107,7 @@ describe('MeasurementTool interactions', () => {
     const overlay = screen.getByTestId('measurement-overlay');
     expect(overlay).toHaveClass('overlayActive');
     expect(screen.getByText(/Step 1: Click object BASE/i)).toBeInTheDocument();
-    expect(alertSpy).not.toHaveBeenCalled();
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
   });
 
   it('ignores overlay clicks while idle until measurement is armed', () => {

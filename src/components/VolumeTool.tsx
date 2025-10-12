@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
-import { screenToWorld, estimateGroundPlaneIntersection } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
 import styles from './VolumeTool.module.css';
 
 interface VolumePoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
+  worldSource?: 'planes' | 'ground';
 }
 
 // Calculate volume of rectangular prism defined by two opposite corners
@@ -29,6 +30,7 @@ const VolumeTool: React.FC = () => {
   const { currentCameraParams: cameraParams } = useRootStore();
   const { isVolumeToolActive, setIsVolumeToolActive } = useRootStore();
   const { addMeasurement, settings } = useRootStore();
+  const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<VolumePoint[]>([]);
   const [volume, setVolume] = useState(0);
@@ -51,20 +53,38 @@ const VolumeTool: React.FC = () => {
     const viewWidth = rect.width;
     const viewHeight = rect.height;
 
-    const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-    const worldPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
+    let worldPoint = undefined as VolumePoint['worldPoint'] | undefined;
+    let worldSource: VolumePoint['worldSource'] = undefined;
+
+    if (depthData) {
+      const depthWorld = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
+      if (depthWorld) {
+        worldPoint = depthWorld;
+        worldSource = 'planes';
+      }
+    }
+
+    if (!worldPoint) {
+      const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
+      const groundPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
+      if (groundPoint) {
+        worldPoint = groundPoint;
+        worldSource = 'ground';
+      }
+    }
 
     if (worldPoint) {
       const newPoint: VolumePoint = {
         id: `point-${Date.now()}-${Math.random()}`,
         x,
         y,
-        worldPoint
+        worldPoint,
+        worldSource
       };
 
       setPoints(prev => [...prev, newPoint]);
     }
-  }, [isVolumeToolActive, cameraParams, points.length]);
+  }, [isVolumeToolActive, cameraParams, points.length, depthData]);
 
   // Calculate volume when points or height change
   useEffect(() => {
@@ -105,6 +125,14 @@ const VolumeTool: React.FC = () => {
   // Complete the measurement
   const handleCompleteMeasurement = useCallback(() => {
     if (points.length >= 2 && volume > 0) {
+      const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
+      const confidence =
+        planesBackedCount === points.length
+          ? 0.7
+          : planesBackedCount > 0
+            ? 0.6
+            : 0.45;
+
       // Create volume measurement object
       const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'volume',
@@ -117,7 +145,7 @@ const VolumeTool: React.FC = () => {
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams,
-        confidence: 0.6, // Volume measurements are less reliable
+        confidence,
         source: 'volume',
         volumeCubicMeters: volume,
         areaSquareMeters: dimensions.length * dimensions.width,
@@ -126,6 +154,7 @@ const VolumeTool: React.FC = () => {
         metadata: {
           heightMeters: height,
           worldPointsMeters: points.map((p) => p.worldPoint).filter(Boolean),
+          pointSources: points.map((point) => point.worldSource ?? 'ground'),
         },
         error: points.length < 2 ? 'Need 2 points for volume measurement' : undefined
       };

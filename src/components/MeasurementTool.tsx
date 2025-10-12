@@ -5,6 +5,7 @@ import type {
   CameraParams,
   OnnxDepthMap,
   DecodedDepthData,
+  Vector3,
 } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { calibrationManager } from '../services/depthCalibration';
@@ -477,10 +478,13 @@ const MeasurementTool: React.FC = () => {
     let source: 'planes' | 'onnx' | 'ground' | undefined;
     let confidence = 0.0;
 
+    let worldStart: Vector3 | null = null;
+    let worldEnd: Vector3 | null = null;
+
     // When Street View depth planes are available, compute world points directly
     if (depthData) {
-      const worldStart = screenToWorldWithDepth(startPoint, currentCameraParams, viewWidth, viewHeight, depthData);
-      const worldEnd = screenToWorldWithDepth(coords, currentCameraParams, viewWidth, viewHeight, depthData);
+      worldStart = screenToWorldWithDepth(startPoint, currentCameraParams, viewWidth, viewHeight, depthData);
+      worldEnd = screenToWorldWithDepth(coords, currentCameraParams, viewWidth, viewHeight, depthData);
       if (worldStart && worldEnd) {
         // Use vertical component of world coordinates for height
         planeHeight = Math.abs(worldEnd.y - worldStart.y);
@@ -577,7 +581,10 @@ const MeasurementTool: React.FC = () => {
 
     if (distanceToBase === null && planeHeight === null) {
       console.error('[measure] No distance or height calculated');
-      alert('Error: Could not calculate measurement. Please ensure the points are on visible surfaces and try again.');
+      pushNotification({
+        kind: 'error',
+        message: 'Could not calculate measurement. Ensure both points are on visible surfaces and try again.',
+      });
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -610,7 +617,10 @@ const MeasurementTool: React.FC = () => {
 
     if (finalHeight === null) {
       console.error('[measure] No height calculated');
-      alert('Error: Could not calculate height. Please ensure both points are on measurable surfaces.');
+      pushNotification({
+        kind: 'error',
+        message: 'Could not calculate height. Ensure both points are on measurable surfaces.',
+      });
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -619,7 +629,10 @@ const MeasurementTool: React.FC = () => {
     // Validate measurement results
     if (!Number.isFinite(finalHeight) || finalHeight <= 0) {
       console.error('[measure] Invalid height result:', finalHeight);
-      alert('Error: Invalid measurement result. Please try different points.');
+      pushNotification({
+        kind: 'error',
+        message: 'Invalid measurement result. Please try different points.',
+      });
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -628,23 +641,36 @@ const MeasurementTool: React.FC = () => {
     // Check for unrealistic measurements (likely calibration issues)
     if (finalHeight > 1000) { // 1000m = ~3000ft
       console.warn('[measure] Unrealistic height detected:', finalHeight);
-      alert('Warning: Measurement result seems unrealistic. Please check your horizon calibration.');
+      pushNotification({
+        kind: 'warning',
+        message: 'Measurement result seems unrealistic. Please confirm your horizon calibration.',
+      });
     }
 
     // Convert to display value
     const { value: finalDistance } = convertLengthToDisplay(finalHeight, defaultUnit);
+    const measurementConfidence = Math.min(1, Math.max(0, confidence));
 
     const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
       kind: 'distance',
       label: 'Est. Height',
       distanceMeters: finalHeight,
-      distance: finalDistance ?? 0,
-      startPoint: startPoint,
+      distance: finalDistance ?? finalHeight,
+      startPoint,
       endPoint: coords,
       unit: defaultUnit,
+      panoId: currentCameraParams.panoId ?? currentCameraParams.pano,
+      cameraParams: currentCameraParams,
+      source: source ?? 'ground',
+      confidence: measurementConfidence,
+      metadata: {
+        distanceToBase,
+        planeHeight,
+        estimatedHeight,
+        baseWorld: worldStart,
+        topWorld: worldEnd,
+      },
     };
-    (newMeasurement as any).source = source;
-    (newMeasurement as any).confidence = Math.min(1, Math.max(0, confidence));
     console.log('[measure] Creating measurement:', newMeasurement);
     addMeasurement(newMeasurement);
 

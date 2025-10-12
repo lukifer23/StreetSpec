@@ -79,6 +79,10 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
    - Prompts for your Google Maps API key and creates a `.env` file.
    - Runs ESLint and TypeScript checks.
    - Launches the development environment.
+3. To create an installer build, run `install-windows.bat`.
+   - Re-validates prerequisites and installs dependencies.
+   - Executes `npm run build:win` to produce an NSIS installer.
+   - Launches the newest `Street-Spec-Desktop-Setup-*.exe` from the `release/` directory.
 
 #### macOS/Linux
 1. Clone the repository:

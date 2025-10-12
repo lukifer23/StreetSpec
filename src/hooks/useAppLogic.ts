@@ -59,6 +59,7 @@ export const useAppLogic = (apiKey: string) => {
   const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
   const depthData = useRootStore((state) => state.depthData);
   const currentProjectId = useRootStore((state) => state.currentProjectId);
+  const loadProjects = useRootStore((state) => state.loadProjects);
 
   // Get functions separately - these are stable references
   const {
@@ -102,6 +103,11 @@ export const useAppLogic = (apiKey: string) => {
     setDepthData: state.setDepthData,
     saveCurrentProject: state.saveCurrentProject,
   }));
+
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
 
 
   // Load Google Maps API

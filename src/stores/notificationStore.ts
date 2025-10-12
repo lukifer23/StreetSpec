@@ -22,7 +22,11 @@ const DEFAULT_TIMEOUT_MS = 6000;
 export const useNotificationStore = create<NotificationState>((set) => ({
   notifications: [],
   pushNotification: (notification) => {
-    const id = notification.id ?? crypto.randomUUID();
+    const id =
+      notification.id ??
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2));
     const entry: Notification = {
       timeoutMs: DEFAULT_TIMEOUT_MS,
       ...notification,

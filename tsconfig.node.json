@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    // "composite": true, // Often not needed without project references, remove if causing issues
+    // "composite": true, // Often not needed without project references, remove if it iscausing issues
     "skipLibCheck": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",

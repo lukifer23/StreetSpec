@@ -2,12 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { UNIT_CONVERSIONS } from '../types/common';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './AreaTool.module.css';
 
 interface AreaPoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
+  worldSource?: 'planes' | 'ground';
 }
 
 // Calculate polygon area using the shoelace formula
@@ -45,6 +46,7 @@ const AreaTool: React.FC = () => {
   const { currentCameraParams: cameraParams } = useRootStore();
   const { isAreaToolActive, setIsAreaToolActive } = useRootStore();
   const { addMeasurement, settings } = useRootStore();
+  const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<AreaPoint[]>([]);
   const [area, setArea] = useState(0);
@@ -66,20 +68,38 @@ const AreaTool: React.FC = () => {
     const viewWidth = rect.width;
     const viewHeight = rect.height;
 
-    const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-    const worldPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
+    let worldPoint = undefined as AreaPoint['worldPoint'] | undefined;
+    let worldSource: AreaPoint['worldSource'] = undefined;
+
+    if (depthData) {
+      const depthWorld = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
+      if (depthWorld) {
+        worldPoint = depthWorld;
+        worldSource = 'planes';
+      }
+    }
+
+    if (!worldPoint) {
+      const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
+      const groundPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
+      if (groundPoint) {
+        worldPoint = groundPoint;
+        worldSource = 'ground';
+      }
+    }
 
     if (worldPoint) {
       const newPoint: AreaPoint = {
         id: `point-${Date.now()}-${Math.random()}`,
         x,
         y,
-        worldPoint
+        worldPoint,
+        worldSource
       };
 
       setPoints(prev => [...prev, newPoint]);
     }
-  }, [isAreaToolActive, cameraParams]);
+  }, [isAreaToolActive, cameraParams, depthData]);
 
   // Calculate area and perimeter when points change
   useEffect(() => {
@@ -122,6 +142,14 @@ const AreaTool: React.FC = () => {
   // Complete the measurement
   const handleCompleteMeasurement = useCallback(() => {
     if (points.length >= 3 && area > 0) {
+      const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
+      const confidence =
+        planesBackedCount === points.length
+          ? 0.8
+          : planesBackedCount > 0
+            ? 0.7
+            : 0.55;
+
       // Create area measurement object
       const areaMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'area',
@@ -134,13 +162,14 @@ const AreaTool: React.FC = () => {
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams,
-        confidence: 0.7, // Area measurements are moderately reliable
+        confidence,
         source: 'area',
         areaSquareMeters: area,
         perimeterMeters: perimeter,
         points: points.map(({ x, y }) => ({ x, y })),
         metadata: {
           worldPointsMeters: points.map((p) => p.worldPoint).filter(Boolean),
+          pointSources: points.map((point) => point.worldSource ?? 'ground'),
         },
         error: points.length < 3 ? 'Need at least 3 points for area measurement' : undefined
       };

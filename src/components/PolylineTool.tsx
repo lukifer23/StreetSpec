@@ -2,18 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import { UNIT_CONVERSIONS } from '../types/common';
 import type { Point, Measurement } from '../types/common';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './PolylineTool.module.css';
 
 interface PolylinePoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
+  worldSource?: 'planes' | 'ground';
 }
 
 const PolylineTool: React.FC = () => {
   const { currentCameraParams: cameraParams } = useRootStore();
   const { isPolylineToolActive, setIsPolylineToolActive } = useRootStore();
   const { addMeasurement, settings } = useRootStore();
+  const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<PolylinePoint[]>([]);
   const [, setIsMeasuring] = useState(false);
@@ -36,21 +38,39 @@ const PolylineTool: React.FC = () => {
     const viewWidth = rect.width;
     const viewHeight = rect.height;
 
-    const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-    const worldPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
+    let worldPoint = undefined as PolylinePoint['worldPoint'] | undefined;
+    let worldSource: PolylinePoint['worldSource'] = undefined;
+
+    if (depthData) {
+      const depthWorld = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
+      if (depthWorld) {
+        worldPoint = depthWorld;
+        worldSource = 'planes';
+      }
+    }
+
+    if (!worldPoint) {
+      const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
+      const groundPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
+      if (groundPoint) {
+        worldPoint = groundPoint;
+        worldSource = 'ground';
+      }
+    }
 
     if (worldPoint) {
       const newPoint: PolylinePoint = {
         id: `point-${Date.now()}-${Math.random()}`,
         x,
         y,
-        worldPoint
+        worldPoint,
+        worldSource
       };
 
       setPoints(prev => [...prev, newPoint]);
       setIsMeasuring(true);
     }
-  }, [isPolylineToolActive, cameraParams]);
+  }, [isPolylineToolActive, cameraParams, depthData]);
 
   // Calculate distances when points change
   useEffect(() => {
@@ -95,6 +115,14 @@ const PolylineTool: React.FC = () => {
   const handleCompleteMeasurement = useCallback(() => {
     if (points.length >= 2 && totalDistance > 0) {
       // Create measurement object
+      const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
+      const confidence =
+        planesBackedCount === points.length
+          ? 0.85
+          : planesBackedCount > 0
+            ? 0.75
+            : 0.6;
+
       const measurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'polyline',
         label: `Polyline (${points.length} points)`,
@@ -107,11 +135,13 @@ const PolylineTool: React.FC = () => {
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams,
-        confidence: 0.8, // Polyline measurements are generally reliable
+        confidence,
         source: 'polyline',
         points: points.map(({ x, y }) => ({ x, y })),
         metadata: {
           segmentDistancesMeters: segmentDistances,
+          worldPointsMeters: points.map((point) => point.worldPoint),
+          pointSources: points.map((point) => point.worldSource ?? 'ground'),
         },
         error: points.length < 2 ? 'Need at least 2 points for measurement' : undefined
       };
