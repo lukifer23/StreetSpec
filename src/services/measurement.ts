@@ -2,7 +2,6 @@ import { UNIT_CONVERSIONS } from '../types/common';
 import type { Point, CameraParams, Measurement, Vector3 } from '../types/common';
 import {
     screenToWorld,
-    estimateGroundPlaneIntersection,
     calculateDistance3D,
     screenToWorldWithDepth,
     estimateGroundPlaneIntersectionWithConfidence,

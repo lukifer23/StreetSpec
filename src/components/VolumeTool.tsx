@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
-import { UNIT_CONVERSIONS } from '../types/common';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection } from '../services/geometry';
 import styles from './VolumeTool.module.css';
 
 interface VolumePoint extends Point {
@@ -139,7 +138,7 @@ const VolumeTool: React.FC = () => {
       setDimensions({ length: 0, width: 0, height: 3 });
       setHeight(3);
     }
-  }, [points, volume, dimensions, settings.defaultUnit, cameraParams, addMeasurement]);
+  }, [points, volume, dimensions, settings.defaultUnit, cameraParams, addMeasurement, height]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {

@@ -54,6 +54,7 @@ interface RootState {
   setSettings: (settings: AppSettings) => void;
   updateSettings: (updates: Partial<AppSettings>) => void;
   toggleUnit: () => void;
+  saveCurrentProject: () => void;
   
   // Camera actions
   setTargetCoords: (coords: Coordinates | null) => void;
@@ -148,6 +149,18 @@ export const useRootStore = create<RootState>()(
 
         toggleUnit: () => set((state) => {
           state.settings.defaultUnit = state.settings.defaultUnit === 'metric' ? 'imperial' : 'metric';
+        }),
+
+        saveCurrentProject: () => set((state) => {
+          if (!state.currentProjectId) return;
+          const project = state.projects[state.currentProjectId];
+          if (project) {
+            project.measurements = [...state.measurements];
+            // save to IPC
+            if (window.electronAPI?.invoke) {
+              window.electronAPI.invoke('save-project', project);
+            }
+          }
         }),
 
         // Camera actions

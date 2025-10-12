@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import MapView from './components/MapView';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
@@ -49,8 +49,6 @@ function App() {
     setIsAreaToolActive,
     setIsVolumeToolActive,
     setIsProjectPanelOpen,
-    deleteMeasurement,
-    renameMeasurement,
   } = useAppLogic(apiKey);
 
   // Display error state

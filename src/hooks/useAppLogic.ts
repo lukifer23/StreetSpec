@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useRootStore } from '../stores/rootStore';
-import { useProjectActions } from '../stores/rootStore';
 import { calibrationManager } from '../services/depthCalibration';
 import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
 import { getCachedDepthMap, cacheDepthMap } from '../services/depth';
@@ -42,10 +41,11 @@ export const useAppLogic = (apiKey: string) => {
   const [isApiLoaded, setIsApiLoaded] = useState(false);
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [depthFetchStatus, setDepthFetchStatus] = useState<DepthDataFetchResult | null>(null);
+  const lastSavedMeasurements = useRef<string | null>(null);
+  const lastSavedProjectId = useRef<string | null>(null);
 
   const {
     measurements,
-    addMeasurement,
     deleteMeasurement,
     renameMeasurement,
     clearMeasurements,
@@ -75,10 +75,45 @@ export const useAppLogic = (apiKey: string) => {
     setOnnxDepthMap,
     setDepthData,
     depthData,
-    currentProjectId
-  } = useRootStore();
+    currentProjectId,
+    saveCurrentProject,
+  } = useRootStore(
+    useCallback((state) => ({
+      measurements: state.measurements,
+      deleteMeasurement: state.deleteMeasurement,
+      renameMeasurement: state.renameMeasurement,
+      clearMeasurements: state.clearMeasurements,
+      settings: state.settings,
+      setSettings: state.setSettings,
+      updateSettings: state.updateSettings,
+      toggleUnit: state.toggleUnit,
+      isSettingsOpen: state.isSettingsOpen,
+      isGeneratingMap: state.isGeneratingMap,
+      calibrateMode: state.calibrateMode,
+      error: state.error,
+      mapGenerationError: state.mapGenerationError,
+      setIsSettingsOpen: state.setIsSettingsOpen,
+      setIsGeneratingMap: state.setIsGeneratingMap,
+      setCalibrateMode: state.setCalibrateMode,
+      setError: state.setError,
+      setMapGenerationError: state.setMapGenerationError,
+      setIsPolylineToolActive: state.setIsPolylineToolActive,
+      setIsAreaToolActive: state.setIsAreaToolActive,
+      setIsVolumeToolActive: state.setIsVolumeToolActive,
+      isProjectPanelOpen: state.isProjectPanelOpen,
+      setIsProjectPanelOpen: state.setIsProjectPanelOpen,
+      targetCoords: state.targetCoords,
+      currentCameraParams: state.currentCameraParams,
+      onnxDepthMap: state.onnxDepthMap,
+      setCurrentCameraParams: state.setCurrentCameraParams,
+      setOnnxDepthMap: state.setOnnxDepthMap,
+      setDepthData: state.setDepthData,
+      depthData: state.depthData,
+      currentProjectId: state.currentProjectId,
+      saveCurrentProject: state.saveCurrentProject,
+    }), [])
+  );
 
-  const { saveCurrentProject } = useProjectActions();
 
   // Load Google Maps API
   useEffect(() => {
@@ -126,21 +161,42 @@ export const useAppLogic = (apiKey: string) => {
 
   // Auto-save measurements when they change
   useEffect(() => {
-    if (settings.autoSave && window.electronAPI?.invoke) {
-      const saveMeasurements = async () => {
-        try {
-          await window.electronAPI.invoke('save-measurements', measurements);
-          // Also save to current project if one is active
-          if (currentProjectId) {
-            saveCurrentProject();
-          }
-        } catch (error) {
-          // Silent error handling for production
-        }
-      };
-
-      saveMeasurements();
+    if (!settings.autoSave || !window.electronAPI?.invoke) {
+      return;
     }
+
+    const measurementSignature = JSON.stringify(
+      measurements.map((m) => ({
+        id: m.id,
+        kind: m.kind,
+        updatedAt: m.timestamp,
+        value: m.distanceMeters ?? m.areaSquareMeters ?? m.volumeCubicMeters ?? 0,
+        points: m.points?.length ?? 0,
+      }))
+    );
+
+    if (
+      lastSavedMeasurements.current === measurementSignature &&
+      lastSavedProjectId.current === (currentProjectId ?? null)
+    ) {
+      return;
+    }
+
+    lastSavedMeasurements.current = measurementSignature;
+    lastSavedProjectId.current = currentProjectId ?? null;
+
+    const saveMeasurements = async () => {
+      try {
+        await window.electronAPI.invoke('save-measurements', measurements);
+        if (currentProjectId) {
+          saveCurrentProject();
+        }
+      } catch {
+        // Silent error handling for production
+      }
+    };
+
+    void saveMeasurements();
   }, [measurements, settings.autoSave, currentProjectId, saveCurrentProject]);
 
   // Update App state when MapView camera changes
@@ -356,7 +412,7 @@ export const useAppLogic = (apiKey: string) => {
     } finally {
       setIsGeneratingMap(false);
     }
-  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap]);
+  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap, settings.depthQuality, settings.enableDepthCache]);
 
   const handleClearMeasurements = useCallback(async () => {
     clearMeasurements();
@@ -382,7 +438,7 @@ export const useAppLogic = (apiKey: string) => {
     }
   }, [toggleUnit, settings]);
 
-  const handleSaveSettingsPanel = async (newSettings: any) => {
+  const handleSaveSettingsPanel = useCallback(async (newSettings: any) => {
     setSettings(newSettings);
     if (window.electronAPI?.invoke) {
       try {
@@ -396,7 +452,7 @@ export const useAppLogic = (apiKey: string) => {
       calibrationManager.reset();
     }
     setIsSettingsOpen(false);
-  };
+  }, [setSettings, setIsSettingsOpen]);
 
   const handleExportCSV = useCallback(async () => {
     if (measurements.length === 0) {
@@ -471,7 +527,7 @@ export const useAppLogic = (apiKey: string) => {
     }
   }, [measurements]);
 
-  return {
+  return useMemo(() => ({
     // State
     isApiLoaded,
     isCalibrated,
@@ -510,5 +566,37 @@ export const useAppLogic = (apiKey: string) => {
     setIsProjectPanelOpen,
     deleteMeasurement,
     renameMeasurement,
-  };
+  }), [
+    isApiLoaded,
+    isCalibrated,
+    depthFetchStatus,
+    handleCameraChange,
+    handleCalibrateClick,
+    handleAutoCalibrate,
+    handleGenerateDepthMap,
+    handleClearMeasurements,
+    handleUnitToggle,
+    handleSaveSettingsPanel,
+    handleExportCSV,
+    measurements,
+    settings,
+    isSettingsOpen,
+    isGeneratingMap,
+    calibrateMode,
+    error,
+    mapGenerationError,
+    isProjectPanelOpen,
+    targetCoords,
+    currentCameraParams,
+    onnxDepthMap,
+    depthData,
+    setIsSettingsOpen,
+    setCalibrateMode,
+    setIsPolylineToolActive,
+    setIsAreaToolActive,
+    setIsVolumeToolActive,
+    setIsProjectPanelOpen,
+    deleteMeasurement,
+    renameMeasurement,
+  ]);
 };
