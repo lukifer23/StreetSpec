@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useRootStore } from '../stores/rootStore';
+import { pushNotification } from '../stores/notificationStore';
 import { calibrationManager } from '../services/depthCalibration';
 import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
 import { getCachedDepthMap, cacheDepthMap } from '../services/depth';
@@ -44,20 +45,29 @@ export const useAppLogic = (apiKey: string) => {
   const lastSavedMeasurements = useRef<string | null>(null);
   const lastSavedProjectId = useRef<string | null>(null);
 
+  // Use separate selectors for stable data and functions
+  const measurements = useRootStore((state) => state.measurements);
+  const settings = useRootStore((state) => state.settings);
+  const isSettingsOpen = useRootStore((state) => state.isSettingsOpen);
+  const isGeneratingMap = useRootStore((state) => state.isGeneratingMap);
+  const calibrateMode = useRootStore((state) => state.calibrateMode);
+  const error = useRootStore((state) => state.error);
+  const mapGenerationError = useRootStore((state) => state.mapGenerationError);
+  const isProjectPanelOpen = useRootStore((state) => state.isProjectPanelOpen);
+  const targetCoords = useRootStore((state) => state.targetCoords);
+  const currentCameraParams = useRootStore((state) => state.currentCameraParams);
+  const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
+  const depthData = useRootStore((state) => state.depthData);
+  const currentProjectId = useRootStore((state) => state.currentProjectId);
+
+  // Get functions separately - these are stable references
   const {
-    measurements,
     deleteMeasurement,
     renameMeasurement,
     clearMeasurements,
-    settings,
     setSettings,
     updateSettings,
     toggleUnit,
-    isSettingsOpen,
-    isGeneratingMap,
-    calibrateMode,
-    error,
-    mapGenerationError,
     setIsSettingsOpen,
     setIsGeneratingMap,
     setCalibrateMode,
@@ -66,53 +76,32 @@ export const useAppLogic = (apiKey: string) => {
     setIsPolylineToolActive,
     setIsAreaToolActive,
     setIsVolumeToolActive,
-    isProjectPanelOpen,
     setIsProjectPanelOpen,
-    targetCoords,
-    currentCameraParams,
-    onnxDepthMap,
     setCurrentCameraParams,
     setOnnxDepthMap,
     setDepthData,
-    depthData,
-    currentProjectId,
     saveCurrentProject,
-  } = useRootStore(
-    useCallback((state) => ({
-      measurements: state.measurements,
-      deleteMeasurement: state.deleteMeasurement,
-      renameMeasurement: state.renameMeasurement,
-      clearMeasurements: state.clearMeasurements,
-      settings: state.settings,
-      setSettings: state.setSettings,
-      updateSettings: state.updateSettings,
-      toggleUnit: state.toggleUnit,
-      isSettingsOpen: state.isSettingsOpen,
-      isGeneratingMap: state.isGeneratingMap,
-      calibrateMode: state.calibrateMode,
-      error: state.error,
-      mapGenerationError: state.mapGenerationError,
-      setIsSettingsOpen: state.setIsSettingsOpen,
-      setIsGeneratingMap: state.setIsGeneratingMap,
-      setCalibrateMode: state.setCalibrateMode,
-      setError: state.setError,
-      setMapGenerationError: state.setMapGenerationError,
-      setIsPolylineToolActive: state.setIsPolylineToolActive,
-      setIsAreaToolActive: state.setIsAreaToolActive,
-      setIsVolumeToolActive: state.setIsVolumeToolActive,
-      isProjectPanelOpen: state.isProjectPanelOpen,
-      setIsProjectPanelOpen: state.setIsProjectPanelOpen,
-      targetCoords: state.targetCoords,
-      currentCameraParams: state.currentCameraParams,
-      onnxDepthMap: state.onnxDepthMap,
-      setCurrentCameraParams: state.setCurrentCameraParams,
-      setOnnxDepthMap: state.setOnnxDepthMap,
-      setDepthData: state.setDepthData,
-      depthData: state.depthData,
-      currentProjectId: state.currentProjectId,
-      saveCurrentProject: state.saveCurrentProject,
-    }), [])
-  );
+  } = useRootStore((state) => ({
+    deleteMeasurement: state.deleteMeasurement,
+    renameMeasurement: state.renameMeasurement,
+    clearMeasurements: state.clearMeasurements,
+    setSettings: state.setSettings,
+    updateSettings: state.updateSettings,
+    toggleUnit: state.toggleUnit,
+    setIsSettingsOpen: state.setIsSettingsOpen,
+    setIsGeneratingMap: state.setIsGeneratingMap,
+    setCalibrateMode: state.setCalibrateMode,
+    setError: state.setError,
+    setMapGenerationError: state.setMapGenerationError,
+    setIsPolylineToolActive: state.setIsPolylineToolActive,
+    setIsAreaToolActive: state.setIsAreaToolActive,
+    setIsVolumeToolActive: state.setIsVolumeToolActive,
+    setIsProjectPanelOpen: state.setIsProjectPanelOpen,
+    setCurrentCameraParams: state.setCurrentCameraParams,
+    setOnnxDepthMap: state.setOnnxDepthMap,
+    setDepthData: state.setDepthData,
+    saveCurrentProject: state.saveCurrentProject,
+  }));
 
 
   // Load Google Maps API
@@ -231,12 +220,18 @@ export const useAppLogic = (apiKey: string) => {
      window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
      setCalibrateMode(false);
      setIsCalibrated(true);
-    alert(`Manual calibration saved. Pitch offset ${offset.toFixed(2)} deg`);
+    pushNotification({
+      kind: 'success',
+      message: `Manual calibration saved. Pitch offset ${offset.toFixed(2)} deg.`,
+    });
   }, [currentCameraParams, settings, updateSettings, setCalibrateMode]);
 
   const handleAutoCalibrate = useCallback(async () => {
     if (!currentCameraParams || !depthData || !onnxDepthMap) {
-      alert('Auto-calibration requires depth data. Please generate depth map first.');
+      pushNotification({
+        kind: 'warning',
+        message: 'Auto-calibration requires depth data. Please generate a depth map first.',
+      });
       return;
     }
 
@@ -253,13 +248,25 @@ export const useAppLogic = (apiKey: string) => {
         updateSettings({ calibrationPitchOffsetDeg: result.pitchOffset });
         await window.electronAPI?.invoke('save-settings', newSettings);
         setIsCalibrated(true);
-        alert(`Auto-calibration successful! Pitch offset ${result.pitchOffset.toFixed(2)} deg (confidence: ${(result.confidence * 100).toFixed(0)}%)`);
+        pushNotification({
+          kind: 'success',
+          title: 'Auto calibration complete',
+          message: `Pitch offset ${result.pitchOffset.toFixed(2)} deg (confidence ${(result.confidence * 100).toFixed(0)}%).`,
+        });
       } else {
-        alert(`Auto-calibration failed. Confidence too low (${(result.confidence * 100).toFixed(0)}%). Please try manual calibration.`);
+        pushNotification({
+          kind: 'warning',
+          title: 'Auto calibration failed',
+          message: `Confidence too low (${(result.confidence * 100).toFixed(0)}%). Try manual calibration.`,
+        });
       }
     } catch (error) {
       console.error('Auto-calibration error:', error);
-      alert('Auto-calibration failed. Please try manual calibration.');
+      pushNotification({
+        kind: 'error',
+        title: 'Auto calibration error',
+        message: 'Auto-calibration failed. Please try manual calibration.',
+      });
     }
   }, [currentCameraParams, depthData, onnxDepthMap, settings, updateSettings]);
 
@@ -346,18 +353,30 @@ export const useAppLogic = (apiKey: string) => {
   const handleGenerateDepthMap = useCallback(async () => {
     if (!currentCameraParams || !apiKey || isGeneratingMap) {
       if (!currentCameraParams) {
-        alert('Error: No camera parameters available. Please wait for the panorama to load.');
+        pushNotification({
+          kind: 'error',
+          message: 'No camera parameters available. Please wait for the Street View panorama to load.',
+        });
       } else if (!apiKey) {
-        alert('Error: Google Maps API key is missing. Please check your .env file.');
+        pushNotification({
+          kind: 'error',
+          message: 'Google Maps API key is missing. Check the .env configuration.',
+        });
       } else if (isGeneratingMap) {
-        alert('Error: Depth map generation is already in progress.');
+        pushNotification({
+          kind: 'info',
+          message: 'Depth map generation is already in progress.',
+        });
       }
       return;
     }
 
     // Validate camera parameters
     if (!currentCameraParams.panoId && (!currentCameraParams.lat || !currentCameraParams.lng)) {
-      alert('Error: Invalid location data. Please try a different location.');
+      pushNotification({
+        kind: 'error',
+        message: 'Invalid location data. Please try a different location.',
+      });
       return;
     }
 
@@ -456,7 +475,10 @@ export const useAppLogic = (apiKey: string) => {
 
   const handleExportCSV = useCallback(async () => {
     if (measurements.length === 0) {
-      alert("No measurements to export.");
+      pushNotification({
+        kind: 'info',
+        message: 'No measurements available to export.',
+      });
       return;
     }
 
@@ -517,13 +539,26 @@ export const useAppLogic = (apiKey: string) => {
       if (window.electronAPI && typeof window.electronAPI.invoke === 'function') {
         const filePath = await window.electronAPI.invoke('csv-export', csvContent);
         if (filePath) {
-          alert(`Measurements exported successfully to: ${filePath}`);
+          pushNotification({
+            kind: 'success',
+            title: 'Export complete',
+            message: `Measurements saved to ${filePath}`,
+            timeoutMs: 8000,
+          });
         }
       } else {
-        alert("Export failed: Cannot communicate with the main process.");
+        pushNotification({
+          kind: 'error',
+          title: 'Export failed',
+          message: 'Unable to communicate with the main process.',
+        });
       }
     } catch (error) {
-      alert(`Export failed: ${error}`);
+      pushNotification({
+        kind: 'error',
+        title: 'Export failed',
+        message: error instanceof Error ? error.message : 'Unexpected export error.',
+      });
     }
   }, [measurements]);
 

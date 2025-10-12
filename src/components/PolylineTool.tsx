@@ -16,7 +16,7 @@ const PolylineTool: React.FC = () => {
   const { addMeasurement, settings } = useRootStore();
 
   const [points, setPoints] = useState<PolylinePoint[]>([]);
-  const [isMeasuring, setIsMeasuring] = useState(false);
+  const [, setIsMeasuring] = useState(false);
   const [totalDistance, setTotalDistance] = useState(0);
   const [segmentDistances, setSegmentDistances] = useState<number[]>([]);
 

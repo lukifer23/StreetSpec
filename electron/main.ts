@@ -1016,7 +1016,7 @@ async function createWindow() {
     try {
       const { canceled, filePath } = await dialog.showSaveDialog(win, {
         title: 'Export Measurements as CSV',
-        defaultPath: `polecheck-measurements-${Date.now()}.csv`,
+        defaultPath: `streetspec-measurements-${Date.now()}.csv`,
         filters: [
           { name: 'CSV Files', extensions: ['csv'] },
           { name: 'All Files', extensions: ['*'] }

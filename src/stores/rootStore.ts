@@ -405,7 +405,7 @@ export const useRootStore = create<RootState>()(
       }))
     ),
     {
-      name: 'polecheck-store',
+      name: 'streetspec-store',
       enabled: process.env.NODE_ENV === 'development',
     }
   )

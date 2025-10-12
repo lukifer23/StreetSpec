@@ -8,6 +8,7 @@ import AreaTool from './components/AreaTool';
 import VolumeTool from './components/VolumeTool';
 import MeasurementSidebar from './components/MeasurementSidebar';
 import SearchBox from './components/SearchBox';
+import Notifications from './components/Notifications';
 import { Tooltip } from './components/Tooltip';
 import { AppLayout } from './components/AppLayout';
 import { useAppLogic } from './hooks/useAppLogic';
@@ -57,11 +58,13 @@ function App() {
   }
 
   return (
-    <AppLayout
-      header={
-        <div className={styles['header']}>
-          <Tooltip text="Manage projects and measurement history" position="bottom">
-            <button
+    <>
+      <Notifications />
+      <AppLayout
+        header={
+          <div className={styles['header']}>
+            <Tooltip text="Manage projects and measurement history" position="bottom">
+              <button
               style={{ marginRight: 10 }}
               onClick={() => setIsProjectPanelOpen(true)}
               title="Projects"
@@ -175,6 +178,7 @@ function App() {
         />
       )}
     </AppLayout>
+    </>
   );
 }
 

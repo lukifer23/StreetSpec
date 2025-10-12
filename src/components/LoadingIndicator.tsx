@@ -191,7 +191,8 @@ const LoadingIndicator: React.FC<LoadingIndicatorProps> = React.memo(({
 LoadingIndicator.displayName = 'LoadingIndicator';
 
 // Hook for managing loading states
-export const useLoadingState = (initialState: LoadingState = { isLoading: false }) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const useLoadingState = (initialState: LoadingState = { isLoading: false }) => {
   const [loadingState, setLoadingState] = useState<LoadingState>(initialState);
 
   const startLoading = useMemo(() => (message?: string, type?: LoadingState['type']) => {
@@ -288,7 +289,8 @@ export const LoadingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
-export const useGlobalLoading = () => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const useGlobalLoading = () => {
   const context = React.useContext(LoadingContext);
   if (!context) {
     throw new Error('useGlobalLoading must be used within a LoadingProvider');

@@ -152,7 +152,7 @@ const AreaTool: React.FC = () => {
       setArea(0);
       setPerimeter(0);
     }
-  }, [points, area, settings.defaultUnit, cameraParams, addMeasurement]);
+  }, [points, area, settings.defaultUnit, cameraParams, addMeasurement, perimeter]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {

@@ -14,6 +14,7 @@ import { convertLengthToDisplay } from '../utils/units';
 import styles from './MeasurementTool.module.css';
 
 import { useRootStore } from '../stores/rootStore';
+import { pushNotification } from '../stores/notificationStore';
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
@@ -433,7 +434,10 @@ const MeasurementTool: React.FC = () => {
     // Input validation
     if (!startPoint || !coords) {
       console.error('[measure] Invalid input points');
-      alert('Error: Invalid measurement points. Please try again.');
+      pushNotification({
+        kind: 'error',
+        message: 'Invalid measurement points. Please try again.',
+      });
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -441,7 +445,10 @@ const MeasurementTool: React.FC = () => {
 
     if (!currentCameraParams) {
       console.error('[measure] No camera params available');
-      alert('Error: Camera parameters not available. Please wait for the panorama to load completely.');
+      pushNotification({
+        kind: 'error',
+        message: 'Camera parameters not available. Please wait for the panorama to load completely.',
+      });
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -450,7 +457,10 @@ const MeasurementTool: React.FC = () => {
     // Validate depth data availability
     if (!onnxDepthMap && !depthData) {
       console.error('[measure] No depth data available');
-      alert('Error: Depth data is required for measurements. Please generate a depth map first.');
+      pushNotification({
+        kind: 'warning',
+        message: 'Depth data is required for measurements. Generate a depth map first.',
+      });
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -622,7 +632,7 @@ const MeasurementTool: React.FC = () => {
     }
 
     // Convert to display value
-    const { value: finalDistance, unitLabel } = convertLengthToDisplay(finalHeight, defaultUnit);
+    const { value: finalDistance } = convertLengthToDisplay(finalHeight, defaultUnit);
 
     const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
       kind: 'distance',
@@ -703,23 +713,35 @@ const MeasurementTool: React.FC = () => {
 
     // Validate prerequisites with detailed error messages
     if (!currentCameraParams) {
-      alert("Camera parameters not yet available. Please wait for the Street View panorama to load completely.");
+      pushNotification({
+        kind: 'info',
+        message: 'Camera parameters not yet available. Please wait for the Street View panorama to load completely.',
+      });
       return;
     }
 
     if (!isCalibrated) {
-      alert('Please calibrate the horizon first. Click "Manual Calibrate" and click on the flat horizontal line where sky meets ground.');
+      pushNotification({
+        kind: 'warning',
+        message: 'Please calibrate the horizon first. Use Manual Calibrate on the horizon line.',
+      });
       return;
     }
 
     if (!hasDepthSupport) {
-      alert('Depth data is required for measurements. Please click "Generate Depth Map" to create depth data for this location.');
+      pushNotification({
+        kind: 'warning',
+        message: 'Depth data is required. Generate a depth map for this location.',
+      });
       return;
     }
 
     // Additional validation
     if (!currentCameraParams.panoId) {
-      alert('Error: Invalid panorama data. Please try a different location.');
+      pushNotification({
+        kind: 'error',
+        message: 'Invalid panorama data. Please try a different location.',
+      });
       return;
     }
 
