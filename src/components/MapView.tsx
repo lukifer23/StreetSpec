@@ -321,8 +321,8 @@ const MapView: React.FC<{
 
         // Get adjacent pano IDs
         const adjacentPanoIds = links
-          .filter(link => link && link.pano)
-          .map(link => link.pano!)
+          .filter((link): link is google.maps.StreetViewLink & { pano: string } => link != null && link.pano != null)
+          .map(link => link.pano)
           .slice(0, 3); // Limit to first 3 adjacent panos
 
         if (adjacentPanoIds.length === 0) return;

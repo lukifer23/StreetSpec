@@ -101,7 +101,7 @@ const VolumeTool: React.FC = () => {
       return;
     }
 
-    const result = calculateRectangularVolume(worldPoints[0], worldPoints[1], height);
+    const result = calculateRectangularVolume(worldPoints[0]!, worldPoints[1]!, height);
     setVolume(result.volume);
     setDimensions(result.dimensions);
   }, [points, height]);
@@ -138,8 +138,8 @@ const VolumeTool: React.FC = () => {
       const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'volume',
         label: `Volume (${dimensions.length.toFixed(1)}m x ${dimensions.width.toFixed(1)}m x ${dimensions.height.toFixed(1)}m)`,
-        startPoint: points[0],
-        endPoint: points[1],
+        startPoint: points[0]!,
+        endPoint: points[1]!,
         distance: settings.defaultUnit === 'imperial'
           ? volume * 35.315 // Cubic meters to cubic feet
           : volume,

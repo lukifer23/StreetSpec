@@ -60,7 +60,9 @@ function getCachedResult<T>(key: string): T | typeof CACHE_MISS {
 function setCachedResult<T>(key: string, value: T): void {
   if (calculationCache.size >= CACHE_SIZE_LIMIT) {
     const firstKey = calculationCache.keys().next().value;
-    calculationCache.delete(firstKey);
+    if (firstKey) {
+      calculationCache.delete(firstKey);
+    }
   }
 
   calculationCache.set(key, {
@@ -84,7 +86,9 @@ function getTrigValues(angleDegrees: number): { cos: number; sin: number } {
 
     if (trigCache.size > TRIG_CACHE_LIMIT) {
       const firstKey = trigCache.keys().next().value;
-      trigCache.delete(firstKey);
+      if (firstKey) {
+        trigCache.delete(firstKey);
+      }
     }
   }
 
@@ -228,16 +232,18 @@ export function calculateFov(
   // Look up the calibrated horizontal FOV and fall back to zoom level 1
   const hFov = CALIBRATED_HFOV_BY_ZOOM[clampedZoom as keyof typeof CALIBRATED_HFOV_BY_ZOOM] ?? CALIBRATED_HFOV_BY_ZOOM[1];
   // Derive vertical FOV from horizontal FOV and aspect ratio
-  const hFovRad = degreesToRadians(hFov);
+  const hFovRad = degreesToRadians(hFov!);
   const vFovRad = 2 * Math.atan(Math.tan(hFovRad / 2) / aspectRatio);
   const vFov = (vFovRad * 180) / Math.PI;
 
-  const result = { hFov, vFov };
+  const result = { hFov: hFov!, vFov };
   fovCache.set(cacheKey, result);
 
   if (fovCache.size > FOV_CACHE_LIMIT) {
     const firstKey = fovCache.keys().next().value;
-    fovCache.delete(firstKey);
+    if (firstKey) {
+      fovCache.delete(firstKey);
+    }
   }
 
   return result;
@@ -458,9 +464,9 @@ export function screenToWorldWithDepth(
 
     // 3. Try intersecting with the plane selected by the depth index if valid
     const isValidPlaneIndex =
-        planeIndex !== 255 && planeIndex >= 0 && planeIndex < depthData.planes.length;
+        planeIndex != null && planeIndex !== 255 && planeIndex >= 0 && planeIndex < depthData.planes.length;
     if (isValidPlaneIndex) {
-        const selectedPlane = depthData.planes[planeIndex];
+        const selectedPlane = depthData.planes[planeIndex!];
         if (selectedPlane) {
             const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
             const dotVN = dotProduct(directionVector, normal);
@@ -597,8 +603,8 @@ function ransacLineFit(
     const idx2 = Math.floor(Math.random() * points.length);
     if (idx1 === idx2) continue;
 
-    const p1 = points[idx1];
-    const p2 = points[idx2];
+    const p1 = points[idx1]!;
+    const p2 = points[idx2]!;
 
     // Calculate line parameters (y = mx + b)
     const slope = (p2.y - p1.y) / (p2.x - p1.x);

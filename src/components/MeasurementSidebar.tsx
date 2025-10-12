@@ -3,7 +3,6 @@ import { useRootStore, useMeasurementActions, useSettingsActions } from '../stor
 import type { Measurement } from '../types/common';
 import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-import { shallow } from 'zustand/shallow';
 import styles from './MeasurementSidebar.module.css';
 
 const formatPrimaryLine = (measurement: Measurement): string => {

@@ -80,12 +80,20 @@ const PolylineTool: React.FC = () => {
       return;
     }
 
+    // Filter out points without worldPoint
+    const validPoints = points.filter(p => p.worldPoint != null);
+    if (validPoints.length < 2) {
+      setTotalDistance(0);
+      setSegmentDistances([]);
+      return;
+    }
+
     const distances: number[] = [];
     let total = 0;
 
-    for (let i = 1; i < points.length; i++) {
-      const prevPoint = points[i - 1].worldPoint!;
-      const currentPoint = points[i].worldPoint!;
+    for (let i = 1; i < validPoints.length; i++) {
+      const prevPoint = validPoints[i - 1].worldPoint!;
+      const currentPoint = validPoints[i].worldPoint!;
       const distance = calculateDistance3D(prevPoint, currentPoint);
       distances.push(distance);
       total += distance;
@@ -127,8 +135,8 @@ const PolylineTool: React.FC = () => {
       const measurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'polyline',
         label: `Polyline (${points.length} points)`,
-        startPoint: points[0],
-        endPoint: points[points.length - 1],
+        startPoint: points[0]!,
+        endPoint: points[points.length - 1]!,
         distanceMeters: totalDistance,
         distance: settings.defaultUnit === 'imperial'
           ? UNIT_CONVERSIONS.metersToFeet(totalDistance)

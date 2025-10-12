@@ -20,8 +20,8 @@ function calculatePolygonArea(points: { x: number; y: number; z: number }[]): nu
 
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    area += points[i].x * points[j].z;
-    area -= points[j].x * points[i].z;
+    area += points[i]!.x * points[j]!.z;
+    area -= points[j]!.x * points[i]!.z;
   }
 
   return Math.abs(area) / 2;
@@ -36,7 +36,7 @@ function calculatePolygonPerimeter(points: { x: number; y: number; z: number }[]
 
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    perimeter += calculateDistance3D(points[i], points[j]);
+    perimeter += calculateDistance3D(points[i]!, points[j]!);
   }
 
   return perimeter;

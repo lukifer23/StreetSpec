@@ -45,8 +45,8 @@ function computeNormalizedSobelGradient(mapX: number, mapY: number, depthMap: On
       const neighbor = depthMap.data[yy * depthMap.width + xx];
       if (!neighbor || neighbor <= 0 || !Number.isFinite(neighbor)) continue;
 
-      const weightX = SOBEL_X[ky + 1][kx + 1];
-      const weightY = SOBEL_Y[ky + 1][kx + 1];
+      const weightX = SOBEL_X[ky + 1][kx + 1]!;
+      const weightY = SOBEL_Y[ky + 1][kx + 1]!;
       gx += neighbor * weightX;
       gy += neighbor * weightY;
       validNeighbors++;
@@ -114,7 +114,7 @@ function getRobustDepthSample(
   const workingValues = filteredVals.length > 0 ? filteredVals : fallbackVals;
   const sorted = [...workingValues].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  const depth = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const depth = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 
   return depth;
 }
@@ -146,22 +146,22 @@ function getBilinearDepthSample(
   const valid = neighbors.filter(n => n.value && n.value > 0 && Number.isFinite(n.value));
   if (valid.length === 0) return null;
   if (valid.length < 2) {
-    const vals = valid.map(n => n.value).sort((a, b) => a - b);
+    const vals = valid.map(n => n.value!).sort((a, b) => a - b);
     const mid = Math.floor(vals.length / 2);
-    return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+    return vals.length % 2 ? vals[mid]! : (vals[mid - 1]! + vals[mid]!) / 2;
   }
 
   let totalWeight = 0;
   let weightedSum = 0;
   for (const n of valid) {
     totalWeight += n.weight;
-    weightedSum += n.value * n.weight;
+    weightedSum += n.value! * n.weight;
   }
 
   if (totalWeight === 0) {
-    const vals = valid.map(n => n.value).sort((a, b) => a - b);
+    const vals = valid.map(n => n.value!).sort((a, b) => a - b);
     const mid = Math.floor(vals.length / 2);
-    return vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2;
+    return vals.length % 2 ? vals[mid]! : (vals[mid - 1]! + vals[mid]!) / 2;
   }
 
   return weightedSum / totalWeight;

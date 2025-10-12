@@ -121,7 +121,7 @@ class RateLimiter {
 
       for (const request of this.requestQueue) {
         // Extract category from request ID (format: category_timestamp_random)
-        const category = request.id.split('_')[0];
+        const category = request.id.split('_')[0] || 'unknown';
         if (!requestsByCategory.has(category)) {
           requestsByCategory.set(category, []);
         }
@@ -193,7 +193,7 @@ class RateLimiter {
     const config = this.configs.get(name);
     if (!config) {
       throw createError(
-        'RATE_LIMIT_CONFIG_NOT_FOUND',
+        'SYSTEM_UNKNOWN',
         `Rate limit config not found for: ${name}`,
         `Configuration error for ${name}`,
         ErrorSeverity.HIGH,
@@ -231,7 +231,7 @@ class RateLimiter {
     if (state.circuitOpen && options.circuitBreaker !== false) {
       if (Date.now() - state.circuitOpenTime < config.circuitBreakerTimeout) {
         throw createError(
-          'CIRCUIT_BREAKER_OPEN',
+          'NETWORK_UNREACHABLE',
           `Circuit breaker is open for ${name}`,
           `Service temporarily unavailable. Please try again later.`,
           ErrorSeverity.MEDIUM,
@@ -254,7 +254,7 @@ class RateLimiter {
     if (state.requests >= config.maxRequests) {
       const waitTime = config.windowMs - (now - state.lastReset);
       throw createError(
-        'RATE_LIMIT_EXCEEDED',
+        'API_RATE_LIMITED',
         `Rate limit exceeded for ${name}. Try again in ${Math.ceil(waitTime / 1000)} seconds.`,
         `Too many requests. Please wait a moment and try again.`,
         ErrorSeverity.MEDIUM,
@@ -291,7 +291,7 @@ class RateLimiter {
           state.circuitOpen = true;
           state.circuitOpenTime = Date.now();
           throw createError(
-            'CIRCUIT_BREAKER_TRIGGERED',
+            'NETWORK_UNREACHABLE',
             `Circuit breaker triggered for ${name} after ${state.failures} failures`,
             `Service is experiencing issues. Please try again later.`,
             ErrorSeverity.HIGH,
