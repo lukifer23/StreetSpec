@@ -490,7 +490,7 @@ export const useRootStore = create<RootState>()(
     ),
     {
       name: 'streetspec-store',
-      enabled: process.env['NODE_ENV'] === 'development',
+      enabled: import.meta.env.DEV,
     }
   )
 );
