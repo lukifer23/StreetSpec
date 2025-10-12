@@ -3,8 +3,8 @@ import { useRootStore, useMeasurementActions, useSettingsActions } from '../stor
 import type { Measurement } from '../types/common';
 import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-import { VariableSizeList as List } from 'react-window';
-import type { ListChildComponentProps, VariableSizeList } from 'react-window';
+import { List } from 'react-window';
+import type { ListChildComponentProps } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
 
 const formatPrimaryLine = (measurement: Measurement): string => {
@@ -104,7 +104,7 @@ const MeasurementSidebar: React.FC = () => {
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();
   const { toggleUnit } = useSettingsActions();
   const measurementCount = measurements.length;
-  const listRef = useRef<VariableSizeList>(null);
+  const listRef = useRef<any>(null);
 
   const handleUnitToggle = useCallback(() => {
     toggleUnit();

@@ -63,7 +63,10 @@ export default defineConfig(({ mode }) => {
                 external: ['electron'],
                 output: {
                   format: 'cjs',
-                  entryFileNames: 'preload.cjs', exports: 'auto', esModule: false
+                  entryFileNames: 'preload.cjs',
+                  exports: 'named',
+                  esModule: false,
+                  interop: 'default'
                 }
               },
             },
@@ -157,7 +160,8 @@ export default defineConfig(({ mode }) => {
         'react-dom',
         'zustand',
         'immer',
-        '@googlemaps/js-api-loader'
+        '@googlemaps/js-api-loader',
+        'react-window'
       ],
       exclude: ['electron']
     },

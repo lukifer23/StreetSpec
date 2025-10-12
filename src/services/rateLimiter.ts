@@ -107,8 +107,8 @@ class RateLimiter {
 
     this.isProcessing = true;
 
-    while (this.requestQueue.length > 0) {
-      // Sort by priority and timestamp
+    try {
+      // Sort queue once at the beginning by priority and timestamp
       this.requestQueue.sort((a, b) => {
         if (a.priority !== b.priority) {
           return b.priority - a.priority;
@@ -116,21 +116,73 @@ class RateLimiter {
         return a.timestamp - b.timestamp;
       });
 
-      const request = this.requestQueue.shift();
-      if (!request) continue;
+      // Process requests efficiently - group by rate limit category for batching
+      const requestsByCategory = new Map<string, typeof this.requestQueue>();
 
-      try {
-        const result = await request.execute();
-        request.resolve(result);
-      } catch (error) {
-        request.reject(error);
+      for (const request of this.requestQueue) {
+        // Extract category from request ID (format: category_timestamp_random)
+        const category = request.id.split('_')[0];
+        if (!requestsByCategory.has(category)) {
+          requestsByCategory.set(category, []);
+        }
+        requestsByCategory.get(category)!.push(request);
       }
 
-      // Small delay between requests to prevent overwhelming
-      await new Promise(resolve => setTimeout(resolve, 10));
-    }
+      // Process each category's requests
+      const processingPromises: Promise<void>[] = [];
 
-    this.isProcessing = false;
+      for (const [category, requests] of requestsByCategory) {
+        const config = this.configs.get(category);
+        if (!config) continue;
+
+        // Calculate how many requests we can process immediately
+        const state = this.states.get(category);
+        if (!state) continue;
+
+        const now = Date.now();
+        if (now - state.lastReset >= config.windowMs) {
+          state.requests = 0;
+          state.lastReset = now;
+        }
+
+        const availableSlots = Math.max(0, config.maxRequests - state.requests);
+        const toProcess = requests.slice(0, availableSlots);
+
+        if (toProcess.length > 0) {
+          // Process available requests in parallel
+          const categoryPromises = toProcess.map(async (request) => {
+            // Remove from queue
+            const index = this.requestQueue.indexOf(request);
+            if (index > -1) {
+              this.requestQueue.splice(index, 1);
+            }
+
+            try {
+              const result = await request.execute();
+              request.resolve(result);
+            } catch (error) {
+              request.reject(error);
+            }
+          });
+
+          processingPromises.push(...categoryPromises);
+        }
+      }
+
+      // Wait for all processing to complete
+      if (processingPromises.length > 0) {
+        await Promise.allSettled(processingPromises);
+      }
+
+    } finally {
+      this.isProcessing = false;
+
+      // Continue processing if there are still requests in queue
+      if (this.requestQueue.length > 0) {
+        // Use setTimeout to prevent stack overflow and allow other operations
+        setTimeout(() => this.processQueue(), 0);
+      }
+    }
   }
 
   async executeWithRateLimit<T>(

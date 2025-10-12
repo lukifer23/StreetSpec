@@ -298,20 +298,6 @@ export const useRootStore = create<RootState>()(
           }
         }),
 
-        saveCurrentProject: () => set((state) => {
-          const { currentProjectId, projects, measurements } = state;
-          if (!currentProjectId) return;
-
-          const project = projects[currentProjectId];
-          if (!project) return;
-
-          project.measurements = [...measurements];
-
-          if (window.electronAPI?.invoke) {
-            window.electronAPI.invoke('save-project', project);
-          }
-        }),
-
         // UI actions
         setIsSettingsOpen: (isOpen) => set((state) => {
           state.isSettingsOpen = isOpen;

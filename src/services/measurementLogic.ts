@@ -77,8 +77,7 @@ function getRobustDepthSample(
   mapY: number,
   depthMap: OnnxDepthMap,
   kernelSize: 3 | 5 | 7,
-  edgeRejectThreshold = DEFAULT_EDGE_REJECT_THRESHOLD,
-  debug = false,
+  edgeRejectThreshold = DEFAULT_EDGE_REJECT_THRESHOLD
 ): number | null {
   const half = Math.floor(kernelSize / 2);
   const filteredVals: number[] = [];
@@ -116,31 +115,7 @@ function getRobustDepthSample(
   const sorted = [...workingValues].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   const depth = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  if (debug) {
-    const source = filteredVals.length > 0 ? 'filtered' : 'fallback';
-    const gradStats = gradients.length
-      ? {
-          min: Math.min(...gradients),
-          max: Math.max(...gradients),
-          mean: gradients.reduce((sum, g) => sum + g, 0) / gradients.length,
-        }
-      : null;
-    console.log(
-      '[depth] samples',
-      workingValues.length,
-      '/',
-      totalSamples,
-      'source',
-      source,
-      'threshold',
-      threshold.toFixed(2),
-      'median',
-      depth,
-      gradStats
-        ? `grad[min=${gradStats.min.toFixed(3)} max=${gradStats.max.toFixed(3)} mean=${gradStats.mean.toFixed(3)}]`
-        : 'grad[none]',
-    );
-  }
+
   return depth;
 }
 
@@ -251,7 +226,7 @@ export function estimateDistanceToPoint(
 
     const clampedX = Math.round(mappedX);
     const clampedY = Math.round(mappedY);
-    return getRobustDepthSample(clampedX, clampedY, depthMap, kernelSize, edgeRejectThreshold, true);
+    return getRobustDepthSample(clampedX, clampedY, depthMap, kernelSize, edgeRejectThreshold);
 }
 
 /**

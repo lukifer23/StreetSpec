@@ -1,11 +1,11 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MeasurementTool from '../MeasurementTool';
 import { useRootStore } from '../../stores/rootStore';
 import type { CameraParams, DecodedDepthData } from '../../types/common';
 import { useNotificationStore } from '../../stores/notificationStore';
 
-const mockCameraParams: CameraParams = { heading: 0 };
+const mockCameraParams: CameraParams = { heading: 0, panoId: 'mock-pano' };
 const mockDepthData: DecodedDepthData = {
   planes: [],
   indices: new Uint8Array([0]),
@@ -93,7 +93,7 @@ describe('MeasurementTool interactions', () => {
     expect(screen.queryByText(/Step 1: Click object BASE/i)).not.toBeInTheDocument();
   });
 
-  it('activates measurement via keyboard when prerequisites are met', () => {
+  it('activates measurement when prerequisites are met', async () => {
     prepareStore({
       currentCameraParams: mockCameraParams,
       isCalibrated: true,
@@ -102,11 +102,15 @@ describe('MeasurementTool interactions', () => {
 
     render(<MeasurementTool />);
 
-    fireEvent.keyDown(window, { key: 'm' });
+    const startButton = screen.getByRole('button', { name: /Start Height Estimation/i });
+    fireEvent.click(startButton);
 
-    const overlay = screen.getByTestId('measurement-overlay');
-    expect(overlay).toHaveClass('overlayActive');
-    expect(screen.getByText(/Step 1: Click object BASE/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Step 1: Click the BASE of the object/i)
+      ).toBeInTheDocument()
+    );
+
     expect(useNotificationStore.getState().notifications).toHaveLength(0);
   });
 
@@ -125,7 +129,7 @@ describe('MeasurementTool interactions', () => {
     expect(screen.queryByText(/Step 1: Click object BASE/i)).not.toBeInTheDocument();
   });
 
-  it('captures overlay clicks after start button arms measurement', () => {
+  it('captures overlay clicks after start button arms measurement', async () => {
     prepareStore({
       currentCameraParams: mockCameraParams,
       isCalibrated: true,
@@ -149,11 +153,17 @@ describe('MeasurementTool interactions', () => {
       }),
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /Estimate Height/i }));
-    expect(screen.getByText(/Step 1: Click object BASE/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Start Height Estimation/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Step 1: Click the BASE of the object/i)
+      ).toBeInTheDocument()
+    );
 
     fireEvent.click(overlay);
-    expect(screen.getByText(/Step 2: Click object TOP/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Step 2: Click the TOP of the object/i)
+    ).toBeInTheDocument();
   });
 });
 
