@@ -18,6 +18,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
     loadProject,
     deleteProject,
     saveRevision,
+    saveCurrentProject,
   } = useProjectActions();
   const [newProjectName, setNewProjectName] = useState('');
 
@@ -71,7 +72,10 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
       </ul>
       {currentProjectId && (
         <div>
-          <button onClick={() => saveRevision()}>Save Revision</button>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+            <button onClick={() => saveCurrentProject()}>Save Project</button>
+            <button onClick={() => saveRevision()}>Save Revision</button>
+          </div>
           <RevisionHistory />
         </div>
       )}

@@ -800,7 +800,7 @@ async function loadModel(): Promise<void> {
         session: {
           use_ort_model_bytes_directly: true,
           use_per_session_threads: true,
-          session_logid: 'PoleCheckDepthModel'
+          session_logid: 'StreetSpecDepthModel'
         }
       }
     };
@@ -837,7 +837,7 @@ async function createWindow() {
   }
 
   win = new BrowserWindow({
-    title: 'PoleCheck Desktop',
+    title: 'Street Spec Desktop',
     width: 1200,
     height: 800,
     webPreferences: {

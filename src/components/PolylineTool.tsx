@@ -157,10 +157,10 @@ const PolylineTool: React.FC = () => {
       <div className={styles['toolContent']}>
         <div className={styles['instructions']}>
           <p><strong>How to use:</strong></p>
-          <p>• Click on the map to add waypoints to your measurement path</p>
-          <p>• Add at least 2 points to create a measurement</p>
-          <p>• Click "Complete Measurement" to save the polyline</p>
-          <p>• Press <kbd>Esc</kbd> to cancel and clear points</p>
+          <p>- Click on the map to add waypoints to your measurement path.</p>
+          <p>- Add at least 2 points to create a measurement.</p>
+          <p>- Click "Complete Measurement" to save the polyline.</p>
+          <p>- Press <kbd>Esc</kbd> to cancel and clear points.</p>
         </div>
 
         <div className={styles['measurementInfo']}>
@@ -184,7 +184,7 @@ const PolylineTool: React.FC = () => {
                         : distance;
                       return (
                         <li key={index}>
-                          Point {index + 1} -> Point {index + 2}: {segmentDistance.toFixed(2)} {unitLabel}
+                          Point {index + 1} {'->'} Point {index + 2}: {segmentDistance.toFixed(2)} {unitLabel}
                         </li>
                       );
                     })}
@@ -225,4 +225,6 @@ const PolylineTool: React.FC = () => {
 };
 
 export default PolylineTool;
+
+
 

@@ -172,6 +172,8 @@ export interface AppSettings {
   autoCalibrateDepth?: boolean;
   showDebugOverlay?: boolean;
   depthApiMaxRetries?: number;
+  depthQuality?: 'low' | 'medium' | 'high';
+  enableDepthCache?: boolean;
 }
 
 // Comprehensive error handling system

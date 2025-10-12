@@ -24,21 +24,41 @@ export interface DepthGenerationResult {
   fromCache: boolean;
 }
 
+export interface DepthGenerationOptions {
+  imageWidth?: number;
+  imageHeight?: number;
+  quality?: 'low' | 'medium' | 'high';
+  enableCache?: boolean;
+}
+
+const QUALITY_SETTINGS = {
+  low: { width: 320, height: 320 },
+  medium: { width: 480, height: 480 },
+  high: { width: 640, height: 640 }
+};
+
 export async function generateDepthMap(
   cameraParams: CameraParams,
   apiKey: string,
   deps: DepthGenerationDeps,
+  options: DepthGenerationOptions = {}
 ): Promise<DepthGenerationResult> {
   const getCache = deps.getCachedDepthMap ?? getCachedDepthMap;
   const setCache = deps.cacheDepthMap ?? cacheDepthMap;
 
-  const cached = await getCache(cameraParams);
-  if (cached) {
-    return { depthMap: cached, fromCache: true };
+  // Use cache if enabled (default behavior)
+  if (options.enableCache !== false) {
+    const cached = await getCache(cameraParams);
+    if (cached) {
+      return { depthMap: cached, fromCache: true };
+    }
   }
 
-  const imgWidth = 640;
-  const imgHeight = 640;
+  // Determine image dimensions based on quality setting
+  const quality = options.quality || 'high';
+  const dimensions = QUALITY_SETTINGS[quality];
+  const imgWidth = options.imageWidth || dimensions.width;
+  const imgHeight = options.imageHeight || dimensions.height;
 
   const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
     `size=${imgWidth}x${imgHeight}&` +
@@ -65,11 +85,55 @@ export async function generateDepthMap(
     throw new Error('Main process failed to return valid depth map data.');
   }
 
-  await setCache(cameraParams, result);
+  // Only cache if enabled and quality is not explicitly set to avoid cache fragmentation
+  if (options.enableCache !== false) {
+    await setCache(cameraParams, result);
+  }
 
   return { depthMap: result, fromCache: false };
 }
 
 export function createDepthMapFetcher() {
   return (url: string) => executeWithRateLimit('google-maps', () => fetch(url), { timeout: 15000 });
+}
+
+// Batch depth map generation for multiple camera positions
+export async function generateBatchDepthMaps(
+  cameraParamsList: CameraParams[],
+  apiKey: string,
+  deps: DepthGenerationDeps,
+  options: DepthGenerationOptions & { concurrency?: number } = {}
+): Promise<DepthGenerationResult[]> {
+  const concurrency = options.concurrency || 3; // Process up to 3 at a time
+  const results: DepthGenerationResult[] = [];
+
+  // Process in batches to avoid overwhelming the system
+  for (let i = 0; i < cameraParamsList.length; i += concurrency) {
+    const batch = cameraParamsList.slice(i, i + concurrency);
+
+    const batchPromises = batch.map(async (cameraParams) => {
+      try {
+        return await generateDepthMap(cameraParams, apiKey, deps, options);
+      } catch (error) {
+        console.warn(`Failed to generate depth map for pano ${cameraParams.panoId}:`, error);
+        return null;
+      }
+    });
+
+    const batchResults = await Promise.allSettled(batchPromises);
+    const successfulResults = batchResults
+      .filter((result): result is PromiseFulfilledResult<DepthGenerationResult> =>
+        result.status === 'fulfilled' && result.value !== null
+      )
+      .map(result => result.value);
+
+    results.push(...successfulResults);
+
+    // Small delay between batches to prevent overwhelming
+    if (i + concurrency < cameraParamsList.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  return results;
 }

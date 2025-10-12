@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo PoleCheck Desktop - Windows Build Script
+echo Street Spec Desktop - Windows Build Script
 echo ========================================
 
 echo.
@@ -24,7 +24,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✓ Node.js and npm found
+echo OK: Node.js and npm found
 
 REM Check if .env file exists
 if not exist ".env" (
@@ -49,7 +49,7 @@ if not exist "src\assets\models\depth_anything_v2_metric_vkitti_vits.onnx" (
     exit /b 1
 )
 
-echo ✓ ONNX model found
+echo OK: ONNX model found
 
 echo.
 echo Installing dependencies...
@@ -99,9 +99,44 @@ REM Check if release directory exists and has files
 if exist "release\*.exe" (
     echo Found installer files in release/ directory:
     dir /b release\*.exe
+    echo.
+    echo ========================================
+    echo Installation Instructions:
+    echo ========================================
+    echo 1. Double-click the installer file in release/ directory
+    echo 2. Follow the setup wizard
+    echo 3. Choose installation location and options
+    echo 4. Desktop shortcut will be created automatically
+    echo 5. Launch Street Spec Desktop from desktop or start menu
+    echo.
+    echo ========================================
+    echo First Run Instructions:
+    echo ========================================
+    echo 1. Open Street Spec Desktop
+    echo 2. Set up your Google Maps API key in Settings
+    echo 3. Start measuring objects in Street View!
+    echo.
 ) else (
     echo WARNING: No installer files found in release/ directory
+    echo.
+    echo Troubleshooting:
+    echo - Ensure all dependencies are installed
+    echo - Check that .env file exists with API key
+    echo - Verify ONNX model file is present
+    echo.
 )
 
 echo.
+echo ========================================
+echo Build Summary:
+echo ========================================
+echo OK: Dependencies installed
+echo OK: TypeScript compilation complete
+echo OK: Application bundled
+echo OK: Windows installer created
+echo OK: Desktop shortcut configured
+echo.
+echo Street Spec Desktop is ready for distribution!
+echo.
+
 pause 

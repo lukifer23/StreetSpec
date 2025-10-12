@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useRootStore } from '../stores/rootStore';
+import { useProjectActions } from '../stores/rootStore';
 import { calibrationManager } from '../services/depthCalibration';
 import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
 import { getCachedDepthMap, cacheDepthMap } from '../services/depth';
@@ -73,8 +74,11 @@ export const useAppLogic = (apiKey: string) => {
     setCurrentCameraParams,
     setOnnxDepthMap,
     setDepthData,
-    depthData
+    depthData,
+    currentProjectId
   } = useRootStore();
+
+  const { saveCurrentProject } = useProjectActions();
 
   // Load Google Maps API
   useEffect(() => {
@@ -126,6 +130,10 @@ export const useAppLogic = (apiKey: string) => {
       const saveMeasurements = async () => {
         try {
           await window.electronAPI.invoke('save-measurements', measurements);
+          // Also save to current project if one is active
+          if (currentProjectId) {
+            saveCurrentProject();
+          }
         } catch (error) {
           // Silent error handling for production
         }
@@ -133,7 +141,7 @@ export const useAppLogic = (apiKey: string) => {
 
       saveMeasurements();
     }
-  }, [measurements, settings.autoSave]);
+  }, [measurements, settings.autoSave, currentProjectId, saveCurrentProject]);
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
@@ -281,6 +289,19 @@ export const useAppLogic = (apiKey: string) => {
   // Depth Map Generation Logic
   const handleGenerateDepthMap = useCallback(async () => {
     if (!currentCameraParams || !apiKey || isGeneratingMap) {
+      if (!currentCameraParams) {
+        alert('Error: No camera parameters available. Please wait for the panorama to load.');
+      } else if (!apiKey) {
+        alert('Error: Google Maps API key is missing. Please check your .env file.');
+      } else if (isGeneratingMap) {
+        alert('Error: Depth map generation is already in progress.');
+      }
+      return;
+    }
+
+    // Validate camera parameters
+    if (!currentCameraParams.panoId && (!currentCameraParams.lat || !currentCameraParams.lng)) {
+      alert('Error: Invalid location data. Please try a different location.');
       return;
     }
 
@@ -305,6 +326,9 @@ export const useAppLogic = (apiKey: string) => {
             throw err instanceof Error ? err : new Error('Depth inference failed');
           }
         }
+      }, {
+        quality: settings.depthQuality,
+        enableCache: settings.enableDepthCache
       });
 
       if (fromCache) {
@@ -314,7 +338,21 @@ export const useAppLogic = (apiKey: string) => {
       setOnnxDepthMap(depthMap);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to generate depth map';
-      setMapGenerationError(errorMessage);
+
+      // Provide more specific error messages based on error type
+      let userMessage = errorMessage;
+      if (errorMessage.includes('API key')) {
+        userMessage = 'Google Maps API key error. Please check your API key configuration.';
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        userMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (errorMessage.includes('timeout')) {
+        userMessage = 'Request timed out. The location might be too remote or the service unavailable.';
+      } else if (errorMessage.includes('Static API')) {
+        userMessage = 'Street View image unavailable. This location might not have Street View coverage.';
+      }
+
+      setMapGenerationError(userMessage);
+      console.error('[depth] Generation failed:', error);
     } finally {
       setIsGeneratingMap(false);
     }
@@ -325,11 +363,15 @@ export const useAppLogic = (apiKey: string) => {
     if (window.electronAPI?.invoke) {
       try {
         await window.electronAPI.invoke('clear-data');
+        // Also save to current project if one is active
+        if (currentProjectId) {
+          saveCurrentProject();
+        }
       } catch (error) {
         // Silent error handling for production
       }
     }
-  }, [clearMeasurements]);
+  }, [clearMeasurements, currentProjectId, saveCurrentProject]);
 
   const handleUnitToggle = useCallback(() => {
     toggleUnit();

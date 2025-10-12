@@ -1,10 +1,10 @@
 #!/bin/bash
 
 echo "========================================"
-echo "PoleCheck Desktop - Auto Setup Script"
+echo "Street Spec Desktop - Auto Setup Script"
 echo "========================================"
 echo ""
-echo "This script will automatically set up PoleCheck Desktop"
+echo "This script will automatically set up Street Spec Desktop"
 echo "for development and launch the application."
 echo ""
 
@@ -25,7 +25,7 @@ if ! command_exists node; then
     read -p "Press Enter to exit..."
     exit 1
 fi
-echo "✓ Node.js found"
+echo "OK: Node.js found"
 
 # Check npm
 if ! command_exists npm; then
@@ -34,7 +34,7 @@ if ! command_exists npm; then
     read -p "Press Enter to exit..."
     exit 1
 fi
-echo "✓ npm found"
+echo "OK: npm found"
 
 # Check Git
 if ! command_exists git; then
@@ -45,7 +45,7 @@ if ! command_exists git; then
     read -p "Press Enter to exit..."
     exit 1
 fi
-echo "✓ Git found"
+echo "OK: Git found"
 
 # Check Git LFS
 if ! command_exists git-lfs; then
@@ -71,7 +71,7 @@ fi
 
 # Initialize Git LFS
 git lfs install
-echo "✓ Git LFS ready"
+echo "OK: Git LFS ready"
 
 echo ""
 echo "Installing dependencies..."
@@ -81,7 +81,7 @@ if [ $? -ne 0 ]; then
     read -p "Press Enter to exit..."
     exit 1
 fi
-echo "✓ Dependencies installed"
+echo "OK: Dependencies installed"
 
 echo ""
 echo "Downloading model files..."
@@ -98,7 +98,7 @@ if [ $? -ne 0 ]; then
         exit 1
     fi
 else
-    echo "✓ Model files downloaded"
+    echo "OK: Model files downloaded"
 fi
 
 # Check if .env file exists
@@ -111,14 +111,14 @@ if [ ! -f ".env" ]; then
     read -p "Enter your Google Maps API key: " api_key
     if [ ! -z "$api_key" ]; then
         echo "VITE_GOOGLE_MAPS_API_KEY=$api_key" > .env
-        echo "✓ .env file created"
+        echo "OK: .env file created"
     else
         echo "WARNING: No API key provided"
         echo "You can add it later by editing the .env file"
         echo "VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE" > .env
     fi
 else
-    echo "✓ .env file found"
+    echo "OK: .env file found"
 fi
 
 echo ""
@@ -128,7 +128,7 @@ if [ $? -ne 0 ]; then
     echo "WARNING: Linting found issues"
     echo "You can fix them later by running: npm run lint"
 else
-    echo "✓ Code quality check passed"
+    echo "OK: Code quality check passed"
 fi
 
 echo ""
@@ -138,7 +138,7 @@ if [ $? -ne 0 ]; then
     echo "WARNING: Type checking found issues"
     echo "You can fix them later by running: npm run typecheck"
 else
-    echo "✓ Type checking passed"
+    echo "OK: Type checking passed"
 fi
 
 echo ""
@@ -146,7 +146,7 @@ echo "========================================"
 echo "Setup completed successfully!"
 echo "========================================"
 echo ""
-echo "Starting PoleCheck Desktop..."
+echo "Starting Street Spec Desktop..."
 echo ""
 echo "If the app doesn't start automatically, you can run:"
 echo "npm run dev"

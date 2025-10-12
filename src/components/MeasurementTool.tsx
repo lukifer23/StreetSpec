@@ -94,24 +94,54 @@ const MeasurementCanvas = React.memo<{
     context.strokeStyle = '#00ffff';
     context.fillStyle = '#00ffff';
     context.lineWidth = 2;
-    const pointRadius = 4;
+    const pointRadius = 6; // Increased for better visibility
 
     if (startPoint) {
+      // Draw outer glow for start point
+      context.shadowColor = '#00ffff';
+      context.shadowBlur = 10;
       context.beginPath();
-      context.arc(startPoint.x, startPoint.y, pointRadius, 0, Math.PI * 2);
+      context.arc(startPoint.x, startPoint.y, pointRadius + 2, 0, Math.PI * 2);
       context.fill();
+
+      // Draw inner point
+      context.shadowBlur = 0;
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(startPoint.x, startPoint.y, pointRadius - 1, 0, Math.PI * 2);
+      context.fill();
+
+      // Reset shadow for line drawing
+      context.shadowBlur = 0;
     }
 
     if (phase === 'placingEnd' && startPoint && currentMousePos) {
+      // Draw measurement line with dashed style
+      context.setLineDash([8, 4]);
+      context.lineWidth = 3;
+      context.strokeStyle = '#00ffff';
       context.beginPath();
       context.moveTo(startPoint.x, startPoint.y);
       context.lineTo(currentMousePos.x, currentMousePos.y);
-      context.setLineDash([5, 5]);
       context.stroke();
       context.setLineDash([]);
 
+      // Reset line width
+      context.lineWidth = 2;
+
+      // Draw end point with glow effect
+      context.shadowColor = '#00ffff';
+      context.shadowBlur = 8;
+      context.fillStyle = '#00ffff';
       context.beginPath();
-      context.arc(currentMousePos.x, currentMousePos.y, pointRadius, 0, Math.PI * 2);
+      context.arc(currentMousePos.x, currentMousePos.y, pointRadius + 1, 0, Math.PI * 2);
+      context.fill();
+
+      // Draw inner point
+      context.shadowBlur = 0;
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.arc(currentMousePos.x, currentMousePos.y, pointRadius - 1, 0, Math.PI * 2);
       context.fill();
 
       // Provisional height estimation
@@ -153,16 +183,34 @@ const MeasurementCanvas = React.memo<{
           const { value: finalDistance, unitLabel } = convertLengthToDisplay(estimatedHeight, defaultUnit);
 
           if (finalDistance !== undefined) {
+            // Draw background rectangle for better readability
+            const text = `${finalDistance.toFixed(2)}${unitLabel}`;
+            const textMetrics = context.measureText(text);
+            const padding = 8;
+
+            context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            context.fillRect(
+              currentMousePos.x + 15,
+              currentMousePos.y - 25,
+              textMetrics.width + padding * 2,
+              20
+            );
+
+            // Draw text with better styling
             context.fillStyle = 'white';
+            context.font = 'bold 14px Arial';
             context.shadowColor = 'black';
-            context.shadowBlur = 4;
+            context.shadowBlur = 2;
             context.fillText(
-              `${finalDistance.toFixed(2)}${unitLabel}`,
-              currentMousePos.x + 10,
+              text,
+              currentMousePos.x + 15 + padding,
               currentMousePos.y - 10
             );
+
+            // Reset styling
             context.shadowBlur = 0;
             context.fillStyle = '#00ffff';
+            context.font = '12px Arial';
           }
         }
       }
@@ -199,11 +247,22 @@ const StatusIndicator = React.memo<{
     bottom: '20px',
     left: '10px',
     color: 'white',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: '5px 10px',
-    borderRadius: '4px',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    padding: '8px 12px',
+    borderRadius: '6px',
     fontSize: '0.9em',
-    pointerEvents: 'none' as const
+    fontWeight: 'bold',
+    pointerEvents: 'none' as const,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    border: '2px solid rgba(0,255,255,0.5)',
+    minWidth: '250px'
+  }), []);
+
+  const stepStyle = useMemo(() => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '4px'
   }), []);
 
   const message = useMemo(() => {
@@ -216,7 +275,24 @@ const StatusIndicator = React.memo<{
 
   return (
     <div style={statusStyle} role="status" aria-live="polite">
-      {message} (Esc to cancel)
+      <div style={stepStyle}>
+        <div style={{
+          width: '12px',
+          height: '12px',
+          borderRadius: '50%',
+          backgroundColor: startPoint ? '#00ff00' : '#ffff00',
+          boxShadow: '0 0 6px rgba(255,255,0,0.8)'
+        }} />
+        <span>{message}</span>
+      </div>
+      <div style={{ fontSize: '0.8em', opacity: 0.8 }}>
+        Press <kbd style={{
+          backgroundColor: 'rgba(255,255,255,0.2)',
+          padding: '2px 4px',
+          borderRadius: '3px',
+          fontSize: '0.9em'
+        }}>Esc</kbd> to cancel
+      </div>
     </div>
   );
 });
@@ -238,9 +314,16 @@ const StartButton = React.memo<{
     left: '50%',
     transform: 'translateX(-50%)',
     zIndex: 10,
-    padding: '10px 15px',
+    padding: '12px 20px',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    borderRadius: '8px',
+    border: '2px solid',
     cursor: (cameraParams && (onnxDepthMap || depthData) && isCalibrated) ? 'pointer' : 'not-allowed',
-    pointerEvents: 'auto' as const
+    pointerEvents: 'auto' as const,
+    transition: 'all 0.2s ease',
+    minWidth: '140px',
+    textAlign: 'center' as const
   }), [cameraParams, onnxDepthMap, depthData, isCalibrated]);
 
   const isDisabled = !cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated;
@@ -254,10 +337,31 @@ const StartButton = React.memo<{
 
   const getButtonText = useCallback(() => {
     if (!cameraParams) return 'Waiting for Camera...';
-    if (!onnxDepthMap && !depthData) return 'Depth Data Needed';
-    if (!isCalibrated) return 'Calibrate Horizon First';
+    if (!onnxDepthMap && !depthData) return 'Generate Depth Map';
+    if (!isCalibrated) return 'Calibrate Horizon';
     return 'Estimate Height (M)';
   }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+
+  const getButtonStyles = useCallback(() => {
+    const baseStyles = { ...buttonStyle };
+
+    if (isDisabled) {
+      baseStyles.backgroundColor = '#6c757d';
+      baseStyles.borderColor = '#5a6268';
+      baseStyles.color = '#adb5bd';
+    } else {
+      baseStyles.backgroundColor = '#007bff';
+      baseStyles.borderColor = '#0056b3';
+      baseStyles.color = 'white';
+
+      // Add hover effect
+      if (cameraParams && (onnxDepthMap || depthData) && isCalibrated) {
+        baseStyles.boxShadow = '0 4px 12px rgba(0,123,255,0.3)';
+      }
+    }
+
+    return baseStyles;
+  }, [buttonStyle, isDisabled, cameraParams, onnxDepthMap, depthData, isCalibrated]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -274,7 +378,9 @@ const StartButton = React.memo<{
       onClick={handleClick}
       disabled={isDisabled}
       title={getTitle()}
-      style={buttonStyle}
+      style={getButtonStyles()}
+      aria-label={getTitle()}
+      role="button"
     >
       {getButtonText()}
     </button>
@@ -323,9 +429,28 @@ const MeasurementTool: React.FC = () => {
 
   const completeMeasurement = useCallback((startPoint: Point, coords: Point) => {
     console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!currentCameraParams, onnxDepthMap: !!onnxDepthMap });
-    
+
+    // Input validation
+    if (!startPoint || !coords) {
+      console.error('[measure] Invalid input points');
+      alert('Error: Invalid measurement points. Please try again.');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
+    }
+
     if (!currentCameraParams) {
-      console.log('[measure] No camera params, resetting');
+      console.error('[measure] No camera params available');
+      alert('Error: Camera parameters not available. Please wait for the panorama to load completely.');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
+    }
+
+    // Validate depth data availability
+    if (!onnxDepthMap && !depthData) {
+      console.error('[measure] No depth data available');
+      alert('Error: Depth data is required for measurements. Please generate a depth map first.');
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -441,7 +566,8 @@ const MeasurementTool: React.FC = () => {
     }
 
     if (distanceToBase === null && planeHeight === null) {
-      console.log('[measure] No distance calculated, resetting');
+      console.error('[measure] No distance or height calculated');
+      alert('Error: Could not calculate measurement. Please ensure the points are on visible surfaces and try again.');
       setStartPoint(null);
       setPhase('idle');
       return;
@@ -473,10 +599,26 @@ const MeasurementTool: React.FC = () => {
     }
 
     if (finalHeight === null) {
-      console.log('[measure] No height calculated, resetting');
+      console.error('[measure] No height calculated');
+      alert('Error: Could not calculate height. Please ensure both points are on measurable surfaces.');
       setStartPoint(null);
       setPhase('idle');
       return;
+    }
+
+    // Validate measurement results
+    if (!Number.isFinite(finalHeight) || finalHeight <= 0) {
+      console.error('[measure] Invalid height result:', finalHeight);
+      alert('Error: Invalid measurement result. Please try different points.');
+      setStartPoint(null);
+      setPhase('idle');
+      return;
+    }
+
+    // Check for unrealistic measurements (likely calibration issues)
+    if (finalHeight > 1000) { // 1000m = ~3000ft
+      console.warn('[measure] Unrealistic height detected:', finalHeight);
+      alert('Warning: Measurement result seems unrealistic. Please check your horizon calibration.');
     }
 
     // Convert to display value
@@ -558,18 +700,26 @@ const MeasurementTool: React.FC = () => {
 
   const startMeasurement = useCallback(() => {
     console.log('[measure] startMeasurement called');
+
+    // Validate prerequisites with detailed error messages
     if (!currentCameraParams) {
-      alert("Camera parameters not yet available. Please wait a moment.");
+      alert("Camera parameters not yet available. Please wait for the Street View panorama to load completely.");
       return;
     }
 
     if (!isCalibrated) {
-      alert('Calibrate the horizon before estimating height.');
+      alert('Please calibrate the horizon first. Click "Manual Calibrate" and click on the flat horizontal line where sky meets ground.');
       return;
     }
 
     if (!hasDepthSupport) {
-      alert('Depth data is required before estimating height. Generate or load a depth map first.');
+      alert('Depth data is required for measurements. Please click "Generate Depth Map" to create depth data for this location.');
+      return;
+    }
+
+    // Additional validation
+    if (!currentCameraParams.panoId) {
+      alert('Error: Invalid panorama data. Please try a different location.');
       return;
     }
 
@@ -615,7 +765,7 @@ const MeasurementTool: React.FC = () => {
           borderRadius: '8px',
           color: '#6c757d'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📏</div>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠</div>
           <h3 style={{ margin: '0 0 8px 0', color: '#495057' }}>Measurement Tool Error</h3>
           <p style={{ margin: '0 0 16px 0', maxWidth: '400px' }}>
             The measurement tool encountered an error. Please try refreshing the page or contact support if the problem persists.

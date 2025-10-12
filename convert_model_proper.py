@@ -21,16 +21,16 @@ def convert_depth_model():
     # Check if PyTorch model exists
     pytorch_model_path = "./models_temp/depth_anything_v2_metric_vkitti_vits.pth"
     if not os.path.exists(pytorch_model_path):
-        print("❌ PyTorch model not found. Please download it first.")
+        print("ERROR: PyTorch model not found. Please download it first.")
         return False
     
     try:
         # Load the PyTorch model weights
-        print("📥 Loading PyTorch model weights...")
+        print("Loading PyTorch model weights...")
         state_dict = torch.load(pytorch_model_path, map_location='cpu')
         
         # Create the model with proper architecture
-        print("🏗️ Creating model with proper architecture...")
+        print("Creating model with proper architecture...")
         
         # Model configuration for VITS (Small) model
         # Based on the actual DepthAnythingV2 implementation
@@ -52,7 +52,7 @@ def convert_depth_model():
         model.load_state_dict(state_dict)
         model.eval()
         
-        print(f"✅ Model loaded successfully!")
+        print(f"Model loaded successfully!")
         print(f"   Encoder: {encoder}")
         print(f"   Features: {features}")
         print(f"   Out Channels: {out_channels}")
@@ -89,45 +89,45 @@ def convert_depth_model():
             }
         )
         
-        print("✅ ONNX model exported successfully!")
+        print("ONNX model exported successfully!")
         
         # Verify the ONNX model
-        print("🔍 Verifying ONNX model...")
+        print("Verifying ONNX model...")
         onnx_model = onnx.load(output_path)
         onnx.checker.check_model(onnx_model)
-        print("✅ ONNX model verification passed!")
+        print("ONNX model verification passed!")
         
         # Test inference with ONNX Runtime
-        print("🧪 Testing ONNX inference...")
+        print("Testing ONNX inference...")
         ort_session = ort.InferenceSession(output_path)
         
         # Test with dummy input
         test_input = dummy_input.numpy()
         result = ort_session.run(None, {'input': test_input})
-        print(f"✅ ONNX inference test passed! Output shape: {result[0].shape}")
+        print(f"ONNX inference test passed! Output shape: {result[0].shape}")
         
         # Test with a real image to verify functionality
-        print("🖼️ Testing with sample image...")
+        print("Testing with sample image...")
         test_image = np.random.randint(0, 255, (518, 518, 3), dtype=np.uint8)
         test_image_tensor = torch.from_numpy(test_image).permute(2, 0, 1).unsqueeze(0).float() / 255.0
         
         # Test PyTorch inference
         with torch.no_grad():
             pytorch_result = model(test_image_tensor)
-            print(f"✅ PyTorch inference: {pytorch_result.shape}")
+            print(f"PyTorch inference: {pytorch_result.shape}")
         
         # Test ONNX inference
         onnx_result = ort_session.run(None, {'input': test_image_tensor.numpy()})
-        print(f"✅ ONNX inference: {onnx_result[0].shape}")
+        print(f"ONNX inference: {onnx_result[0].shape}")
         
-        print(f"\n🎉 Conversion complete!")
-        print(f"📁 Model saved to: {output_path}")
-        print(f"📏 Model size: {os.path.getsize(output_path) / (1024*1024):.1f} MB")
+        print(f"\nConversion complete!")
+        print(f"Model saved to: {output_path}")
+        print(f"Model size: {os.path.getsize(output_path) / (1024*1024):.1f} MB")
         
         return True
         
     except Exception as e:
-        print(f"❌ Conversion failed: {str(e)}")
+        print(f"ERROR: Conversion failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return False

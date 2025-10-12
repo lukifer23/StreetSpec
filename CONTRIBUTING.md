@@ -1,6 +1,6 @@
-# Contributing to PoleCheck Desktop
+# Contributing to Street Spec Desktop
 
-Thank you for your interest in contributing to PoleCheck Desktop. This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Street Spec Desktop. This document provides guidelines for contributing to the project.
 
 ## Development Setup
 

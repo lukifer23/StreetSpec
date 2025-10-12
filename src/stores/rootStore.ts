@@ -105,6 +105,8 @@ const defaultSettings: AppSettings = {
   cameraHeight: 2.5,
   calibrationPitchOffsetDeg: 0,
   depthApiMaxRetries: 5,
+  depthQuality: 'high',
+  enableDepthCache: true,
 };
 
 // Create the root store with middleware
@@ -213,19 +215,23 @@ export const useRootStore = create<RootState>()(
           const newProject: Project = {
             id,
             name,
-            measurements: [],
+            measurements: [...state.measurements],
             revisionHistory: [],
           };
           state.projects[id] = newProject;
           state.currentProjectId = id;
-          
+
           if (window.electronAPI?.invoke) {
             window.electronAPI.invoke('save-project', newProject);
           }
         }),
 
         loadProject: (id) => set((state) => {
-          state.currentProjectId = id;
+          const project = state.projects[id];
+          if (project) {
+            state.measurements = [...project.measurements];
+            state.currentProjectId = id;
+          }
         }),
 
         deleteProject: (id) => set((state) => {
@@ -246,13 +252,16 @@ export const useRootStore = create<RootState>()(
           const project = projects[currentProjectId];
           if (!project) return;
 
+          // Update project's measurements with current state
+          project.measurements = [...measurements];
+
           const newRevision: Revision = {
             timestamp: Date.now(),
             measurements: [...measurements],
           };
 
           project.revisionHistory.push(newRevision);
-          
+
           if (window.electronAPI?.invoke) {
             window.electronAPI.invoke('save-project', project);
           }
@@ -269,7 +278,21 @@ export const useRootStore = create<RootState>()(
           if (!revision) return;
 
           state.measurements = [...revision.measurements];
-          
+
+          if (window.electronAPI?.invoke) {
+            window.electronAPI.invoke('save-project', project);
+          }
+        }),
+
+        saveCurrentProject: () => set((state) => {
+          const { currentProjectId, projects, measurements } = state;
+          if (!currentProjectId) return;
+
+          const project = projects[currentProjectId];
+          if (!project) return;
+
+          project.measurements = [...measurements];
+
           if (window.electronAPI?.invoke) {
             window.electronAPI.invoke('save-project', project);
           }
@@ -413,6 +436,7 @@ export const useProjectActions = () => useRootStore((state) => ({
   deleteProject: state.deleteProject,
   saveRevision: state.saveRevision,
   revertToRevision: state.revertToRevision,
+  saveCurrentProject: state.saveCurrentProject,
 }));
 
 export const useUIActions = () => useRootStore((state) => ({

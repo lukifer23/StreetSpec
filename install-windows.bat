@@ -45,9 +45,9 @@ if %errorlevel% neq 0 (
     )
 
     del nodejs.msi
-    echo ✓ Node.js installed
+    echo OK: Node.js installed
 ) else (
-    echo ✓ Node.js found
+    echo OK: Node.js found
 )
 
 REM Check if Git is installed
@@ -72,9 +72,9 @@ if %errorlevel% neq 0 (
     )
 
     del git.exe
-    echo ✓ Git installed
+    echo OK: Git installed
 ) else (
-    echo ✓ Git found
+    echo OK: Git found
 )
 
 REM Check if Git LFS is installed
@@ -85,10 +85,10 @@ if %errorlevel% neq 0 (
     if %errorlevel% neq 0 (
         echo WARNING: Git LFS installation failed, but continuing...
     ) else (
-        echo ✓ Git LFS installed
+        echo OK: Git LFS installed
     )
 ) else (
-    echo ✓ Git LFS found
+    echo OK: Git LFS found
 )
 
 REM Create application directory if it doesn't exist
@@ -130,7 +130,7 @@ if exist "package.json" (
     )
 
     del streetspec.zip
-    echo ✓ Street Spec Desktop downloaded and extracted
+    echo OK: Street Spec Desktop downloaded and extracted
 )
 
 REM Install dependencies
@@ -143,7 +143,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo ✓ Dependencies installed
+echo OK: Dependencies installed
 
 REM Download model files
 echo Downloading model files...
@@ -154,7 +154,7 @@ if %errorlevel% neq 0 (
     echo https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small
     echo.
 ) else (
-    echo ✓ Model files downloaded
+    echo OK: Model files downloaded
 )
 
 REM Create .env file if it doesn't exist

@@ -116,6 +116,32 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             title="Maximum Street View depth API retry attempts before failing"
           />
         </div>
+
+        <div className={styles['field']}>
+          <label htmlFor="depthQuality">Depth Quality</label>
+          <select
+            id="depthQuality"
+            value={form.depthQuality ?? 'high'}
+            onChange={e => handleChange('depthQuality', e.target.value as 'low' | 'medium' | 'high')}
+            title="Image resolution for depth estimation - lower quality is faster but less accurate"
+          >
+            <option value="low">Low (320×320) - Fast</option>
+            <option value="medium">Medium (480×480) - Balanced</option>
+            <option value="high">High (640×640) - Accurate</option>
+          </select>
+        </div>
+
+        <div className={styles['field']}>
+          <label htmlFor="enableDepthCache">Enable Depth Caching</label>
+          <input
+            id="enableDepthCache"
+            type="checkbox"
+            checked={form.enableDepthCache ?? true}
+            onChange={e => handleChange('enableDepthCache', e.target.checked)}
+            title="Cache depth maps for faster loading of previously visited locations"
+          />
+        </div>
+
         <div className={styles['hint']}>
           The app stops requesting Street View depth data after the configured number of retries to avoid exceeding Google API limits.
         </div>

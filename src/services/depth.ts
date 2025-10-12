@@ -2,6 +2,55 @@ import { get, set, del, keys } from 'idb-keyval';
 import { compress, decompress } from 'lz-string';
 import type { OnnxDepthMap, CameraParams } from '../types/common';
 
+// Memory monitoring utilities
+interface MemoryStats {
+  used: number;
+  total: number;
+  percentage: number;
+}
+
+function getMemoryUsage(): MemoryStats {
+  if (typeof performance !== 'undefined' && performance.memory) {
+    const { usedJSHeapSize, totalJSHeapSize } = performance.memory;
+    return {
+      used: usedJSHeapSize / (1024 * 1024), // Convert to MB
+      total: totalJSHeapSize / (1024 * 1024),
+      percentage: (usedJSHeapSize / totalJSHeapSize) * 100
+    };
+  }
+  return { used: 0, total: 0, percentage: 0 };
+}
+
+function triggerGarbageCollection(): void {
+  if (typeof global !== 'undefined' && global.gc) {
+    global.gc();
+  }
+}
+
+// Monitor memory usage and trigger cleanup if needed
+let lastMemoryCheck = 0;
+
+async function checkMemoryUsage(): Promise<void> {
+  const now = Date.now();
+  if (now - lastMemoryCheck < MEMORY_CHECK_INTERVAL) {
+    return;
+  }
+  lastMemoryCheck = now;
+
+  const memory = getMemoryUsage();
+  if (memory.percentage > GC_TRIGGER_THRESHOLD * 100) {
+    console.log(`[memory] High memory usage: ${memory.percentage.toFixed(1)}%, triggering cleanup`);
+    triggerGarbageCollection();
+
+    // If still high after GC, clear some cache
+    const postGC = getMemoryUsage();
+    if (postGC.percentage > GC_TRIGGER_THRESHOLD * 100) {
+      console.log(`[memory] Memory still high after GC: ${postGC.percentage.toFixed(1)}%, clearing cache`);
+      await clearDepthCache();
+    }
+  }
+}
+
 interface CachedDepthMap {
   width: number;
   height: number;
@@ -18,6 +67,8 @@ const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
 const MAX_CACHE_SIZE = 100; // Increased cache size with compression
 const MAX_MEMORY_MB = 200; // Maximum memory usage in MB
 const COMPRESSION_THRESHOLD = 1024; // Compress data larger than 1KB
+const MEMORY_CHECK_INTERVAL = 30000; // Check memory every 30 seconds
+const GC_TRIGGER_THRESHOLD = 0.8; // Trigger garbage collection when memory usage exceeds 80%
 
 const NUMERIC_PRECISION = 6;
 
@@ -162,6 +213,9 @@ export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap
 
     // Implement LRU by limiting cache size and memory usage
     await enforceCacheSizeLimit();
+
+    // Check memory usage after caching
+    await checkMemoryUsage();
   } catch (error) {
     console.warn('[cache] Error writing to cache:', error);
   }

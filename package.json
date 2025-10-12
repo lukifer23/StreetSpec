@@ -136,8 +136,24 @@
           ]
         }
       ],
-      "artifactName": "Street-Spec-Setup-${version}.${ext}",
-      "sign": false
+      "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}",
+      "sign": false,
+      "icon": "assets/icon.ico",
+      "verifyUpdateCodeSignature": false,
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Street Spec Desktop",
+      "include": "StreetSpecInstaller.iss",
+      "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}"
     }
   },
   "playwright": {

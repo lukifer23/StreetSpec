@@ -63,7 +63,7 @@ export default defineConfig(({ mode }) => {
                 external: ['electron'],
                 output: {
                   format: 'cjs',
-                  entryFileNames: 'preload.cjs'
+                  entryFileNames: 'preload.cjs', exports: 'auto', esModule: false
                 }
               },
             },
@@ -179,3 +179,4 @@ export default defineConfig(({ mode }) => {
     }
   }
 })
+
