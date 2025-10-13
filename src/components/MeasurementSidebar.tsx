@@ -1,34 +1,74 @@
 import React, { useCallback } from 'react';
 import { useRootStore, useMeasurementActions, useSettingsActions } from '../stores/rootStore';
 import type { Measurement } from '../types/common';
-import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } from '../utils/units';
+import {
+  convertLengthToDisplay,
+  convertAreaToDisplay,
+  convertVolumeToDisplay,
+  type UnitSystem
+} from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
 import styles from './MeasurementSidebar.module.css';
 
-const formatPrimaryLine = (measurement: Measurement): string => {
+const hasFiniteValue = (value: number | null | undefined): value is number =>
+  value !== null && value !== undefined && Number.isFinite(value);
+
+const getActiveUnitSystem = (
+  baseValue: number | null | undefined,
+  measurementUnit: UnitSystem,
+  defaultUnit: UnitSystem
+): UnitSystem => (hasFiniteValue(baseValue) ? defaultUnit : measurementUnit);
+
+const getLengthDisplay = (
+  measurement: Measurement,
+  defaultUnit: UnitSystem,
+  baseValue: number | null | undefined,
+  fallbackValue?: number | null
+) => {
+  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
+  const converted = convertLengthToDisplay(baseValue, unitSystem);
+  if (!hasFiniteValue(baseValue) && hasFiniteValue(fallbackValue)) {
+    return { value: fallbackValue, unitLabel: converted.unitLabel, unitSystem };
+  }
+  return { ...converted, unitSystem };
+};
+
+const getAreaDisplay = (
+  measurement: Measurement,
+  defaultUnit: UnitSystem,
+  baseValue: number | null | undefined
+) => {
+  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
+  const converted = convertAreaToDisplay(baseValue, unitSystem);
+  return { ...converted, unitSystem };
+};
+
+const getVolumeDisplay = (
+  measurement: Measurement,
+  defaultUnit: UnitSystem,
+  baseValue: number | null | undefined
+) => {
+  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
+  const converted = convertVolumeToDisplay(baseValue, unitSystem);
+  return { ...converted, unitSystem };
+};
+
+const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string => {
   switch (measurement.kind) {
     case 'distance':
-    case 'polyline': {
-      const { value, unitLabel } = convertLengthToDisplay(measurement.distanceMeters, measurement.unit);
-      const numeric = value !== undefined ? value.toFixed(2) : '--';
-      return `${measurement.label}: ${numeric} ${unitLabel}`;
-    }
-    case 'area': {
-      const { value, unitLabel } = convertAreaToDisplay(measurement.areaSquareMeters, measurement.unit);
-      const numeric = value !== undefined ? value.toFixed(2) : '--';
-      return `${measurement.label}: ${numeric} ${unitLabel}`;
-    }
+    case 'polyline':
+    case 'area':
     case 'volume': {
-      const { value, unitLabel } = convertVolumeToDisplay(measurement.volumeCubicMeters, measurement.unit);
-      const numeric = value !== undefined ? value.toFixed(2) : '--';
-      return `${measurement.label}: ${numeric} ${unitLabel}`;
+      const display = getDisplayValue(measurement, defaultUnit);
+      const numeric = display.value !== undefined ? display.value.toFixed(2) : '--';
+      return `${measurement.label}: ${numeric} ${display.unitLabel}`;
     }
     default:
       return `${measurement.label}`;
   }
 };
 
-const formatSecondaryLine = (measurement: Measurement): string | undefined => {
+const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string | undefined => {
   const parts: string[] = [];
 
   if (measurement.kind === 'polyline' && measurement.points) {
@@ -36,17 +76,17 @@ const formatSecondaryLine = (measurement: Measurement): string | undefined => {
   }
 
   if (measurement.kind === 'area' && Number.isFinite(measurement.perimeterMeters)) {
-    const { value, unitLabel } = convertLengthToDisplay(measurement.perimeterMeters, measurement.unit);
-    if (value !== undefined) {
-      parts.push(`Perimeter ${value.toFixed(2)} ${unitLabel}`);
+    const display = getLengthDisplay(measurement, defaultUnit, measurement.perimeterMeters);
+    if (display.value !== undefined) {
+      parts.push(`Perimeter ${display.value.toFixed(2)} ${display.unitLabel}`);
     }
   }
 
   if (measurement.kind === 'volume' && measurement.dimensionsMeters) {
     const { length, width, height } = measurement.dimensionsMeters;
-    const lengthDisplay = convertLengthToDisplay(length, measurement.unit);
-    const widthDisplay = convertLengthToDisplay(width, measurement.unit);
-    const heightDisplay = convertLengthToDisplay(height, measurement.unit);
+    const lengthDisplay = getLengthDisplay(measurement, defaultUnit, length);
+    const widthDisplay = getLengthDisplay(measurement, defaultUnit, width);
+    const heightDisplay = getLengthDisplay(measurement, defaultUnit, height);
     if (
       lengthDisplay.value !== undefined &&
       widthDisplay.value !== undefined &&
@@ -71,17 +111,29 @@ const formatSecondaryLine = (measurement: Measurement): string | undefined => {
 
 const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
 
-const getDisplayValue = (measurement: Measurement): { value?: number; unitLabel: string } => {
+const getDisplayValue = (
+  measurement: Measurement,
+  defaultUnit: UnitSystem
+): { value?: number; unitLabel: string; unitSystem: UnitSystem } => {
   switch (measurement.kind) {
     case 'distance':
     case 'polyline':
-      return convertLengthToDisplay(measurement.distanceMeters, measurement.unit);
+      return getLengthDisplay(
+        measurement,
+        defaultUnit,
+        measurement.distanceMeters,
+        measurement.distance
+      );
     case 'area':
-      return convertAreaToDisplay(measurement.areaSquareMeters, measurement.unit);
+      return getAreaDisplay(measurement, defaultUnit, measurement.areaSquareMeters);
     case 'volume':
-      return convertVolumeToDisplay(measurement.volumeCubicMeters, measurement.unit);
+      return getVolumeDisplay(measurement, defaultUnit, measurement.volumeCubicMeters);
     default:
-      return { value: undefined, unitLabel: measurement.unit === 'imperial' ? 'imperial' : 'metric' };
+      return {
+        value: undefined,
+        unitLabel: measurement.unit === 'imperial' ? 'imperial' : 'metric',
+        unitSystem: measurement.unit
+      };
   }
 };
 
@@ -146,6 +198,7 @@ const MeasurementSidebar: React.FC = () => {
       'Name',
       'Value',
       'Display Unit',
+      'Unit System',
       'DistanceMeters',
       'AreaSquareMeters',
       'VolumeCubicMeters',
@@ -159,7 +212,7 @@ const MeasurementSidebar: React.FC = () => {
       'Confidence'
     ].join(',');
     const rows = measurements.map((m) => {
-      const display = getDisplayValue(m);
+      const display = getDisplayValue(m, settings.defaultUnit);
       const valueString =
         display.value !== undefined && Number.isFinite(display.value)
           ? display.value.toFixed(3)
@@ -174,6 +227,7 @@ const MeasurementSidebar: React.FC = () => {
         m.name ?? '',
         valueString,
         display.unitLabel,
+        display.unitSystem,
         m.distanceMeters ?? '',
         m.areaSquareMeters ?? '',
         m.volumeCubicMeters ?? '',
@@ -216,7 +270,7 @@ const MeasurementSidebar: React.FC = () => {
         message: error instanceof Error ? error.message : 'Unexpected export error.',
       });
     }
-  }, [measurements]);
+  }, [measurements, settings.defaultUnit]);
 
   return (
     <div className={styles['sidebar']}>
@@ -258,7 +312,7 @@ const MeasurementSidebar: React.FC = () => {
       ) : (
         <ul className={styles['measurementList']}>
           {measurements.map((measurement) => {
-            const secondary = formatSecondaryLine(measurement);
+            const secondary = formatSecondaryLine(measurement, settings.defaultUnit);
 
             return (
               <li key={measurement.id} className={styles['measurementItem']}>
@@ -271,7 +325,9 @@ const MeasurementSidebar: React.FC = () => {
                   title="Rename Measurement"
                 />
                 <div className={styles['measurementSummary']}>
-                  <div className={styles['measurementValue']}>{formatPrimaryLine(measurement)}</div>
+                  <div className={styles['measurementValue']}>
+                    {formatPrimaryLine(measurement, settings.defaultUnit)}
+                  </div>
                   {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
                 </div>
                 <button
