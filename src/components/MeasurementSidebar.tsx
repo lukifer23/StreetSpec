@@ -112,11 +112,12 @@ const MeasurementSidebar: React.FC = () => {
   const handleUnitToggle = useCallback(() => {
     toggleUnit();
     if (window.electronAPI?.invoke) {
-      window.electronAPI.invoke('save-settings', settings).catch(() => {
+      const updatedSettings = useRootStore.getState().settings;
+      window.electronAPI.invoke('save-settings', updatedSettings).catch(() => {
         // Silent error handling for production
       });
     }
-  }, [toggleUnit, settings]);
+  }, [toggleUnit]);
 
   const handleClearMeasurements = useCallback(async () => {
     clearMeasurements();

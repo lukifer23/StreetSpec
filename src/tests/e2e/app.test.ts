@@ -71,6 +71,34 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
       expect(result.roundtripUnit).toBe(result.nextUnit);
     });
 
+    test('should persist toggled default unit after restart', async () => {
+      const state = await mainWindow.execute(async () => {
+        const initial = await window.electronAPI.invoke('get-settings');
+        const toggledUnit = initial.defaultUnit === 'metric' ? 'imperial' : 'metric';
+        const updated = { ...initial, defaultUnit: toggledUnit };
+        await window.electronAPI.invoke('save-settings', updated);
+        return { initialUnit: initial.defaultUnit, toggledUnit };
+      });
+
+      await app.restart();
+      mainWindow = app.client;
+      await mainWindow.waitUntilWindowLoaded();
+
+      const persistedUnit = await mainWindow.execute(async () => {
+        const afterRestart = await window.electronAPI.invoke('get-settings');
+        return afterRestart.defaultUnit;
+      });
+
+      expect(persistedUnit).toBe(state.toggledUnit);
+
+      await mainWindow.execute(async (initialUnit: string) => {
+        const current = await window.electronAPI.invoke('get-settings');
+        const reverted = { ...current, defaultUnit: initialUnit };
+        await window.electronAPI.invoke('save-settings', reverted);
+        return true;
+      }, state.initialUnit);
+    });
+
     test('should persist measurements via IPC', async () => {
       const result = await mainWindow.execute(async () => {
         const existing = await window.electronAPI.invoke('get-measurements');
