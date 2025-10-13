@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
-import { UNIT_CONVERSIONS } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './AreaTool.module.css';
+import { getAreaDisplayValues } from '../utils/measurementDisplay';
 
 interface AreaPoint extends Point {
   id: string;
@@ -152,14 +152,13 @@ const AreaTool: React.FC = () => {
             : 0.55;
 
       // Create area measurement object
+      const { area: areaDisplay } = getAreaDisplayValues(area, perimeter, settings.defaultUnit);
       const areaMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'area',
         label: `Area (${points.length} points)`,
         startPoint: points[0]!,
         endPoint: points[points.length - 1]!,
-        distance: settings.defaultUnit === 'imperial'
-          ? area * 10.764 // Square meters to square feet
-          : area,
+        distance: areaDisplay.value ?? 0,
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
@@ -199,14 +198,12 @@ const AreaTool: React.FC = () => {
 
   if (!isAreaToolActive) return null;
 
-  const displayArea = settings.defaultUnit === 'imperial'
-    ? area * 10.764 // Square meters to square feet
-    : area;
-  const displayPerimeter = settings.defaultUnit === 'imperial'
-    ? UNIT_CONVERSIONS.metersToFeet(perimeter)
-    : perimeter;
-  const areaUnit = settings.defaultUnit === 'imperial' ? 'sq ft' : 'sq m';
-  const perimeterUnit = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
+  const { area: areaDisplay, perimeter: perimeterDisplay } = getAreaDisplayValues(area, perimeter, settings.defaultUnit);
+  const displayAreaValue = areaDisplay.value;
+  const displayPerimeterValue = perimeterDisplay.value;
+  const areaUnit = areaDisplay.unitLabel;
+  const perimeterUnit = perimeterDisplay.unitLabel;
+  const showMeasurementInfo = area > 0 && displayAreaValue !== undefined && displayPerimeterValue !== undefined;
 
   return (
     <div className={styles['areaTool']}>
@@ -227,13 +224,13 @@ const AreaTool: React.FC = () => {
             Points: {points.length}
           </div>
 
-          {area > 0 && (
+          {showMeasurementInfo && (
             <div className={styles['areaInfo']}>
               <div className={styles['areaValue']}>
-                Area: {displayArea.toFixed(2)} {areaUnit}
+                Area: {displayAreaValue.toFixed(2)} {areaUnit}
               </div>
               <div className={styles['perimeterValue']}>
-                Perimeter: {displayPerimeter.toFixed(2)} {perimeterUnit}
+                Perimeter: {displayPerimeterValue.toFixed(2)} {perimeterUnit}
               </div>
             </div>
           )}

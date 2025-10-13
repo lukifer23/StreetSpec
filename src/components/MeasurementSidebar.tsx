@@ -5,7 +5,7 @@ import { convertLengthToDisplay, convertAreaToDisplay, convertVolumeToDisplay } 
 import { pushNotification } from '../stores/notificationStore';
 import styles from './MeasurementSidebar.module.css';
 
-const formatPrimaryLine = (measurement: Measurement): string => {
+export const formatPrimaryLine = (measurement: Measurement): string => {
   switch (measurement.kind) {
     case 'distance':
     case 'polyline': {
@@ -28,7 +28,7 @@ const formatPrimaryLine = (measurement: Measurement): string => {
   }
 };
 
-const formatSecondaryLine = (measurement: Measurement): string | undefined => {
+export const formatSecondaryLine = (measurement: Measurement): string | undefined => {
   const parts: string[] = [];
 
   if (measurement.kind === 'polyline' && measurement.points) {
@@ -71,7 +71,7 @@ const formatSecondaryLine = (measurement: Measurement): string | undefined => {
 
 const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
 
-const getDisplayValue = (measurement: Measurement): { value?: number; unitLabel: string } => {
+export const getDisplayValue = (measurement: Measurement): { value?: number; unitLabel: string } => {
   switch (measurement.kind) {
     case 'distance':
     case 'polyline':

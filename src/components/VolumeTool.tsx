@@ -3,6 +3,8 @@ import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
 import styles from './VolumeTool.module.css';
+import { getVolumeDisplayValues } from '../utils/measurementDisplay';
+import { convertLengthToDisplay } from '../utils/units';
 
 interface VolumePoint extends Point {
   id: string;
@@ -25,6 +27,14 @@ function calculateRectangularVolume(
     dimensions: { length, width, height }
   };
 }
+
+const formatDimensionValue = (display: { value: number | undefined }) =>
+  display.value !== undefined ? display.value.toFixed(1) : '--';
+
+const formatDimensionLabel = (
+  dimensionsDisplay: ReturnType<typeof getVolumeDisplayValues>['dimensions']
+) =>
+  `${formatDimensionValue(dimensionsDisplay.length)} x ${formatDimensionValue(dimensionsDisplay.width)} x ${formatDimensionValue(dimensionsDisplay.height)} ${dimensionsDisplay.length.unitLabel}`;
 
 const VolumeTool: React.FC = () => {
   const { currentCameraParams: cameraParams } = useRootStore();
@@ -135,14 +145,17 @@ const VolumeTool: React.FC = () => {
             : 0.45;
 
       // Create volume measurement object
+      const {
+        volume: volumeDisplay,
+        dimensions: volumeDimensionsDisplay,
+      } = getVolumeDisplayValues(volume, dimensions, settings.defaultUnit);
+      const dimensionLabel = formatDimensionLabel(volumeDimensionsDisplay);
       const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'volume',
-        label: `Volume (${dimensions.length.toFixed(1)}m x ${dimensions.width.toFixed(1)}m x ${dimensions.height.toFixed(1)}m)`,
+        label: `Volume (${dimensionLabel})`,
         startPoint: points[0]!,
         endPoint: points[1]!,
-        distance: settings.defaultUnit === 'imperial'
-          ? volume * 35.315 // Cubic meters to cubic feet
-          : volume,
+        distance: volumeDisplay.value ?? 0,
         unit: settings.defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
@@ -186,11 +199,20 @@ const VolumeTool: React.FC = () => {
 
   if (!isVolumeToolActive) return null;
 
-  const displayVolume = settings.defaultUnit === 'imperial'
-    ? volume * 35.315 // Cubic meters to cubic feet
-    : volume;
-  const volumeUnit = settings.defaultUnit === 'imperial' ? 'cu ft' : 'cu m';
-  const lengthUnit = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
+  const {
+    volume: volumeDisplay,
+    dimensions: volumeDimensionsDisplay,
+  } = getVolumeDisplayValues(volume, dimensions, settings.defaultUnit);
+  const displayVolumeValue = volumeDisplay.value;
+  const volumeUnit = volumeDisplay.unitLabel;
+  const heightDisplay = convertLengthToDisplay(height, settings.defaultUnit);
+  const showMeasurementInfo =
+    volume > 0 &&
+    displayVolumeValue !== undefined &&
+    volumeDimensionsDisplay.length.value !== undefined &&
+    volumeDimensionsDisplay.width.value !== undefined &&
+    volumeDimensionsDisplay.height.value !== undefined;
+  const dimensionLabel = formatDimensionLabel(volumeDimensionsDisplay);
 
   return (
     <div className={styles['volumeTool']}>
@@ -208,7 +230,7 @@ const VolumeTool: React.FC = () => {
 
         <div className={styles['heightControl']}>
           <label>
-            Height: {settings.defaultUnit === 'imperial' ? (height * 3.281).toFixed(1) : height.toFixed(1)} {lengthUnit}
+            Height: {heightDisplay.value !== undefined ? heightDisplay.value.toFixed(1) : '--'} {heightDisplay.unitLabel}
           </label>
           <input
             type="range"
@@ -226,13 +248,13 @@ const VolumeTool: React.FC = () => {
             Points: {points.length}/2
           </div>
 
-          {volume > 0 && (
+          {showMeasurementInfo && (
             <div className={styles['volumeInfo']}>
               <div className={styles['volumeValue']}>
-                Volume: {displayVolume.toFixed(2)} {volumeUnit}
+                Volume: {displayVolumeValue.toFixed(2)} {volumeUnit}
               </div>
               <div className={styles['dimensions']}>
-                Dimensions: {dimensions.length.toFixed(1)} x {dimensions.width.toFixed(1)} x {dimensions.height.toFixed(1)} {lengthUnit === 'm' ? 'm' : 'ft'}
+                Dimensions: {dimensionLabel}
               </div>
             </div>
           )}
