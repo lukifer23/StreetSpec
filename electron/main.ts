@@ -779,42 +779,86 @@ const primaryModelFilename = 'depth_anything_v2_metric_vkitti_vits.onnx';
 // Fallback to tiny (33 MB) if user supplies it manually
 const tinyModelFilename = 'depth_anything_v2_vit_tiny_metric_outdoor.onnx';
 
-let selectedModelFilename = primaryModelFilename;
+type ModelResolution = {
+  resolvedPath: string | null;
+  candidates: string[];
+};
 
-if (envModelFilename) {
-  selectedModelFilename = envModelFilename;
-} else if (!existsSync(join(__dirname, '..', 'src', 'assets', 'models', primaryModelFilename)) && existsSync(join(__dirname, '..', 'src', 'assets', 'models', tinyModelFilename))) {
-  selectedModelFilename = tinyModelFilename;
+function getModelCandidatePaths(filename: string): string[] {
+  const appPath = app.getAppPath();
+  const resourcesPath = process.resourcesPath;
+
+  const candidateRoots = new Set<string>([
+    __dirname,
+    join(__dirname, '..'),
+    appPath,
+    join(appPath, '..'),
+    join(appPath, '..', 'app.asar.unpacked'),
+    resourcesPath,
+    join(resourcesPath, 'app.asar.unpacked')
+  ]);
+
+  const relativeSegments: string[][] = [
+    ['src', 'assets', 'models', filename],
+    ['assets', 'models', filename]
+  ];
+
+  const candidates = new Set<string>();
+  for (const root of candidateRoots) {
+    for (const segments of relativeSegments) {
+      candidates.add(join(root, ...segments));
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function resolveModelPath(filename: string): ModelResolution {
+  const candidates = getModelCandidatePaths(filename);
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return { resolvedPath: candidate, candidates };
+    }
+  }
+
+  return { resolvedPath: null, candidates };
+}
+
+let selectedModelFilename = envModelFilename || primaryModelFilename;
+
+if (!envModelFilename) {
+  const { resolvedPath: primaryModelPath } = resolveModelPath(primaryModelFilename);
+  if (!primaryModelPath) {
+    const { resolvedPath: tinyModelPath } = resolveModelPath(tinyModelFilename);
+    if (tinyModelPath) {
+      selectedModelFilename = tinyModelFilename;
+    }
+  }
 }
 
 const isTinyModel = selectedModelFilename.includes('vit_tiny');
 
 let modelInputShape: [number, number, number, number] = isTinyModel ? [1, 3, 384, 384] : [1, 3, 518, 518];
 
-const appPath = app.getAppPath(); // Use app.getAppPath() for a reliable base
-const modelRelativePath = join('src', 'assets', 'models', selectedModelFilename);
-
-const modelPath = app.isPackaged
-  ? join(appPath, '..', 'app.asar.unpacked', modelRelativePath) // Path when packaged (assuming asarUnpack)
-  : join(__dirname, '..', modelRelativePath); // Dev path relative to dist-electron
-
-const modelExists = existsSync(modelPath);
-
 async function loadModel(): Promise<void> {
-  console.log('[model] Model path:', modelPath);
-  console.log('[model] Model exists:', modelExists);
+  const { resolvedPath: modelPath, candidates } = resolveModelPath(selectedModelFilename);
+
+  console.log('[model] Selected model filename:', selectedModelFilename);
+  console.log('[model] Candidate search paths:', candidates);
+  console.log('[model] Resolved model path:', modelPath);
   console.log('[model] __dirname:', __dirname);
   console.log('[model] app.getAppPath():', app.getAppPath());
   console.log('[model] app.isPackaged:', app.isPackaged);
-  
-  if (!modelExists) {
-    console.error('[model] Model file not found at:', modelPath);
+
+  if (!modelPath) {
+    console.error('[model] Model file not found. Checked paths:', candidates);
     if (win) {
       win.webContents.send('main-process-message', { type: 'error', message: 'ONNX model file not found.' });
     }
     return;
   }
-  
+
   try {
     console.log('[model] Loading ONNX model...');
     logMemoryUsage('Before model load');
