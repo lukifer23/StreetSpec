@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { shallow } from 'zustand/shallow';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
@@ -499,58 +500,74 @@ export const useSettings = () => useRootStore((state) => state.settings);
 export const useMeasurements = () => useRootStore((state) => state.measurements);
 export const useCameraParams = () => useRootStore((state) => state.currentCameraParams);
 export const useProjects = () => useRootStore((state) => state.projects);
-export const useUIState = () => useRootStore((state) => ({
-  isSettingsOpen: state.isSettingsOpen,
-  isGeneratingMap: state.isGeneratingMap,
-  calibrateMode: state.calibrateMode,
-  isPolylineToolActive: state.isPolylineToolActive,
-  isAreaToolActive: state.isAreaToolActive,
-  isVolumeToolActive: state.isVolumeToolActive,
-  isProjectPanelOpen: state.isProjectPanelOpen,
-  isCalibrated: state.isCalibrated,
-  onGenerateDepthMap: state.onGenerateDepthMap,
-}));
+export const useUIState = () =>
+  useRootStore(
+    (state) => ({
+      isSettingsOpen: state.isSettingsOpen,
+      isGeneratingMap: state.isGeneratingMap,
+      calibrateMode: state.calibrateMode,
+      isPolylineToolActive: state.isPolylineToolActive,
+      isAreaToolActive: state.isAreaToolActive,
+      isVolumeToolActive: state.isVolumeToolActive,
+      isProjectPanelOpen: state.isProjectPanelOpen,
+      isCalibrated: state.isCalibrated,
+      onGenerateDepthMap: state.onGenerateDepthMap,
+    }),
+    shallow
+  );
 
 // Action hooks
 export const useSettingsActions = () =>
-  useRootStore((state) => ({
-    setSettings: state.setSettings,
-    updateSettings: state.updateSettings,
-    toggleUnit: state.toggleUnit,
-  }));
+  useRootStore(
+    (state) => ({
+      setSettings: state.setSettings,
+      updateSettings: state.updateSettings,
+      toggleUnit: state.toggleUnit,
+    }),
+    shallow
+  );
 
 export const useMeasurementActions = () =>
-  useRootStore((state) => ({
-    addMeasurement: state.addMeasurement,
-    deleteMeasurement: state.deleteMeasurement,
-    renameMeasurement: state.renameMeasurement,
-    clearMeasurements: state.clearMeasurements,
-    setMeasurements: state.setMeasurements,
-  }));
+  useRootStore(
+    (state) => ({
+      addMeasurement: state.addMeasurement,
+      deleteMeasurement: state.deleteMeasurement,
+      renameMeasurement: state.renameMeasurement,
+      clearMeasurements: state.clearMeasurements,
+      setMeasurements: state.setMeasurements,
+    }),
+    shallow
+  );
 
 export const useProjectActions = () =>
-  useRootStore((state) => ({
-    loadProjects: state.loadProjects,
-    createProject: state.createProject,
-    loadProject: state.loadProject,
-    deleteProject: state.deleteProject,
-    saveRevision: state.saveRevision,
-    revertToRevision: state.revertToRevision,
-    saveCurrentProject: state.saveCurrentProject,
-  }));
+  useRootStore(
+    (state) => ({
+      loadProjects: state.loadProjects,
+      createProject: state.createProject,
+      loadProject: state.loadProject,
+      deleteProject: state.deleteProject,
+      saveRevision: state.saveRevision,
+      revertToRevision: state.revertToRevision,
+      saveCurrentProject: state.saveCurrentProject,
+    }),
+    shallow
+  );
 
 export const useUIActions = () =>
-  useRootStore((state) => ({
-    setIsSettingsOpen: state.setIsSettingsOpen,
-    setIsGeneratingMap: state.setIsGeneratingMap,
-    setCalibrateMode: state.setCalibrateMode,
-    setIsPolylineToolActive: state.setIsPolylineToolActive,
-    setIsAreaToolActive: state.setIsAreaToolActive,
-    setIsVolumeToolActive: state.setIsVolumeToolActive,
-    setIsProjectPanelOpen: state.setIsProjectPanelOpen,
-    setError: state.setError,
-    setMapGenerationError: state.setMapGenerationError,
-    setIsCalibrated: state.setIsCalibrated,
-    setLoading: state.setLoading,
-    setOnGenerateDepthMap: state.setOnGenerateDepthMap,
-  }));
+  useRootStore(
+    (state) => ({
+      setIsSettingsOpen: state.setIsSettingsOpen,
+      setIsGeneratingMap: state.setIsGeneratingMap,
+      setCalibrateMode: state.setCalibrateMode,
+      setIsPolylineToolActive: state.setIsPolylineToolActive,
+      setIsAreaToolActive: state.setIsAreaToolActive,
+      setIsVolumeToolActive: state.setIsVolumeToolActive,
+      setIsProjectPanelOpen: state.setIsProjectPanelOpen,
+      setError: state.setError,
+      setMapGenerationError: state.setMapGenerationError,
+      setIsCalibrated: state.setIsCalibrated,
+      setLoading: state.setLoading,
+      setOnGenerateDepthMap: state.setOnGenerateDepthMap,
+    }),
+    shallow
+  );

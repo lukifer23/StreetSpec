@@ -4,12 +4,35 @@ import type { CameraParams } from '../types/common';
 import { calculateFov } from '../services/geometry';
 import { ErrorBoundary } from './ErrorBoundary';
 
+import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import { depthPrefetchService } from '../services/depthPrefetch';
 
 // Default coords
 const DEFAULT_LAT = 40.7580;
 const DEFAULT_LNG = -73.9855;
+
+type RootStoreState = ReturnType<typeof useRootStore.getState>;
+
+const selectCameraParams = (state: RootStoreState) => state.currentCameraParams;
+
+const selectCameraHudSettings = (state: RootStoreState) => ({
+  showDebugOverlay: state.settings.showDebugOverlay ?? false,
+  calibrationPitchOffsetDeg: state.settings.calibrationPitchOffsetDeg ?? 0,
+  cameraHeight: state.settings.cameraHeight ?? 2.5,
+  depthScale: state.settings.depthScale ?? 1,
+  depthBias: state.settings.depthBias ?? 0,
+});
+
+const selectTargetCoords = (state: RootStoreState) => state.targetCoords;
+
+const selectMapViewStatus = (state: RootStoreState) => ({
+  isGeneratingMap: state.isGeneratingMap,
+  mapGenerationError: state.mapGenerationError,
+  calibrateMode: state.calibrateMode,
+});
+
+const selectOnnxDepthMap = (state: RootStoreState) => state.onnxDepthMap;
 
 // Utility function for debouncing
 function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
@@ -141,8 +164,8 @@ const CalibrationOverlay = React.memo<{
 CalibrationOverlay.displayName = 'CalibrationOverlay';
 
 const CameraHUD = React.memo(() => {
-  const { currentCameraParams } = useRootStore();
-  const { settings } = useRootStore();
+  const cameraParams = useRootStore(selectCameraParams);
+  const hudSettings = useRootStore(selectCameraHudSettings, shallow);
 
   const hudStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -157,12 +180,37 @@ const CameraHUD = React.memo(() => {
     lineHeight: 1.4
   }), []);
 
-  if (!currentCameraParams || !settings.showDebugOverlay) return null;
-  const { fov, vFov, pitch } = currentCameraParams;
-  const offset = settings.calibrationPitchOffsetDeg ?? 0;
-  const camH = currentCameraParams.cameraHeight ?? settings.cameraHeight ?? 2.5;
-  const scale = settings.depthScale ?? 1;
-  const bias = settings.depthBias ?? 0;
+  const {
+    showDebugOverlay,
+    calibrationPitchOffsetDeg,
+    cameraHeight: defaultCameraHeight,
+    depthScale,
+    depthBias,
+  } = hudSettings;
+
+  const fov = cameraParams?.fov;
+  const vFov = cameraParams?.vFov;
+  const pitch = cameraParams?.pitch;
+  const offset = calibrationPitchOffsetDeg;
+  const camH = cameraParams?.cameraHeight ?? defaultCameraHeight;
+  const scale = depthScale;
+  const bias = depthBias;
+
+  useEffect(() => {
+    if (import.meta.env.DEV && cameraParams && showDebugOverlay) {
+      console.debug('[CameraHUD] render snapshot', {
+        fov,
+        vFov,
+        pitch,
+        offset,
+        camH,
+        scale,
+        bias,
+      });
+    }
+  }, [cameraParams, showDebugOverlay, fov, vFov, pitch, offset, camH, scale, bias]);
+
+  if (!cameraParams || !showDebugOverlay) return null;
 
   return (
     <div style={hudStyle} aria-label="Camera HUD">
@@ -183,14 +231,29 @@ const MapView: React.FC<{
   onCameraParamsChange,
   onCalibrateClick
 }) => {
-  const { targetCoords } = useRootStore();
-  const { isGeneratingMap, mapGenerationError, calibrateMode } = useRootStore();
-  const { onnxDepthMap } = useRootStore();
+  const targetCoords = useRootStore(selectTargetCoords);
+  const { isGeneratingMap, mapGenerationError, calibrateMode } = useRootStore(
+    selectMapViewStatus,
+    shallow
+  );
+  const onnxDepthMap = useRootStore(selectOnnxDepthMap);
 
   const { lat, lng } = useMemo(() => ({
     lat: targetCoords?.lat,
     lng: targetCoords?.lng
   }), [targetCoords]);
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      console.debug('[MapView] store slices updated', {
+        targetCoords,
+        isGeneratingMap,
+        mapGenerationError,
+        calibrateMode,
+        hasDepthMap: Boolean(onnxDepthMap),
+      });
+    }
+  }, [targetCoords, isGeneratingMap, mapGenerationError, calibrateMode, onnxDepthMap]);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
