@@ -13,7 +13,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
   const [searchResults, setSearchResults] = useState<google.maps.places.PlaceResult[]>([]);
   const [showResults, setShowResults] = useState(false);
 
-  const { setTargetCoords } = useRootStore();
+  const setTargetCoords = useRootStore((state) => state.setTargetCoords);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;

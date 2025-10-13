@@ -1,4 +1,5 @@
 import React from 'react';
+import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import { useUIActions } from '../stores/rootStore';
 import styles from './AppHeader.module.css';
@@ -46,7 +47,15 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
 };
 
 const AppHeader: React.FC = () => {
-  const { isGeneratingMap, calibrateMode, isCalibrated, currentCameraParams } = useRootStore();
+  const [isGeneratingMap, calibrateMode, isCalibrated, currentCameraParams] = useRootStore(
+    (state) => [
+      state.isGeneratingMap,
+      state.calibrateMode,
+      state.isCalibrated,
+      state.currentCameraParams,
+    ],
+    shallow
+  );
   const { setIsSettingsOpen, setIsProjectPanelOpen, setCalibrateMode, setIsPolylineToolActive, setIsAreaToolActive, setIsVolumeToolActive } = useUIActions();
 
   const handleGenerateDepthMap = React.useCallback(async () => {

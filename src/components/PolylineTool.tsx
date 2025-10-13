@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import { UNIT_CONVERSIONS } from '../types/common';
 import type { Point, Measurement } from '../types/common';
@@ -12,9 +13,13 @@ interface PolylinePoint extends Point {
 }
 
 const PolylineTool: React.FC = () => {
-  const { currentCameraParams: cameraParams } = useRootStore();
-  const { isPolylineToolActive, setIsPolylineToolActive } = useRootStore();
-  const { addMeasurement, settings } = useRootStore();
+  const cameraParams = useRootStore((state) => state.currentCameraParams);
+  const [isPolylineToolActive, setIsPolylineToolActive] = useRootStore(
+    (state) => [state.isPolylineToolActive, state.setIsPolylineToolActive],
+    shallow
+  );
+  const addMeasurement = useRootStore((state) => state.addMeasurement);
+  const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<PolylinePoint[]>([]);
@@ -138,10 +143,10 @@ const PolylineTool: React.FC = () => {
         startPoint: points[0]!,
         endPoint: points[points.length - 1]!,
         distanceMeters: totalDistance,
-        distance: settings.defaultUnit === 'imperial'
+        distance: defaultUnit === 'imperial'
           ? UNIT_CONVERSIONS.metersToFeet(totalDistance)
           : totalDistance,
-        unit: settings.defaultUnit,
+        unit: defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
         confidence,
@@ -163,7 +168,7 @@ const PolylineTool: React.FC = () => {
       setTotalDistance(0);
       setSegmentDistances([]);
     }
-  }, [points, totalDistance, segmentDistances, settings.defaultUnit, cameraParams, addMeasurement]);
+  }, [points, totalDistance, segmentDistances, defaultUnit, cameraParams, addMeasurement]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {
@@ -181,10 +186,10 @@ const PolylineTool: React.FC = () => {
 
   if (!isPolylineToolActive) return null;
 
-  const displayDistance = settings.defaultUnit === 'imperial'
+  const displayDistance = defaultUnit === 'imperial'
     ? UNIT_CONVERSIONS.metersToFeet(totalDistance)
     : totalDistance;
-  const unitLabel = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
+  const unitLabel = defaultUnit === 'imperial' ? 'ft' : 'm';
 
   return (
     <div className={styles['polylineTool']}>

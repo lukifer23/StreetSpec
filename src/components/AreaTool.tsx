@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { UNIT_CONVERSIONS } from '../types/common';
@@ -43,9 +44,13 @@ function calculatePolygonPerimeter(points: { x: number; y: number; z: number }[]
 }
 
 const AreaTool: React.FC = () => {
-  const { currentCameraParams: cameraParams } = useRootStore();
-  const { isAreaToolActive, setIsAreaToolActive } = useRootStore();
-  const { addMeasurement, settings } = useRootStore();
+  const cameraParams = useRootStore((state) => state.currentCameraParams);
+  const [isAreaToolActive, setIsAreaToolActive] = useRootStore(
+    (state) => [state.isAreaToolActive, state.setIsAreaToolActive],
+    shallow
+  );
+  const addMeasurement = useRootStore((state) => state.addMeasurement);
+  const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<AreaPoint[]>([]);
@@ -157,10 +162,10 @@ const AreaTool: React.FC = () => {
         label: `Area (${points.length} points)`,
         startPoint: points[0]!,
         endPoint: points[points.length - 1]!,
-        distance: settings.defaultUnit === 'imperial'
+        distance: defaultUnit === 'imperial'
           ? area * 10.764 // Square meters to square feet
           : area,
-        unit: settings.defaultUnit,
+        unit: defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
         confidence,
@@ -182,7 +187,7 @@ const AreaTool: React.FC = () => {
       setArea(0);
       setPerimeter(0);
     }
-  }, [points, area, settings.defaultUnit, cameraParams, addMeasurement, perimeter]);
+  }, [points, area, defaultUnit, cameraParams, addMeasurement, perimeter]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {
@@ -199,14 +204,14 @@ const AreaTool: React.FC = () => {
 
   if (!isAreaToolActive) return null;
 
-  const displayArea = settings.defaultUnit === 'imperial'
+  const displayArea = defaultUnit === 'imperial'
     ? area * 10.764 // Square meters to square feet
     : area;
-  const displayPerimeter = settings.defaultUnit === 'imperial'
+  const displayPerimeter = defaultUnit === 'imperial'
     ? UNIT_CONVERSIONS.metersToFeet(perimeter)
     : perimeter;
-  const areaUnit = settings.defaultUnit === 'imperial' ? 'sq ft' : 'sq m';
-  const perimeterUnit = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
+  const areaUnit = defaultUnit === 'imperial' ? 'sq ft' : 'sq m';
+  const perimeterUnit = defaultUnit === 'imperial' ? 'ft' : 'm';
 
   return (
     <div className={styles['areaTool']}>

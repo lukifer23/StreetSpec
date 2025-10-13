@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
@@ -27,9 +28,13 @@ function calculateRectangularVolume(
 }
 
 const VolumeTool: React.FC = () => {
-  const { currentCameraParams: cameraParams } = useRootStore();
-  const { isVolumeToolActive, setIsVolumeToolActive } = useRootStore();
-  const { addMeasurement, settings } = useRootStore();
+  const cameraParams = useRootStore((state) => state.currentCameraParams);
+  const [isVolumeToolActive, setIsVolumeToolActive] = useRootStore(
+    (state) => [state.isVolumeToolActive, state.setIsVolumeToolActive],
+    shallow
+  );
+  const addMeasurement = useRootStore((state) => state.addMeasurement);
+  const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<VolumePoint[]>([]);
@@ -140,10 +145,10 @@ const VolumeTool: React.FC = () => {
         label: `Volume (${dimensions.length.toFixed(1)}m x ${dimensions.width.toFixed(1)}m x ${dimensions.height.toFixed(1)}m)`,
         startPoint: points[0]!,
         endPoint: points[1]!,
-        distance: settings.defaultUnit === 'imperial'
+        distance: defaultUnit === 'imperial'
           ? volume * 35.315 // Cubic meters to cubic feet
           : volume,
-        unit: settings.defaultUnit,
+        unit: defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
         confidence,
@@ -168,7 +173,7 @@ const VolumeTool: React.FC = () => {
       setDimensions({ length: 0, width: 0, height: 3 });
       setHeight(3);
     }
-  }, [points, volume, dimensions, settings.defaultUnit, cameraParams, addMeasurement, height]);
+  }, [points, volume, dimensions, defaultUnit, cameraParams, addMeasurement, height]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {
@@ -186,11 +191,11 @@ const VolumeTool: React.FC = () => {
 
   if (!isVolumeToolActive) return null;
 
-  const displayVolume = settings.defaultUnit === 'imperial'
+  const displayVolume = defaultUnit === 'imperial'
     ? volume * 35.315 // Cubic meters to cubic feet
     : volume;
-  const volumeUnit = settings.defaultUnit === 'imperial' ? 'cu ft' : 'cu m';
-  const lengthUnit = settings.defaultUnit === 'imperial' ? 'ft' : 'm';
+  const volumeUnit = defaultUnit === 'imperial' ? 'cu ft' : 'cu m';
+  const lengthUnit = defaultUnit === 'imperial' ? 'ft' : 'm';
 
   return (
     <div className={styles['volumeTool']}>
@@ -208,7 +213,7 @@ const VolumeTool: React.FC = () => {
 
         <div className={styles['heightControl']}>
           <label>
-            Height: {settings.defaultUnit === 'imperial' ? (height * 3.281).toFixed(1) : height.toFixed(1)} {lengthUnit}
+            Height: {defaultUnit === 'imperial' ? (height * 3.281).toFixed(1) : height.toFixed(1)} {lengthUnit}
           </label>
           <input
             type="range"
