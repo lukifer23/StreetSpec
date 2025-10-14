@@ -8,95 +8,18 @@ import { getCachedDepthMap, cacheDepthMap } from '../services/depth';
 import { createDepthMapFetcher, generateDepthMap } from '../services/depthGeneration';
 import { detectHorizonFromDepth } from '../services/geometry';
 import {
-  convertLengthToDisplay,
-  convertAreaToDisplay,
-  convertVolumeToDisplay,
-  type UnitSystem
-} from '../utils/units';
+  formatCsvRow,
+  getDisplayValue,
+  getSegmentSummary,
+  type MeasurementDisplayValue
+} from '../utils/measurementDisplay';
+import type { UnitSystem } from '../utils/units';
 import type { CameraParams, DepthDataFetchResult, Measurement } from '../types/common';
-
-const hasFiniteValue = (value: number | null | undefined): value is number =>
-  value !== null && value !== undefined && Number.isFinite(value);
-
-const getActiveUnitSystem = (
-  baseValue: number | null | undefined,
-  measurementUnit: UnitSystem,
-  defaultUnit: UnitSystem
-): UnitSystem => (hasFiniteValue(baseValue) ? defaultUnit : measurementUnit);
-
-const getLengthDisplay = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem,
-  baseValue: number | null | undefined,
-  fallbackValue?: number | null
-) => {
-  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
-  const converted = convertLengthToDisplay(baseValue, unitSystem);
-  if (!hasFiniteValue(baseValue) && hasFiniteValue(fallbackValue)) {
-    return { value: fallbackValue, unitLabel: converted.unitLabel, unitSystem };
-  }
-  return { ...converted, unitSystem };
-};
-
-const getAreaDisplay = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem,
-  baseValue: number | null | undefined
-) => {
-  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
-  const converted = convertAreaToDisplay(baseValue, unitSystem);
-  return { ...converted, unitSystem };
-};
-
-const getVolumeDisplay = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem,
-  baseValue: number | null | undefined
-) => {
-  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
-  const converted = convertVolumeToDisplay(baseValue, unitSystem);
-  return { ...converted, unitSystem };
-};
 
 const getExportValue = (
   measurement: Measurement,
   defaultUnit: UnitSystem
-): { value?: number; unitLabel: string; unitSystem: UnitSystem } => {
-  switch (measurement.kind) {
-    case 'distance':
-    case 'polyline':
-      return getLengthDisplay(
-        measurement,
-        defaultUnit,
-        measurement.distanceMeters,
-        measurement.distance
-      );
-    case 'area':
-      return getAreaDisplay(measurement, defaultUnit, measurement.areaSquareMeters);
-    case 'volume':
-      return getVolumeDisplay(measurement, defaultUnit, measurement.volumeCubicMeters);
-    default:
-      return {
-        value: undefined,
-        unitLabel: measurement.unit === 'imperial' ? 'imperial' : 'metric',
-        unitSystem: measurement.unit
-      };
-  }
-};
-
-const getExportSegments = (measurement: Measurement) => {
-  const meta = measurement.metadata as { segmentDistancesMeters?: unknown } | undefined;
-  const segments = meta?.segmentDistancesMeters;
-  if (!Array.isArray(segments) || segments.length === 0) {
-    return '';
-  }
-  return segments
-    .map((segment) => (typeof segment === 'number' && Number.isFinite(segment) ? segment.toFixed(3) : ''))
-    .filter(Boolean)
-    .join('|');
-};
-
-const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+): MeasurementDisplayValue => getDisplayValue(measurement, defaultUnit);
 
 export const useAppLogic = (apiKey: string) => {
   const [isApiLoaded, setIsApiLoaded] = useState(false);
@@ -619,7 +542,7 @@ export const useAppLogic = (apiKey: string) => {
         display.value !== undefined && Number.isFinite(display.value)
           ? display.value.toFixed(3)
           : '';
-      const segmentSummary = getExportSegments(m);
+      const segmentSummary = getSegmentSummary(m);
 
       const raw = [
         m.id,
@@ -643,7 +566,7 @@ export const useAppLogic = (apiKey: string) => {
         m.confidence !== undefined ? m.confidence.toFixed(2) : ''
       ];
 
-      return raw.map((value) => escapeCsv(String(value ?? ''))).join(',');
+      return formatCsvRow(raw);
     });
     const csvContent = [header, ...rows].join('\n');
 
