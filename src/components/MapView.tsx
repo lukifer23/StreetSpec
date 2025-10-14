@@ -254,6 +254,7 @@ const MapView: React.FC<{
   const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isSizeReady, setIsSizeReady] = useState(false);
 
   // Memoized initial position
   const initialPosition = useMemo(() => ({
@@ -283,10 +284,14 @@ const MapView: React.FC<{
       const svInstance = streetViewRef.current;
       const position = svInstance.getPosition();
       const pov = svInstance.getPov();
-      const zoom = svInstance.getZoom();
+      const rawZoom = Number(svInstance.getZoom());
+      const zoom = Number.isFinite(rawZoom) ? rawZoom : 1;
       const panoId = svInstance.getPano();
       const container = mapContainerRef.current;
-      const aspect = container ? container.clientWidth / container.clientHeight : 1;
+      const width = container?.clientWidth ?? 0;
+      const height = container?.clientHeight ?? 0;
+      const safeHeight = height > 0 ? height : 1;
+      const aspect = width > 0 ? width / safeHeight : 16 / 9;
       const { hFov, vFov } = calculateFov(zoom, aspect);
 
       const baseParams: CameraParams = {
@@ -410,9 +415,35 @@ const MapView: React.FC<{
     }
   }, [hasDepthMap, isGeneratingMap, isInitialized, schedulePrefetch]);
 
+  // Observe container size to avoid initializing Street View in a zero-sized element
+  useEffect(() => {
+    const el = mapContainerRef.current;
+    if (!el) return;
+    const hasSize = () => (el.clientWidth ?? 0) > 0 && (el.clientHeight ?? 0) > 0;
+    setIsSizeReady(hasSize());
+    const ro = new ResizeObserver(() => {
+      const ready = hasSize();
+      if (ready !== isSizeReady) {
+        setIsSizeReady(ready);
+      }
+    });
+    try {
+      ro.observe(el);
+    } catch {}
+    return () => {
+      try { ro.disconnect(); } catch {}
+    };
+  }, [isSizeReady]);
+
   // Initialization Effect
   useEffect(() => {
-    if (isInitialized || !mapContainerRef.current || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') {
+    if (
+      isInitialized ||
+      !mapContainerRef.current ||
+      !isSizeReady ||
+      typeof window.google === 'undefined' ||
+      typeof window.google.maps === 'undefined'
+    ) {
       return;
     }
     try {
@@ -426,7 +457,7 @@ const MapView: React.FC<{
     } catch (error) {
       // Silent error handling for production
     }
-  }, [isInitialized, streetViewOptions]);
+  }, [isInitialized, isSizeReady, streetViewOptions]);
 
   // Effect for Handling Prop Position Changes
   useEffect(() => {
@@ -481,7 +512,8 @@ const MapView: React.FC<{
 
   const mapContainerStyle = useMemo(() => ({
     width: '100%',
-    height: '100%'
+    height: '100%',
+    minHeight: 300
   }), []);
 
   return (

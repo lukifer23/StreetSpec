@@ -40,3 +40,21 @@
     box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
   }
 }
+
+/* Ensure the map area fills the available space so Street View has a non-zero height */
+.mapArea {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Placeholder styling used while loading/error */
+.loadingPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #6c757d;
+}

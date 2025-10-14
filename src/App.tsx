@@ -51,15 +51,15 @@ function App() {
     setIsProjectPanelOpen,
   } = useAppLogic(apiKey);
 
-  // Display error state
-  if (error) {
-    return <div className={styles['loadingPlaceholder']}>{error}</div>;
-  }
-
   const bannerPresentation = useMemo(
     () => getStatusBannerPresentation(depthFetchStatus),
     [depthFetchStatus]
   );
+
+  // Display error state
+  if (error) {
+    return <div className={styles['loadingPlaceholder']}>{error}</div>;
+  }
 
   const statusBannerClass = bannerPresentation
     ? bannerPresentation.tone === 'error'

@@ -341,26 +341,34 @@ export const useRootStore = create<RootState>()(
         loadProjects: async () => {
           if (window.electronAPI?.invoke) {
             try {
-              const projects = await window.electronAPI.invoke('get-projects');
+              const projectsRaw = await window.electronAPI.invoke('get-projects');
               set((state) => {
                 const limit = state.settings.measurementHistoryLimit;
                 const sanitizedProjects: Record<string, Project> = {};
 
-                if (projects) {
-                  for (const [id, project] of Object.entries(projects)) {
-                    const { trimmed } = trimMeasurementsArray(
-                      project.measurements ?? [],
-                      limit
-                    );
+                if (projectsRaw && typeof projectsRaw === 'object') {
+                  const entries = Object.entries(projectsRaw as Record<string, any>);
+                  for (const [id, value] of entries) {
+                    const rawMeasurements = Array.isArray((value as any)?.measurements)
+                      ? ((value as any).measurements as Measurement[])
+                      : [];
+                    const { trimmed } = trimMeasurementsArray(rawMeasurements, limit);
+
+                    const name = typeof (value as any)?.name === 'string' ? (value as any).name : 'Untitled';
+                    const revisionHistory = Array.isArray((value as any)?.revisionHistory)
+                      ? ((value as any).revisionHistory as Revision[])
+                      : [];
 
                     sanitizedProjects[id] = {
-                      ...project,
+                      id: typeof (value as any)?.id === 'string' ? (value as any).id : id,
+                      name,
                       measurements: trimmed,
+                      revisionHistory,
                     };
                   }
                 }
 
-                state.projects = projects ? sanitizedProjects : {};
+                state.projects = sanitizedProjects;
               });
             } catch (error) {
               console.error('Failed to load projects:', error);
@@ -596,19 +604,26 @@ export const useRootStore = create<RootState>()(
               if (importedState.settings) {
                 state.settings = { ...state.settings, ...importedState.settings };
               }
-              if (importedState.projects) {
+              if (importedState.projects && typeof importedState.projects === 'object') {
                 const limit = state.settings.measurementHistoryLimit;
                 const sanitizedProjects: Record<string, Project> = {};
 
-                for (const [projectId, project] of Object.entries(importedState.projects)) {
-                  const { trimmed } = trimMeasurementsArray(
-                    project.measurements ?? [],
-                    limit
-                  );
+                for (const [projectId, value] of Object.entries(importedState.projects as Record<string, any>)) {
+                  const rawMeasurements = Array.isArray((value as any)?.measurements)
+                    ? ((value as any).measurements as Measurement[])
+                    : [];
+                  const { trimmed } = trimMeasurementsArray(rawMeasurements, limit);
+
+                  const name = typeof (value as any)?.name === 'string' ? (value as any).name : 'Untitled';
+                  const revisionHistory = Array.isArray((value as any)?.revisionHistory)
+                    ? ((value as any).revisionHistory as Revision[])
+                    : [];
 
                   sanitizedProjects[projectId] = {
-                    ...project,
+                    id: typeof (value as any)?.id === 'string' ? (value as any).id : projectId,
+                    name,
                     measurements: trimmed,
+                    revisionHistory,
                   };
                 }
 

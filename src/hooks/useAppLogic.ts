@@ -123,7 +123,9 @@ export const useAppLogic = (apiKey: string) => {
     const loader = new Loader({
       apiKey: key,
       version: "quarterly",
-      libraries: ["places", "geometry"]
+      libraries: ["places", "geometry"],
+      language: 'en',
+      region: 'US'
     });
 
     loader.load().then(() => {
