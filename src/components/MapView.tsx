@@ -4,7 +4,6 @@ import type { CameraParams } from '../types/common';
 import { calculateFov } from '../services/geometry';
 import { ErrorBoundary } from './ErrorBoundary';
 
-import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import { depthPrefetchService } from '../services/depthPrefetch';
 
@@ -25,12 +24,6 @@ const selectCameraHudSettings = (state: RootStoreState) => ({
 });
 
 const selectTargetCoords = (state: RootStoreState) => state.targetCoords;
-
-const selectMapViewStatus = (state: RootStoreState) => ({
-  isGeneratingMap: state.isGeneratingMap,
-  mapGenerationError: state.mapGenerationError,
-  calibrateMode: state.calibrateMode,
-});
 
 const selectOnnxDepthMap = (state: RootStoreState) => state.onnxDepthMap;
 

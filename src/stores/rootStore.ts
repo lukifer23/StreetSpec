@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { shallow } from 'zustand/shallow';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
@@ -501,20 +500,17 @@ export const useMeasurements = () => useRootStore((state) => state.measurements)
 export const useCameraParams = () => useRootStore((state) => state.currentCameraParams);
 export const useProjects = () => useRootStore((state) => state.projects);
 export const useUIState = () =>
-  useRootStore(
-    (state) => ({
-      isSettingsOpen: state.isSettingsOpen,
-      isGeneratingMap: state.isGeneratingMap,
-      calibrateMode: state.calibrateMode,
-      isPolylineToolActive: state.isPolylineToolActive,
-      isAreaToolActive: state.isAreaToolActive,
-      isVolumeToolActive: state.isVolumeToolActive,
-      isProjectPanelOpen: state.isProjectPanelOpen,
-      isCalibrated: state.isCalibrated,
-      onGenerateDepthMap: state.onGenerateDepthMap,
-    }),
-    shallow
-  );
+  useRootStore((state) => ({
+    isSettingsOpen: state.isSettingsOpen,
+    isGeneratingMap: state.isGeneratingMap,
+    calibrateMode: state.calibrateMode,
+    isPolylineToolActive: state.isPolylineToolActive,
+    isAreaToolActive: state.isAreaToolActive,
+    isVolumeToolActive: state.isVolumeToolActive,
+    isProjectPanelOpen: state.isProjectPanelOpen,
+    isCalibrated: state.isCalibrated,
+    onGenerateDepthMap: state.onGenerateDepthMap,
+  }));
 
 // Action hooks
 export const useSettingsActions = () =>

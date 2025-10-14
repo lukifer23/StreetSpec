@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
@@ -30,10 +29,8 @@ function calculateRectangularVolume(
 
 const VolumeTool: React.FC = () => {
   const cameraParams = useRootStore((state) => state.currentCameraParams);
-  const [isVolumeToolActive, setIsVolumeToolActive] = useRootStore(
-    (state) => [state.isVolumeToolActive, state.setIsVolumeToolActive],
-    shallow
-  );
+  const isVolumeToolActive = useRootStore((state) => state.isVolumeToolActive);
+  const setIsVolumeToolActive = useRootStore((state) => state.setIsVolumeToolActive);
   const addMeasurement = useRootStore((state) => state.addMeasurement);
   const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const depthData = useRootStore((state) => state.depthData);
