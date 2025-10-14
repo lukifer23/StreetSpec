@@ -174,6 +174,7 @@ export interface AppSettings {
   depthApiMaxRetries?: number;
   depthQuality?: 'low' | 'medium' | 'high';
   enableDepthCache?: boolean;
+  streetViewApiKey?: string;
 }
 
 // Comprehensive error handling system

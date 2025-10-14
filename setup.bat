@@ -94,17 +94,24 @@ REM Check if .env file exists
 if not exist ".env" (
     echo.
     echo Creating .env file...
-    echo Please enter your Google Maps API key:
-    echo (You can get one from https://console.cloud.google.com/)
+    echo Please enter your Google Maps API key (used for Maps JS, Places, and Street View depth):
+    echo (You can create one from https://console.cloud.google.com/)
     echo.
     set /p api_key="Enter your Google Maps API key: "
     if not "%api_key%"=="" (
-        echo VITE_GOOGLE_MAPS_API_KEY=%api_key% > .env
+        (
+            echo VITE_GOOGLE_MAPS_API_KEY=%api_key%
+            echo GOOGLE_MAPS_API_KEY=%api_key%
+        ) > .env
         echo OK: .env file created
     ) else (
         echo WARNING: No API key provided
-        echo You can add it later by editing the .env file
-        echo VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE > .env
+        echo You can add it later by editing the .env file or inside the app under Settings ^> Street View API Key
+        (
+            echo # Configure Google Maps keys here or via the in-app Settings panel.
+            echo VITE_GOOGLE_MAPS_API_KEY=
+            echo GOOGLE_MAPS_API_KEY=
+        ) > .env
     )
 ) else (
     echo OK: .env file found

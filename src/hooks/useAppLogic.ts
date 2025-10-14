@@ -13,7 +13,7 @@ import {
   convertVolumeToDisplay,
   type UnitSystem
 } from '../utils/units';
-import type { CameraParams, DepthDataFetchResult, Measurement } from '../types/common';
+import type { AppSettings, CameraParams, DepthDataFetchResult, Measurement } from '../types/common';
 
 const hasFiniteValue = (value: number | null | undefined): value is number =>
   value !== null && value !== undefined && Number.isFinite(value);
@@ -193,14 +193,61 @@ export const useAppLogic = (apiKey: string) => {
 
 
   // Load Google Maps API
+  const effectiveApiKey = useMemo(() => {
+    const fromSettings = typeof settings.streetViewApiKey === 'string'
+      ? settings.streetViewApiKey.trim()
+      : '';
+    return fromSettings || apiKey;
+  }, [settings.streetViewApiKey, apiKey]);
+
   useEffect(() => {
-    if (!apiKey) {
-      setError("Error: Google Maps API Key is missing. Please check your .env file.");
+    let cancelled = false;
+
+    const loadPersistedSettings = async () => {
+      if (!window.electronAPI?.invoke) {
+        return;
+      }
+
+      try {
+        const stored = await window.electronAPI.invoke('get-settings') as Partial<AppSettings> | undefined;
+        if (cancelled || !stored) {
+          return;
+        }
+
+        const sanitizedStreetViewApiKey = typeof stored.streetViewApiKey === 'string'
+          ? stored.streetViewApiKey.trim()
+          : stored.streetViewApiKey;
+        const fallbackFromEnv = apiKey.trim();
+
+        setSettings({
+          ...useRootStore.getState().settings,
+          ...stored,
+          streetViewApiKey: (typeof sanitizedStreetViewApiKey === 'string' && sanitizedStreetViewApiKey.length > 0)
+            ? sanitizedStreetViewApiKey
+            : fallbackFromEnv,
+        } as AppSettings);
+      } catch (error) {
+        console.error('Failed to load settings from Electron store:', error);
+      }
+    };
+
+    void loadPersistedSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey, setSettings]);
+
+  useEffect(() => {
+    if (!effectiveApiKey) {
+      setError("Error: Google Maps API key is missing. Provide it via Settings or your .env file.");
+      setIsApiLoaded(false);
       return;
     }
     setError(null);
+    setIsApiLoaded(false);
     const loader = new Loader({
-      apiKey: apiKey,
+      apiKey: effectiveApiKey,
       version: "quarterly",
       libraries: ["places", "geometry"]
     });
@@ -208,9 +255,9 @@ export const useAppLogic = (apiKey: string) => {
     loader.load().then(() => {
       setIsApiLoaded(true);
     }).catch(() => {
-      setError("Failed to load Google Maps. Please check the console and API Key.");
+      setError("Failed to load Google Maps. Please check the console and API key configured in Settings.");
     });
-  }, [apiKey, setError]);
+  }, [effectiveApiKey, setError]);
 
   // Apply theme when settings change
   useEffect(() => {
@@ -431,7 +478,7 @@ export const useAppLogic = (apiKey: string) => {
         }
 
         if (result.code === 'NO_API_KEY') {
-          setDepthFetchStatus({ type: 'error', message: 'Street View depth requests require GOOGLE_MAPS_API_KEY to be configured.' } as any);
+          setDepthFetchStatus({ type: 'error', message: 'Configure a Street View API key in Settings or set GOOGLE_MAPS_API_KEY before retrying.' } as any);
           return;
         }
 
@@ -460,16 +507,16 @@ export const useAppLogic = (apiKey: string) => {
 
   // Depth Map Generation Logic
   const handleGenerateDepthMap = useCallback(async () => {
-    if (!currentCameraParams || !apiKey || isGeneratingMap) {
+    if (!currentCameraParams || !effectiveApiKey || isGeneratingMap) {
       if (!currentCameraParams) {
         pushNotification({
           kind: 'error',
           message: 'No camera parameters available. Please wait for the Street View panorama to load.',
         });
-      } else if (!apiKey) {
+      } else if (!effectiveApiKey) {
         pushNotification({
           kind: 'error',
-          message: 'Google Maps API key is missing. Check the .env configuration.',
+          message: 'Google Maps API key is missing. Add it in Settings or update your .env configuration.',
         });
       } else if (isGeneratingMap) {
         pushNotification({
@@ -495,7 +542,7 @@ export const useAppLogic = (apiKey: string) => {
 
     try {
       const fetchImage = createDepthMapFetcher();
-      const { depthMap, fromCache } = await generateDepthMap(currentCameraParams, apiKey, {
+      const { depthMap, fromCache } = await generateDepthMap(currentCameraParams, effectiveApiKey, {
         fetchImage,
         getCachedDepthMap,
         cacheDepthMap,
@@ -540,7 +587,7 @@ export const useAppLogic = (apiKey: string) => {
     } finally {
       setIsGeneratingMap(false);
     }
-  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap, settings.depthQuality, settings.enableDepthCache]);
+  }, [currentCameraParams, effectiveApiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap, settings.depthQuality, settings.enableDepthCache]);
 
   const handleClearMeasurements = useCallback(async () => {
     clearMeasurements();
@@ -567,17 +614,24 @@ export const useAppLogic = (apiKey: string) => {
     }
   }, [toggleUnit]);
 
-  const handleSaveSettingsPanel = useCallback(async (newSettings: any) => {
-    setSettings(newSettings);
+  const handleSaveSettingsPanel = useCallback(async (newSettings: AppSettings) => {
+    const sanitized: AppSettings = {
+      ...newSettings,
+      streetViewApiKey: typeof newSettings.streetViewApiKey === 'string'
+        ? newSettings.streetViewApiKey.trim()
+        : newSettings.streetViewApiKey,
+    };
+
+    setSettings(sanitized);
     if (window.electronAPI?.invoke) {
       try {
-        await window.electronAPI.invoke('save-settings', newSettings);
+        await window.electronAPI.invoke('save-settings', sanitized);
       } catch {
         // silent
       }
     }
     // If auto-calibration toggled on, reset samples to fit fresh scene context
-    if (newSettings.autoCalibrateDepth) {
+    if (sanitized.autoCalibrateDepth) {
       calibrationManager.reset();
     }
     setIsSettingsOpen(false);

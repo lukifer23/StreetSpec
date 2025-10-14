@@ -105,17 +105,24 @@ fi
 if [ ! -f ".env" ]; then
     echo ""
     echo "Creating .env file..."
-    echo "Please enter your Google Maps API key:"
-    echo "(You can get one from https://console.cloud.google.com/)"
+    echo "Please enter your Google Maps API key (used for Maps JS, Places, and Street View depth):"
+    echo "(You can create one from https://console.cloud.google.com/)"
     echo ""
     read -p "Enter your Google Maps API key: " api_key
     if [ ! -z "$api_key" ]; then
-        echo "VITE_GOOGLE_MAPS_API_KEY=$api_key" > .env
+        cat <<EOF > .env
+VITE_GOOGLE_MAPS_API_KEY=$api_key
+GOOGLE_MAPS_API_KEY=$api_key
+EOF
         echo "OK: .env file created"
     else
         echo "WARNING: No API key provided"
-        echo "You can add it later by editing the .env file"
-        echo "VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE" > .env
+        echo "You can add it later by editing the .env file or inside the app under Settings → Street View API Key"
+        cat <<'EOF' > .env
+# Configure Google Maps keys here or supply them via the in-app Settings panel.
+VITE_GOOGLE_MAPS_API_KEY=
+GOOGLE_MAPS_API_KEY=
+EOF
     fi
 else
     echo "OK: .env file found"

@@ -76,7 +76,7 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
    - Verifies Node.js, npm, Git, and Git LFS are installed.
    - Installs npm dependencies.
    - Downloads model files via Git LFS.
-   - Prompts for your Google Maps API key and creates a `.env` file.
+   - Prompts for your Google Maps API key and creates a `.env` file (populating both `VITE_GOOGLE_MAPS_API_KEY` and `GOOGLE_MAPS_API_KEY`, or skip and add it later from Settings → Street View API Key).
    - Runs ESLint and TypeScript checks.
    - Launches the development environment.
 3. To create an installer build, run `install-windows.bat`.
@@ -95,7 +95,7 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
    chmod +x setup.sh
    ./setup.sh
    ```
-   The script performs the same dependency, model download, environment, and quality-check steps as the Windows script before starting the app.
+   The script performs the same dependency, model download, environment, and quality-check steps as the Windows script before starting the app, including writing both Google Maps API key entries when provided.
 
 ### Manual Setup
 
@@ -113,7 +113,7 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
    ```
 
 3. **Configure environment variables**
-   Copy `.env.example` to `.env` in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer `VITE_GOOGLE_MAPS_API_KEY` and Electron main process `GOOGLE_MAPS_API_KEY` so depth requests work everywhere:
+   Copy `.env.example` to `.env` in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer `VITE_GOOGLE_MAPS_API_KEY` and Electron main process `GOOGLE_MAPS_API_KEY` so depth requests work everywhere. You can also leave the variables blank and add the key later from **Settings → Street View API Key** inside the app (the value is stored in the Electron data directory).
    ```env
    VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
    GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
@@ -255,7 +255,7 @@ npm run validate         # Type checking, linting, and tests
 - **"Git LFS not found"**: Install Git LFS from [git-lfs.com](https://git-lfs.com/) or run `git lfs install` after installing the extension.
 - **"Permission denied" when running `setup.sh`**: Make the script executable with `chmod +x setup.sh` (use `sudo` if required by your environment).
 - **Model files did not download**: Run `git lfs pull` manually or fetch them from [Hugging Face](https://huggingface.co/depth-anything/Depth-Anything-V2-Metric-VKITTI-Small) and place them in the paths listed above.
-- **Google Maps API key missing or invalid**: Ensure your `.env` file includes both `VITE_GOOGLE_MAPS_API_KEY` and `GOOGLE_MAPS_API_KEY` with the Maps JavaScript, Places, Street View Static, and Street View Depth APIs enabled.
+- **Google Maps API key missing or invalid**: Ensure your `.env` file includes both `VITE_GOOGLE_MAPS_API_KEY` and `GOOGLE_MAPS_API_KEY`, or add the key from **Settings → Street View API Key**. The key needs the Maps JavaScript, Places, Street View Static, and Street View Depth APIs enabled.
 - **Street View depth rate limits**: If you see a "Street View depth API rate limit" banner, wait for the indicated time or increase the retry interval sparingly. Measurements will continue using ONNX depth until a fresh Street View depth response is available.
 
 ### Application Issues

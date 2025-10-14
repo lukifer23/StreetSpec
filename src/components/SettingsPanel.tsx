@@ -52,6 +52,23 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         </div>
 
         <div className={styles['field']}>
+          <label htmlFor="streetViewApiKey">Google Street View API Key</label>
+          <input
+            id="streetViewApiKey"
+            type="password"
+            value={form.streetViewApiKey ?? ''}
+            onChange={e => handleChange('streetViewApiKey', e.target.value)}
+            placeholder="Use app settings or .env"
+            autoComplete="off"
+            spellCheck={false}
+            title="Key used for Google Maps, Places, and Street View depth requests"
+          />
+          <div className={styles['hint']}>
+            Leave blank to fall back to environment variables. Updating this value persists it securely on your device.
+          </div>
+        </div>
+
+        <div className={styles['field']}>
           <label htmlFor="gpu">Use GPU (if available)</label>
           <input
             id="gpu"

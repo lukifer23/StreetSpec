@@ -9,7 +9,7 @@ import { inflateSync } from 'node:zlib';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseProto } from 'protobufjs';
 import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
-import type { DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
+import type { AppSettings, DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
 
 type StoreConstructor = typeof import('electron-store')['default'];
 type ElectronStoreInstance = InstanceType<StoreConstructor>;
@@ -36,6 +36,20 @@ const fetch = async (...args: FetchArgs): FetchReturn => {
 const DEFAULT_DEPTH_API_MAX_RETRIES = 5;
 const DEFAULT_DEPTH_API_RETRY_DELAY_MS = 1000;
 
+const DEFAULT_APP_SETTINGS: AppSettings = {
+  defaultUnit: 'metric',
+  autoSave: true,
+  theme: 'light',
+  language: 'en',
+  measurementHistoryLimit: 1000,
+  useGPU: false,
+  calibrationPitchOffsetDeg: 0,
+  depthScale: 1,
+  depthBias: 0,
+  depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES,
+  streetViewApiKey: '',
+};
+
 let store: ElectronStoreInstance | null = null;
 const storeReady: Promise<ElectronStoreInstance> = (async () => {
   const { default: Store } = await import('electron-store');
@@ -43,18 +57,7 @@ const storeReady: Promise<ElectronStoreInstance> = (async () => {
     defaults: {
       projects: {},
       measurements: [],
-      settings: {
-        defaultUnit: 'metric',
-        autoSave: true,
-        theme: 'light',
-        language: 'en',
-        measurementHistoryLimit: 1000,
-        useGPU: false,
-        calibrationPitchOffsetDeg: 0,
-        depthScale: 1,
-        depthBias: 0,
-        depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
-      }
+      settings: { ...DEFAULT_APP_SETTINGS }
     },
     schema: {
       projects: {
@@ -124,7 +127,8 @@ const storeReady: Promise<ElectronStoreInstance> = (async () => {
           depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
           autoCalibrateDepth: { type: 'boolean' },
           showDebugOverlay: { type: 'boolean' },
-          depthApiMaxRetries: { type: 'number', minimum: 1, maximum: 10 }
+          depthApiMaxRetries: { type: 'number', minimum: 1, maximum: 10 },
+          streetViewApiKey: { type: 'string' }
         }
       }
     }
@@ -138,6 +142,35 @@ const getStore = (): ElectronStoreInstance => {
   }
   return store;
 };
+
+async function migrateStreetViewApiKey(storeInstance: ElectronStoreInstance): Promise<void> {
+  try {
+    const settings = storeInstance.get('settings', {}) as Partial<AppSettings>;
+    const storedKey = typeof settings.streetViewApiKey === 'string' ? settings.streetViewApiKey.trim() : '';
+
+    if (storedKey) {
+      return;
+    }
+
+    const legacyKey = typeof process.env.VITE_GOOGLE_MAPS_API_KEY === 'string'
+      ? process.env.VITE_GOOGLE_MAPS_API_KEY.trim()
+      : '';
+
+    if (!legacyKey) {
+      return;
+    }
+
+    storeInstance.set('settings', {
+      ...DEFAULT_APP_SETTINGS,
+      ...settings,
+      streetViewApiKey: legacyKey,
+    });
+
+    console.log('[settings] Migrated VITE_GOOGLE_MAPS_API_KEY into persisted Street View API key setting.');
+  } catch (error) {
+    console.warn('[settings] Street View API key migration failed:', error);
+  }
+}
 
 // The built directory structure
 //
@@ -591,12 +624,26 @@ async function extractErrorMessage(response: Response): Promise<string | undefin
 }
 
 async function getRawDepthData(panoId: string, options: DepthFetchOptions = {}): Promise<DepthDataFetchResult> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY;
+  let persistedApiKey = '';
+  try {
+    const storeInstance = getStore();
+    const persistedSettings = storeInstance.get('settings', {}) as Partial<AppSettings>;
+    if (typeof persistedSettings.streetViewApiKey === 'string') {
+      persistedApiKey = persistedSettings.streetViewApiKey.trim();
+    }
+  } catch (error) {
+    if (!(error instanceof Error && error.message.includes('not initialized'))) {
+      console.warn('[depth] Unable to read persisted settings for API key:', error);
+    }
+  }
+
+  const envApiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY ?? '';
+  const apiKey = persistedApiKey || envApiKey;
   if (!apiKey) {
     return {
       status: 'error',
       code: 'NO_API_KEY',
-      message: 'Google Maps API key is not configured for Street View depth requests.',
+      message: 'Street View API key is not configured. Add it in Settings or set GOOGLE_MAPS_API_KEY / VITE_GOOGLE_MAPS_API_KEY.',
       attempts: 0
     };
   }
@@ -1189,37 +1236,45 @@ async function createWindow() {
 
   ipcMain.handle('get-settings', async () => {
     try {
-      return (getStore() as any).get('settings', {
-        defaultUnit: 'metric',
-        autoSave: true,
-        theme: 'light',
-        language: 'en',
-        measurementHistoryLimit: 1000,
-        useGPU: false,
-        calibrationPitchOffsetDeg: 0,
-        depthScale: 1,
-        depthBias: 0,
-        depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
-      });
-    } catch (_error) {
+      const storeInstance = getStore();
+      const storedSettings = storeInstance.get('settings', {}) as Partial<AppSettings>;
+      const sanitizedStreetViewApiKey = typeof storedSettings.streetViewApiKey === 'string'
+        ? storedSettings.streetViewApiKey.trim()
+        : '';
+      const fallbackApiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY ?? '';
+
       return {
-        defaultUnit: 'metric',
-        autoSave: true,
-        theme: 'light',
-        language: 'en',
-        measurementHistoryLimit: 1000,
-        useGPU: false,
-        calibrationPitchOffsetDeg: 0,
-        depthScale: 1,
-        depthBias: 0,
-        depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
-      };
+        ...DEFAULT_APP_SETTINGS,
+        ...storedSettings,
+        streetViewApiKey: sanitizedStreetViewApiKey || fallbackApiKey,
+      } satisfies AppSettings;
+    } catch (_error) {
+      const fallbackApiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY ?? '';
+      return {
+        ...DEFAULT_APP_SETTINGS,
+        streetViewApiKey: fallbackApiKey,
+      } satisfies AppSettings;
     }
   });
 
-  ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: any) => {
+  ipcMain.handle('save-settings', async (_event: IpcMainInvokeEvent, settings: Partial<AppSettings>) => {
     try {
-      (getStore() as any).set('settings', settings);
+      const storeInstance = getStore();
+      const existing = storeInstance.get('settings', {}) as Partial<AppSettings>;
+      const sanitizedStreetViewApiKey = typeof settings.streetViewApiKey === 'string'
+        ? settings.streetViewApiKey.trim()
+        : settings.streetViewApiKey;
+
+      const merged: AppSettings = {
+        ...DEFAULT_APP_SETTINGS,
+        ...existing,
+        ...settings,
+        streetViewApiKey: typeof sanitizedStreetViewApiKey === 'string'
+          ? sanitizedStreetViewApiKey
+          : (existing.streetViewApiKey ?? DEFAULT_APP_SETTINGS.streetViewApiKey),
+      };
+
+      storeInstance.set('settings', merged);
       return true;
     } catch (_error) {
       return false;
@@ -1298,6 +1353,7 @@ async function cleanupOldLogs(logDir: string, daysToKeep: number): Promise<void>
 app.whenReady().then(async () => {
   try {
     await storeReady;
+    await migrateStreetViewApiKey(getStore());
     await loadModel();
   } catch (_error) {
     // Continue anyway, as we want the app to at least start

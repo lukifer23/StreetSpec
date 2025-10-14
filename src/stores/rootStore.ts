@@ -129,6 +129,7 @@ const defaultSettings: AppSettings = {
   depthApiMaxRetries: 5,
   depthQuality: 'high',
   enableDepthCache: true,
+  streetViewApiKey: (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ?? '',
 };
 
 // Create the root store with middleware
