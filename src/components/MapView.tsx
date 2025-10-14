@@ -258,6 +258,7 @@ const MapView: React.FC<{
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const streetViewRef = useRef<google.maps.StreetViewPanorama | null>(null);
   const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Memoized initial position
@@ -320,6 +321,87 @@ const MapView: React.FC<{
     [onCameraParamsChange]
   );
 
+  const clearPrefetchTimer = useCallback(() => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  }, []);
+
+  const triggerPrefetch = useCallback(() => {
+    if (!streetViewRef.current) return;
+
+    const panorama = streetViewRef.current;
+    if (!panorama) return;
+
+    try {
+      const currentPanoId = panorama.getPano();
+      if (!currentPanoId) return;
+
+      const links = panorama.getLinks();
+      if (!links || links.length === 0) return;
+
+      // Get adjacent pano IDs
+      const adjacentPanoIds = links
+        .filter((link): link is google.maps.StreetViewLink & { pano: string } => link != null && link.pano != null)
+        .map(link => link.pano)
+        .slice(0, 3); // Limit to first 3 adjacent panos
+
+      if (adjacentPanoIds.length === 0) return;
+
+      // Get API key from env
+      const apiKey = import.meta.env['VITE_GOOGLE_MAPS_API_KEY'] || '';
+      if (!apiKey) return;
+
+      // Get current camera params
+      const pov = panorama.getPov();
+      const position = panorama.getPosition();
+      const zoom = panorama.getZoom();
+
+      if (!pov || !position) return;
+
+      const aspectRatio = mapContainerRef.current
+        ? mapContainerRef.current.clientWidth / mapContainerRef.current.clientHeight
+        : 16 / 9;
+      const { hFov, vFov } = calculateFov(zoom, aspectRatio);
+
+      const cameraParams: CameraParams = {
+        panoId: currentPanoId,
+        lat: position.lat(),
+        lng: position.lng(),
+        heading: pov.heading,
+        pitch: pov.pitch,
+        zoom: zoom ?? 1,
+        fov: hFov,
+        vFov: vFov
+      };
+
+      // Initialize and trigger prefetch
+      depthPrefetchService.init(apiKey);
+      depthPrefetchService.prefetchAdjacent(
+        currentPanoId,
+        adjacentPanoIds,
+        cameraParams,
+        { maxConcurrent: 2, quality: 'medium', enableCache: true }
+      ).catch(error => {
+        // Silent failure - prefetching is optional
+        console.warn('[MapView] Prefetch failed:', error);
+      });
+    } catch (error) {
+      // Silent error handling
+      console.warn('[MapView] Prefetch trigger error:', error);
+    }
+  }, []);
+
+  const schedulePrefetch = useCallback(() => {
+    if (!isInitialized) return;
+
+    clearPrefetchTimer();
+    prefetchTimerRef.current = window.setTimeout(() => {
+      triggerPrefetch();
+    }, 1000);
+  }, [clearPrefetchTimer, isInitialized, triggerPrefetch]);
+
   // Initialization Effect
   useEffect(() => {
     if (isInitialized || !mapContainerRef.current || typeof window.google === 'undefined' || typeof window.google.maps === 'undefined') {
@@ -350,7 +432,7 @@ const MapView: React.FC<{
 
   // Effect for Subscribing to Panorama Events
   useEffect(() => {
-    if (!streetViewRef.current) return;
+    if (!streetViewRef.current || !isInitialized) return;
     const svInstance = streetViewRef.current;
     const listeners: google.maps.MapsEventListener[] = [];
 
@@ -358,89 +440,18 @@ const MapView: React.FC<{
     listeners.push(svInstance.addListener('position_changed', debouncedUpdateParams));
     listeners.push(svInstance.addListener('pov_changed', debouncedUpdateParams));
     listeners.push(svInstance.addListener('zoom_changed', debouncedUpdateParams));
+    listeners.push(svInstance.addListener('pano_changed', schedulePrefetch));
+    listeners.push(svInstance.addListener('links_changed', schedulePrefetch));
 
     // Initial fetch
     debouncedUpdateParams();
+    schedulePrefetch();
 
     return () => {
       listeners.forEach(listener => listener.remove());
+      clearPrefetchTimer();
     };
-  }, [isInitialized, debouncedUpdateParams]);
-
-  // Prefetch adjacent depth maps when panorama changes
-  useEffect(() => {
-    if (!streetViewRef.current || !isInitialized) return;
-    
-    const triggerPrefetch = () => {
-      const panorama = streetViewRef.current;
-      if (!panorama) return;
-
-      try {
-        const currentPanoId = panorama.getPano();
-        if (!currentPanoId) return;
-
-        const links = panorama.getLinks();
-        if (!links || links.length === 0) return;
-
-        // Get adjacent pano IDs
-        const adjacentPanoIds = links
-          .filter((link): link is google.maps.StreetViewLink & { pano: string } => link != null && link.pano != null)
-          .map(link => link.pano)
-          .slice(0, 3); // Limit to first 3 adjacent panos
-
-        if (adjacentPanoIds.length === 0) return;
-
-        // Get API key from env
-        const apiKey = import.meta.env['VITE_GOOGLE_MAPS_API_KEY'] || '';
-        if (!apiKey) return;
-
-        // Get current camera params
-        const pov = panorama.getPov();
-        const position = panorama.getPosition();
-        const zoom = panorama.getZoom();
-        
-        if (!pov || !position) return;
-
-        const aspectRatio = mapContainerRef.current
-          ? mapContainerRef.current.clientWidth / mapContainerRef.current.clientHeight
-          : 16 / 9;
-        const { hFov, vFov } = calculateFov(zoom, aspectRatio);
-
-        const cameraParams: CameraParams = {
-          panoId: currentPanoId,
-          lat: position.lat(),
-          lng: position.lng(),
-          heading: pov.heading,
-          pitch: pov.pitch,
-          zoom: zoom ?? 1,
-          fov: hFov,
-          vFov: vFov
-        };
-
-        // Initialize and trigger prefetch
-        depthPrefetchService.init(apiKey);
-        depthPrefetchService.prefetchAdjacent(
-          currentPanoId,
-          adjacentPanoIds,
-          cameraParams,
-          { maxConcurrent: 2, quality: 'medium', enableCache: true }
-        ).catch(error => {
-          // Silent failure - prefetching is optional
-          console.warn('[MapView] Prefetch failed:', error);
-        });
-      } catch (error) {
-        // Silent error handling
-        console.warn('[MapView] Prefetch trigger error:', error);
-      }
-    };
-
-    // Debounce prefetch to avoid triggering too frequently
-    const prefetchTimer = setTimeout(triggerPrefetch, 1000);
-
-    return () => {
-      clearTimeout(prefetchTimer);
-    };
-  }, [isInitialized]);
+  }, [clearPrefetchTimer, debouncedUpdateParams, isInitialized, schedulePrefetch]);
 
   // Memoized container style
   const containerStyle = useMemo(() => ({
