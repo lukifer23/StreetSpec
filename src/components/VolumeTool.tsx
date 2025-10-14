@@ -3,6 +3,7 @@ import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
+import { convertLengthToDisplay, convertVolumeToDisplay } from '../utils/units';
 import styles from './VolumeTool.module.css';
 
 interface VolumePoint extends Point {
@@ -140,14 +141,14 @@ const VolumeTool: React.FC = () => {
             : 0.45;
 
       // Create volume measurement object
+      const { value: displayVolumeValue } = convertVolumeToDisplay(volume, defaultUnit);
+
       const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'volume',
         label: `Volume (${dimensions.length.toFixed(1)}m x ${dimensions.width.toFixed(1)}m x ${dimensions.height.toFixed(1)}m)`,
         startPoint: points[0]!,
         endPoint: points[1]!,
-        distance: defaultUnit === 'imperial'
-          ? volume * 35.315 // Cubic meters to cubic feet
-          : volume,
+        distance: displayVolumeValue ?? volume,
         unit: defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
@@ -191,11 +192,11 @@ const VolumeTool: React.FC = () => {
 
   if (!isVolumeToolActive) return null;
 
-  const displayVolume = defaultUnit === 'imperial'
-    ? volume * 35.315 // Cubic meters to cubic feet
-    : volume;
-  const volumeUnit = defaultUnit === 'imperial' ? 'cu ft' : 'cu m';
-  const lengthUnit = defaultUnit === 'imperial' ? 'ft' : 'm';
+  const { value: displayVolumeValue, unitLabel: volumeUnit } = convertVolumeToDisplay(volume, defaultUnit);
+  const { value: displayHeightValue, unitLabel: lengthUnit } = convertLengthToDisplay(height, defaultUnit);
+  const { value: displayLengthValue } = convertLengthToDisplay(dimensions.length, defaultUnit);
+  const { value: displayWidthValue } = convertLengthToDisplay(dimensions.width, defaultUnit);
+  const { value: displayDimensionHeightValue } = convertLengthToDisplay(dimensions.height, defaultUnit);
 
   return (
     <div className={styles['volumeTool']}>
@@ -213,7 +214,7 @@ const VolumeTool: React.FC = () => {
 
         <div className={styles['heightControl']}>
           <label>
-            Height: {defaultUnit === 'imperial' ? (height * 3.281).toFixed(1) : height.toFixed(1)} {lengthUnit}
+            Height: {displayHeightValue !== undefined ? displayHeightValue.toFixed(1) : '--'} {lengthUnit}
           </label>
           <input
             type="range"
@@ -231,13 +232,13 @@ const VolumeTool: React.FC = () => {
             Points: {points.length}/2
           </div>
 
-          {volume > 0 && (
+          {volume > 0 && displayVolumeValue !== undefined && displayLengthValue !== undefined && displayWidthValue !== undefined && displayDimensionHeightValue !== undefined && (
             <div className={styles['volumeInfo']}>
               <div className={styles['volumeValue']}>
-                Volume: {displayVolume.toFixed(2)} {volumeUnit}
+                Volume: {displayVolumeValue.toFixed(2)} {volumeUnit}
               </div>
               <div className={styles['dimensions']}>
-                Dimensions: {dimensions.length.toFixed(1)} x {dimensions.width.toFixed(1)} x {dimensions.height.toFixed(1)} {lengthUnit === 'm' ? 'm' : 'ft'}
+                Dimensions: {displayLengthValue.toFixed(1)} x {displayWidthValue.toFixed(1)} x {displayDimensionHeightValue.toFixed(1)} {lengthUnit}
               </div>
             </div>
           )}

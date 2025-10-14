@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
-import { UNIT_CONVERSIONS } from '../types/common';
+import { convertAreaToDisplay, convertLengthToDisplay } from '../utils/units';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
 import styles from './AreaTool.module.css';
 
@@ -157,14 +157,14 @@ const AreaTool: React.FC = () => {
             : 0.55;
 
       // Create area measurement object
+      const { value: displayAreaValue } = convertAreaToDisplay(area, defaultUnit);
+
       const areaMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'area',
         label: `Area (${points.length} points)`,
         startPoint: points[0]!,
         endPoint: points[points.length - 1]!,
-        distance: defaultUnit === 'imperial'
-          ? area * 10.764 // Square meters to square feet
-          : area,
+        distance: displayAreaValue ?? area,
         unit: defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
@@ -204,14 +204,8 @@ const AreaTool: React.FC = () => {
 
   if (!isAreaToolActive) return null;
 
-  const displayArea = defaultUnit === 'imperial'
-    ? area * 10.764 // Square meters to square feet
-    : area;
-  const displayPerimeter = defaultUnit === 'imperial'
-    ? UNIT_CONVERSIONS.metersToFeet(perimeter)
-    : perimeter;
-  const areaUnit = defaultUnit === 'imperial' ? 'sq ft' : 'sq m';
-  const perimeterUnit = defaultUnit === 'imperial' ? 'ft' : 'm';
+  const { value: displayAreaValue, unitLabel: areaUnit } = convertAreaToDisplay(area, defaultUnit);
+  const { value: displayPerimeterValue, unitLabel: perimeterUnit } = convertLengthToDisplay(perimeter, defaultUnit);
 
   return (
     <div className={styles['areaTool']}>
@@ -232,13 +226,13 @@ const AreaTool: React.FC = () => {
             Points: {points.length}
           </div>
 
-          {area > 0 && (
+          {area > 0 && displayAreaValue !== undefined && displayPerimeterValue !== undefined && (
             <div className={styles['areaInfo']}>
               <div className={styles['areaValue']}>
-                Area: {displayArea.toFixed(2)} {areaUnit}
+                Area: {displayAreaValue.toFixed(2)} {areaUnit}
               </div>
               <div className={styles['perimeterValue']}>
-                Perimeter: {displayPerimeter.toFixed(2)} {perimeterUnit}
+                Perimeter: {displayPerimeterValue.toFixed(2)} {perimeterUnit}
               </div>
             </div>
           )}
