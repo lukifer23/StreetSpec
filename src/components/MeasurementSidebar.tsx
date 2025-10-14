@@ -1,57 +1,10 @@
 import React, { useCallback } from 'react';
 import { useRootStore, useMeasurementActions, useSettingsActions } from '../stores/rootStore';
 import type { Measurement } from '../types/common';
-import {
-  convertLengthToDisplay,
-  convertAreaToDisplay,
-  convertVolumeToDisplay,
-  type UnitSystem
-} from '../utils/units';
+import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
+import type { UnitSystem } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
 import styles from './MeasurementSidebar.module.css';
-
-const hasFiniteValue = (value: number | null | undefined): value is number =>
-  value !== null && value !== undefined && Number.isFinite(value);
-
-const getActiveUnitSystem = (
-  baseValue: number | null | undefined,
-  measurementUnit: UnitSystem,
-  defaultUnit: UnitSystem
-): UnitSystem => (hasFiniteValue(baseValue) ? defaultUnit : measurementUnit);
-
-const getLengthDisplay = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem,
-  baseValue: number | null | undefined,
-  fallbackValue?: number | null
-) => {
-  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
-  const converted = convertLengthToDisplay(baseValue, unitSystem);
-  if (!hasFiniteValue(baseValue) && hasFiniteValue(fallbackValue)) {
-    return { value: fallbackValue, unitLabel: converted.unitLabel, unitSystem };
-  }
-  return { ...converted, unitSystem };
-};
-
-const getAreaDisplay = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem,
-  baseValue: number | null | undefined
-) => {
-  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
-  const converted = convertAreaToDisplay(baseValue, unitSystem);
-  return { ...converted, unitSystem };
-};
-
-const getVolumeDisplay = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem,
-  baseValue: number | null | undefined
-) => {
-  const unitSystem = getActiveUnitSystem(baseValue, measurement.unit, defaultUnit);
-  const converted = convertVolumeToDisplay(baseValue, unitSystem);
-  return { ...converted, unitSystem };
-};
 
 const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string => {
   switch (measurement.kind) {
@@ -107,46 +60,6 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
   }
 
   return parts.length > 0 ? parts.join(' | ') : undefined;
-};
-
-const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
-
-const getDisplayValue = (
-  measurement: Measurement,
-  defaultUnit: UnitSystem
-): { value?: number; unitLabel: string; unitSystem: UnitSystem } => {
-  switch (measurement.kind) {
-    case 'distance':
-    case 'polyline':
-      return getLengthDisplay(
-        measurement,
-        defaultUnit,
-        measurement.distanceMeters,
-        measurement.distance
-      );
-    case 'area':
-      return getAreaDisplay(measurement, defaultUnit, measurement.areaSquareMeters);
-    case 'volume':
-      return getVolumeDisplay(measurement, defaultUnit, measurement.volumeCubicMeters);
-    default:
-      return {
-        value: undefined,
-        unitLabel: measurement.unit === 'imperial' ? 'imperial' : 'metric',
-        unitSystem: measurement.unit
-      };
-  }
-};
-
-const getSegmentSummary = (measurement: Measurement) => {
-  const meta = measurement.metadata as { segmentDistancesMeters?: unknown } | undefined;
-  const segments = meta?.segmentDistancesMeters;
-  if (!Array.isArray(segments) || segments.length === 0) {
-    return '';
-  }
-  return segments
-    .map((segment) => (typeof segment === 'number' && Number.isFinite(segment) ? segment.toFixed(3) : ''))
-    .filter(Boolean)
-    .join('|');
 };
 
 const MeasurementSidebar: React.FC = () => {
@@ -242,7 +155,7 @@ const MeasurementSidebar: React.FC = () => {
         m.confidence !== undefined ? m.confidence.toFixed(2) : ''
       ];
 
-      return raw.map((value) => escapeCsv(String(value ?? ''))).join(',');
+      return formatCsvRow(raw);
     });
     const csvContent = [header, ...rows].join('\n');
 
