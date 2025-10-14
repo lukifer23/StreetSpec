@@ -322,27 +322,26 @@ const StartButton = React.memo<{
     fontWeight: 'bold',
     borderRadius: '8px',
     border: '2px solid',
-    cursor: (cameraParams && (onnxDepthMap || depthData) && isCalibrated) ? 'pointer' : 'not-allowed',
+    cursor: (cameraParams && (onnxDepthMap || depthData)) ? 'pointer' : 'not-allowed',
     pointerEvents: 'auto' as const,
     transition: 'all 0.2s ease',
     minWidth: '140px',
     textAlign: 'center' as const
-  } as React.CSSProperties), [cameraParams, onnxDepthMap, depthData, isCalibrated]);
+  } as React.CSSProperties), [cameraParams, onnxDepthMap, depthData]);
 
-  const isDisabled = !cameraParams || (!onnxDepthMap && !depthData) || !isCalibrated;
+  const isDisabled = !cameraParams || (!onnxDepthMap && !depthData);
   
   const getTitle = useCallback(() => {
     if (!cameraParams) return "Waiting for camera parameters...";
     if (!onnxDepthMap && !depthData) return "Generate Depth Map first!";
-    if (!isCalibrated) return "Calibrate horizon first!";
+    if (!isCalibrated) return "Optional: calibrate horizon for best accuracy. Start anyway.";
     return "Start Height Estimation (M)";
   }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
 
   const getButtonText = useCallback(() => {
     if (!cameraParams) return 'Waiting for Camera...';
     if (!onnxDepthMap && !depthData) return 'Generate Depth Map';
-    if (!isCalibrated) return 'Calibrate Horizon';
-    return 'Estimate Height (M)';
+    return isCalibrated ? 'Estimate Height (M)' : 'Estimate Height (Uncalibrated)';
   }, [cameraParams, onnxDepthMap, depthData, isCalibrated]);
 
   const getButtonStyles = useCallback(() => {
@@ -358,13 +357,13 @@ const StartButton = React.memo<{
       baseStyles.color = 'white';
 
       // Add hover effect
-      if (cameraParams && (onnxDepthMap || depthData) && isCalibrated) {
+      if (cameraParams && (onnxDepthMap || depthData)) {
         (baseStyles as any).boxShadow = '0 4px 12px rgba(0,123,255,0.3)';
       }
     }
 
     return baseStyles;
-  }, [buttonStyle, isDisabled, cameraParams, onnxDepthMap, depthData, isCalibrated]);
+  }, [buttonStyle, isDisabled, cameraParams, onnxDepthMap, depthData]);
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -419,8 +418,8 @@ const MeasurementTool: React.FC = () => {
 
   const hasDepthSupport = useMemo(() => Boolean(onnxDepthMap || depthData), [onnxDepthMap, depthData]);
   const showEstimatePrompt = useMemo(
-    () => phase === 'idle' && isCalibrated && hasDepthSupport,
-    [phase, isCalibrated, hasDepthSupport]
+    () => phase === 'idle' && hasDepthSupport,
+    [phase, hasDepthSupport]
   );
 
   const getClickCoords = useCallback((event: React.MouseEvent<HTMLDivElement>): Point | null => {
@@ -474,6 +473,9 @@ const MeasurementTool: React.FC = () => {
     const viewHeight = overlayRef.current?.offsetHeight || 640;
     console.log('[measure] View dimensions:', { viewWidth, viewHeight });
 
+    // Enforce vertical snapping for calculation: keep X aligned with base
+    const snappedEnd: Point = { x: startPoint.x, y: coords.y };
+
     // Distance estimates
     let distanceToBase: number | null = null;
     // Vertical height derived from Street View depth planes
@@ -487,7 +489,7 @@ const MeasurementTool: React.FC = () => {
     // When Street View depth planes are available, compute world points directly
     if (depthData) {
       worldStart = screenToWorldWithDepth(startPoint, currentCameraParams, viewWidth, viewHeight, depthData);
-      worldEnd = screenToWorldWithDepth(coords, currentCameraParams, viewWidth, viewHeight, depthData);
+      worldEnd = screenToWorldWithDepth(snappedEnd, currentCameraParams, viewWidth, viewHeight, depthData);
       if (worldStart && worldEnd) {
         // Use vertical component of world coordinates for height
         planeHeight = Math.abs(worldEnd.y - worldStart.y);
@@ -566,6 +568,21 @@ const MeasurementTool: React.FC = () => {
       }
     }
 
+    // Always compute a ground-plane base distance as a stable anchor
+    try {
+      if (currentCameraParams) {
+        const dirBase = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
+        const wpBase = estimateGroundPlaneIntersection(dirBase, currentCameraParams);
+        if (wpBase) {
+          const gpDist = calculateDistance3D({ x: 0, y: 0, z: 0 }, wpBase);
+          // Use ground-plane distance if primary estimate is missing or clearly unreasonable
+          if (distanceToBase === null || !Number.isFinite(distanceToBase) || distanceToBase <= 0.1) {
+            distanceToBase = gpDist;
+          }
+        }
+      }
+    } catch {}
+
     if (distanceToBase === null) {
       // fallback to ground plane
       const dir = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
@@ -598,7 +615,7 @@ const MeasurementTool: React.FC = () => {
     if (distanceToBase !== null) {
       estimatedHeight = calculateEstimatedHeight(
         startPoint,
-        coords,
+        snappedEnd,
         viewWidth,
         viewHeight,
         currentCameraParams,
@@ -660,7 +677,7 @@ const MeasurementTool: React.FC = () => {
       distanceMeters: finalHeight,
       distance: finalDistance ?? finalHeight,
       startPoint,
-      endPoint: coords,
+      endPoint: snappedEnd,
       unit: defaultUnit,
       panoId: currentCameraParams.panoId ?? currentCameraParams.pano,
       cameraParams: currentCameraParams,
@@ -704,7 +721,7 @@ const MeasurementTool: React.FC = () => {
       return;
     }
 
-    if (!isCalibrated || !hasDepthSupport) {
+    if (!hasDepthSupport) {
       console.log('[measure] Prerequisites missing, ignoring click');
       return;
     }
@@ -778,20 +795,19 @@ const MeasurementTool: React.FC = () => {
       return;
     }
 
-    if (!isCalibrated) {
-      pushNotification({
-        kind: 'warning',
-        message: 'Please calibrate the horizon first. Use Manual Calibrate on the horizon line.',
-      });
-      return;
-    }
-
     if (!hasDepthSupport) {
       pushNotification({
         kind: 'warning',
         message: 'Depth data is required. Generate a depth map for this location.',
       });
       return;
+    }
+
+    if (!isCalibrated) {
+      pushNotification({
+        kind: 'info',
+        message: 'Measuring without horizon calibration. Results may be less accurate. You can calibrate anytime for best accuracy.',
+      });
     }
 
     // Additional validation
@@ -895,7 +911,9 @@ const MeasurementTool: React.FC = () => {
       >
         {showEstimatePrompt && (
           <div className={styles['estimatePrompt']} role="status" aria-live="polite">
-            Calibration complete! Press "Estimate Height" (or tap <kbd>M</kbd>) to begin measuring.
+            {isCalibrated
+              ? 'Calibration complete! Press "Estimate Height" (or tap M) to begin measuring.'
+              : 'Depth ready. For best accuracy, calibrate the horizon (optional). Press "Estimate Height" (or tap M) to start.'}
           </div>
         )}
         <StartButton

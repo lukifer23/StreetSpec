@@ -24,7 +24,6 @@ const getExportValue = (
 
 export const useAppLogic = (apiKey: string) => {
   const [isApiLoaded, setIsApiLoaded] = useState(false);
-  const [isCalibrated, setIsCalibrated] = useState(false);
   const [depthFetchStatus, setDepthFetchStatus] = useState<DepthDataFetchResult | null>(null);
   const lastSavedMeasurements = useRef<string | null>(null);
   const lastSavedProjectId = useRef<string | null>(null);
@@ -44,6 +43,7 @@ export const useAppLogic = (apiKey: string) => {
     onnxDepthMap: state.onnxDepthMap,
     depthData: state.depthData,
     currentProjectId: state.currentProjectId,
+    isCalibrated: state.isCalibrated,
 
     // Actions (these are stable references in Zustand)
     loadProjects: state.loadProjects,
@@ -67,6 +67,7 @@ export const useAppLogic = (apiKey: string) => {
     setDepthData: state.setDepthData,
     saveCurrentProject: state.saveCurrentProject,
     setTargetCoords: state.setTargetCoords,
+    setIsCalibrated: state.setIsCalibrated,
   })));
 
   const {
@@ -83,6 +84,7 @@ export const useAppLogic = (apiKey: string) => {
     onnxDepthMap,
     depthData,
     currentProjectId,
+    isCalibrated,
     loadProjects,
     deleteMeasurement,
     renameMeasurement,
@@ -104,6 +106,7 @@ export const useAppLogic = (apiKey: string) => {
     setDepthData,
     saveCurrentProject,
     setTargetCoords,
+    setIsCalibrated,
   } = store;
 
   useEffect(() => {
@@ -281,7 +284,7 @@ export const useAppLogic = (apiKey: string) => {
   }, [currentCameraParams, settings, updateSettings, setCalibrateMode]);
 
   const handleAutoCalibrate = useCallback(async () => {
-    if (!currentCameraParams || !depthData || !onnxDepthMap) {
+    if (!currentCameraParams || (!depthData && !onnxDepthMap)) {
       pushNotification({
         kind: 'warning',
         message: 'Auto-calibration requires depth data. Please generate a depth map first.',
@@ -295,7 +298,40 @@ export const useAppLogic = (apiKey: string) => {
       const viewWidth = mapViewElement?.clientWidth ?? 800;
       const viewHeight = mapViewElement?.clientHeight ?? 600;
 
-      const result = detectHorizonFromDepth(depthData, currentCameraParams, viewWidth, viewHeight);
+      let result = depthData
+        ? detectHorizonFromDepth(depthData, currentCameraParams, viewWidth, viewHeight)
+        : { detected: false, confidence: 0, pitchOffset: 0, method: 'fallback' as const };
+
+      // Fallback: estimate pitch using ONNX depth gradient when Street View planes are unavailable
+      if ((!result.detected || result.confidence < 0.4) && onnxDepthMap) {
+        try {
+          // Simple heuristic: horizon tends to align where vertical gradient magnitude is minimal across rows.
+          const h = onnxDepthMap.height;
+          const w = onnxDepthMap.width;
+          const data = onnxDepthMap.data;
+          let bestRow = Math.floor(h / 2);
+          let bestScore = Number.POSITIVE_INFINITY;
+          for (let y = Math.floor(h * 0.25); y < Math.floor(h * 0.75); y += 2) {
+            let sum = 0;
+            for (let x = 1; x < w; x += 2) {
+              const i = y * w + x;
+              const left = data[i - 1] ?? data[i];
+              const dx = data[i] - left;
+              sum += Math.abs(dx);
+            }
+            if (sum < bestScore) {
+              bestScore = sum;
+              bestRow = y;
+            }
+          }
+          const vFov = currentCameraParams.vFov ?? 60;
+          const angle = pixelOffsetToVerticalAngle(bestRow, h, vFov);
+          const pitchOffset = -(currentCameraParams.pitch ?? 0) - angle;
+          result = { detected: true, confidence: 0.45, pitchOffset, method: 'depth' } as any;
+        } catch {
+          // ignore fallback errors
+        }
+      }
 
       if (result.detected && result.confidence > 0.5) {
         const newSettings = { ...settings, calibrationPitchOffsetDeg: result.pitchOffset };
