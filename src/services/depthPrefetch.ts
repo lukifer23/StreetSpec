@@ -1,6 +1,7 @@
 import type { CameraParams } from '../types/common';
 import { generateDepthMap, createDepthMapFetcher, type DepthGenerationDeps } from './depthGeneration';
 import { getCachedDepthMap, cacheDepthMap } from './depth';
+import { getRateLimitStatus } from './rateLimiter';
 
 /**
  * Depth map prefetching service for predictive loading
@@ -25,6 +26,8 @@ class DepthPrefetchService {
   private readonly maxConcurrent: number = 2; // Conservative to avoid overwhelming system
   private apiKey: string = '';
   private deps: DepthGenerationDeps | null = null;
+  private lastPrefetchTimestamp = 0;
+  private readonly prefetchCooldownMs = 3000;
 
   /**
    * Initialize the prefetch service
@@ -42,6 +45,19 @@ class DepthPrefetchService {
         return await window.electronAPI.invoke('infer-depth', base64data);
       }
     };
+  }
+
+  private getConcurrencyBudget(maxConcurrent: number): number {
+    const defaultBudget = Math.max(1, maxConcurrent);
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') {
+        const halfOfCores = Math.max(1, Math.floor(navigator.hardwareConcurrency / 2));
+        return Math.max(1, Math.min(maxConcurrent, halfOfCores));
+      }
+    } catch (error) {
+      console.warn('[DepthPrefetch] Failed to read hardware concurrency:', error);
+    }
+    return defaultBudget;
   }
 
   /**
@@ -64,14 +80,39 @@ class DepthPrefetchService {
 
     const { maxConcurrent = this.maxConcurrent, enableCache = true, quality = 'medium' } = options;
 
+    const concurrencyBudget = this.getConcurrencyBudget(maxConcurrent);
+    const availableSlots = Math.max(0, concurrencyBudget - this.activeTasks.size);
+
+    if (availableSlots <= 0) {
+      console.log('[DepthPrefetch] Skipping prefetch - no available concurrency budget');
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastPrefetchTimestamp < this.prefetchCooldownMs) {
+      console.log('[DepthPrefetch] Skipping prefetch - cooldown active');
+      return;
+    }
+
+    const rateStatus = getRateLimitStatus('google-maps');
+    if (rateStatus) {
+      const atCapacity = rateStatus.circuitOpen || rateStatus.requests >= rateStatus.maxRequests;
+      if (atCapacity) {
+        console.log('[DepthPrefetch] Skipping prefetch - rate limiter at capacity');
+        return;
+      }
+    }
+
     // Filter out panos that are already being prefetched or current pano
     const panosToPrefetch = adjacentPanoIds
       .filter(id => id !== currentPanoId && !this.activeTasks.has(id))
-      .slice(0, maxConcurrent); // Limit concurrent prefetches
+      .slice(0, availableSlots); // Limit to available concurrency slots
 
     if (panosToPrefetch.length === 0) {
       return;
     }
+
+    this.lastPrefetchTimestamp = now;
 
     console.log(`[DepthPrefetch] Prefetching ${panosToPrefetch.length} adjacent panos`);
 
