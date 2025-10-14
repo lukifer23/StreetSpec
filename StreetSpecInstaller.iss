@@ -4,7 +4,7 @@
 #define MyAppURL "https://streetspec.app"
 #define MyAppExeName "Street Spec Desktop.exe"
 #define MyAppAssocName MyAppName + " File"
-#define MyAppAssocExt ".myp"
+#define MyAppAssocExt ".ssp"
 #define MyAppAssocKey StringChange(MyAppAssocName, " ", "") + MyAppAssocExt
 
 ; Enhanced installer configuration
