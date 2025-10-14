@@ -36,9 +36,7 @@ function App() {
     isGeneratingMap,
     calibrateMode,
     error,
-    mapGenerationError,
     isProjectPanelOpen,
-    targetCoords,
     currentCameraParams,
     onnxDepthMap,
 
