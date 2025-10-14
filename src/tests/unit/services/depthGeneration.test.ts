@@ -13,6 +13,14 @@ const baseCameraParams: CameraParams = {
 
 describe('depthGeneration helpers', () => {
 
+  beforeAll(() => {
+    (globalThis as unknown as { FileReader?: unknown }).FileReader = undefined;
+    if (typeof globalThis.btoa !== 'function') {
+      (globalThis as unknown as { btoa?: (input: string) => string }).btoa = (input: string) =>
+        Buffer.from(input, 'binary').toString('base64');
+    }
+  });
+
   it('returns cached depth maps without hitting the network', async () => {
     const cachedDepthMap: OnnxDepthMap = { data: [1, 2, 3], width: 1, height: 3 };
 
@@ -32,7 +40,7 @@ describe('depthGeneration helpers', () => {
   });
 
   it('awaits caching before resolving when generating a new depth map', async () => {
-    const imageBuffer = Buffer.from([1, 2, 3]);
+    const imageBuffer = Uint8Array.from([1, 2, 3]).buffer;
     const blob = {
       type: 'image/jpeg',
       arrayBuffer: async () => imageBuffer
@@ -70,7 +78,7 @@ describe('depthGeneration helpers', () => {
       ok: false,
       status: 500,
       statusText: 'Internal Error',
-      arrayBuffer: async () => Buffer.from([]),
+      arrayBuffer: async () => new ArrayBuffer(0),
     } as Response;
 
     await expect(generateDepthMap(baseCameraParams, 'api-key', {
@@ -82,7 +90,7 @@ describe('depthGeneration helpers', () => {
   });
 
   it('throws when inference result is invalid', async () => {
-    const imageBuffer = Buffer.from([1, 2, 3]);
+    const imageBuffer = Uint8Array.from([1, 2, 3]).buffer;
     const blob = {
       type: 'image/jpeg',
       arrayBuffer: async () => imageBuffer

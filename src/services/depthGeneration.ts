@@ -3,11 +3,39 @@ import { cacheDepthMap, getCachedDepthMap } from './depth';
 import { executeWithRateLimit } from './rateLimiter';
 
 export async function blobToDataUrl(blob: Blob): Promise<string> {
-  // Convert blob to base64 data URL for ONNX inference
-  const arrayBuffer = await blob.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const base64 = buffer.toString('base64');
   const mimeType = blob.type || 'application/octet-stream';
+
+  if (typeof FileReader !== 'undefined') {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          resolve(result);
+        } else {
+          reject(new Error('Failed to read blob as data URL.'));
+        }
+      };
+      reader.onerror = () => reject(reader.error ?? new Error('FileReader error.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  const arrayBuffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  if (typeof btoa !== 'function') {
+    throw new Error('Base64 encoding is not supported in this environment.');
+  }
+
+  const base64 = btoa(binary);
   return `data:${mimeType};base64,${base64}`;
 }
 
