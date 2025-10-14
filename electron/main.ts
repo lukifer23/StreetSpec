@@ -840,6 +840,36 @@ const isTinyModel = selectedModelFilename.includes('vit_tiny');
 
 let modelInputShape: [number, number, number, number] = isTinyModel ? [1, 3, 384, 384] : [1, 3, 518, 518];
 
+const CPU_EXECUTION_PROVIDERS = ['cpu'] as const;
+
+type ExecutionProviderList = string[];
+
+let activeExecutionProviders: ExecutionProviderList = Array.from(CPU_EXECUTION_PROVIDERS);
+
+function getPreferredExecutionProviders(useGPU: boolean): ExecutionProviderList {
+  if (!useGPU) {
+    return Array.from(CPU_EXECUTION_PROVIDERS);
+  }
+
+  switch (process.platform) {
+    case 'win32':
+      return ['dml', ...CPU_EXECUTION_PROVIDERS];
+    case 'darwin':
+      return ['coreml', ...CPU_EXECUTION_PROVIDERS];
+    case 'linux':
+      return ['cuda', ...CPU_EXECUTION_PROVIDERS];
+    default:
+      return Array.from(CPU_EXECUTION_PROVIDERS);
+  }
+}
+
+function providerListsEqual(a: ExecutionProviderList, b: ExecutionProviderList): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((provider, index) => provider === b[index]);
+}
+
 async function loadModel(): Promise<void> {
   const { resolvedPath: modelPath, candidates } = resolveModelPath(selectedModelFilename);
 
@@ -858,13 +888,22 @@ async function loadModel(): Promise<void> {
     return;
   }
 
+  let providerAttempts: ExecutionProviderList[] = [];
+  let attemptedGpuProviders: ExecutionProviderList | null = null;
+  let providersUsed: ExecutionProviderList | null = null;
+
   try {
     console.log('[model] Loading ONNX model...');
     logMemoryUsage('Before model load');
-    
+
+    const storeInstance = getStore();
+    const persistedSettings = storeInstance.get('settings', {}) as { useGPU?: boolean };
+    const persistedUseGPU = Boolean(persistedSettings?.useGPU);
+
+    console.log('[model] GPU preference from settings:', persistedUseGPU);
+
     // Configure session options for better memory management
-    const sessionOptions: ort.InferenceSession.SessionOptions = {
-      executionProviders: ['cpu'],
+    const sessionOptionsBase: Omit<ort.InferenceSession.SessionOptions, 'executionProviders'> = {
       graphOptimizationLevel: 'all',
       enableCpuMemArena: true,
       enableMemPattern: true,
@@ -877,28 +916,81 @@ async function loadModel(): Promise<void> {
         }
       }
     };
-    
-    // Try with optimized session options
-    depthSession = await ort.InferenceSession.create(modelPath, sessionOptions);
-    
+
+    const preferredProviders = getPreferredExecutionProviders(persistedUseGPU);
+    const cpuProviders = Array.from(CPU_EXECUTION_PROVIDERS);
+
+    providerAttempts = [];
+    attemptedGpuProviders = null;
+    providersUsed = null;
+    let lastError: unknown = null;
+
+    if (persistedUseGPU && !providerListsEqual(preferredProviders, cpuProviders)) {
+      providerAttempts.push(preferredProviders);
+      attemptedGpuProviders = preferredProviders;
+    }
+
+    providerAttempts.push(cpuProviders);
+
+    for (const providers of providerAttempts) {
+      console.log('[model] Attempting to initialize session with providers:', providers.join(', '));
+
+      try {
+        const sessionOptions: ort.InferenceSession.SessionOptions = {
+          ...sessionOptionsBase,
+          executionProviders: providers
+        };
+
+        depthSession = await ort.InferenceSession.create(modelPath, sessionOptions);
+        providersUsed = providers;
+        break;
+      } catch (error) {
+        lastError = error;
+        depthSession = null;
+
+        if (attemptedGpuProviders && providerListsEqual(providers, attemptedGpuProviders)) {
+          console.warn('[model] Failed to initialize GPU providers, falling back to CPU:', error);
+          console.warn('[model] GPU providers attempted:', attemptedGpuProviders.join(', '));
+          continue;
+        }
+
+        break;
+      }
+    }
+
+    if (!depthSession || !providersUsed) {
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    }
+
     console.log('[model] Model loaded successfully');
+    console.log('[model] Execution providers in use:', providersUsed.join(', '));
+
+    activeExecutionProviders = [...providersUsed];
+
+    if (attemptedGpuProviders && providerListsEqual(providersUsed, cpuProviders)) {
+      console.warn('[model] GPU initialization failed; running session on CPU execution providers.');
+    }
+
     console.log('[model] Input names:', depthSession.inputNames);
     console.log('[model] Output names:', depthSession.outputNames);
     logMemoryUsage('After model load');
-    
+
     if (win) {
-      win.webContents.send('main-process-message', { type: 'model-status', status: 'loaded' });
+      win.webContents.send('main-process-message', { type: 'model-status', status: 'loaded', providers: providersUsed });
     }
 
   } catch (error) {
     depthSession = null;
-    console.error('[model] Failed to load model:', error);
+    activeExecutionProviders = [];
+    console.error('[model] Failed to load model after attempting available providers:',
+      providerAttempts.map(p => p.join(', ')),
+      error);
     logMemoryUsage('After model load failure');
-    
+
     if (win) {
       win.webContents.send('main-process-message', { type: 'error', message: `Failed to load ONNX model: ${error}` });
     }
-    
+
     throw error; // Re-throw for proper error handling
   }
 }
@@ -1227,6 +1319,41 @@ async function createWindow() {
       return true;
     } catch (_error) {
       return false;
+    }
+  });
+
+  ipcMain.handle('set-use-gpu', async (_event: IpcMainInvokeEvent, enableGpu: boolean) => {
+    const storeInstance = getStore();
+    const previousValue = Boolean(storeInstance.get('settings.useGPU', false));
+    const desiredValue = Boolean(enableGpu);
+
+    if (previousValue === desiredValue) {
+      return { success: true, reloaded: false, useGPU: previousValue, providers: [...activeExecutionProviders] };
+    }
+
+    try {
+      storeInstance.set('settings.useGPU', desiredValue);
+      console.log('[ipc:set-use-gpu] Updating GPU preference to', desiredValue);
+      const reloaded = await reloadModelSession();
+      const providers = [...activeExecutionProviders];
+
+      if (!reloaded) {
+        storeInstance.set('settings.useGPU', previousValue);
+        console.warn('[ipc:set-use-gpu] Reload failed, restored previous GPU setting:', previousValue);
+        return { success: false, reloaded: false, useGPU: previousValue, providers };
+      }
+
+      return { success: true, reloaded: true, useGPU: desiredValue, providers };
+    } catch (error) {
+      storeInstance.set('settings.useGPU', previousValue);
+      console.error('[ipc:set-use-gpu] Failed to toggle GPU preference:', error);
+      return {
+        success: false,
+        reloaded: false,
+        useGPU: previousValue,
+        providers: [...activeExecutionProviders],
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   });
 
