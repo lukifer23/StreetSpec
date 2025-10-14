@@ -113,13 +113,14 @@ export const useAppLogic = (apiKey: string) => {
 
   // Load Google Maps API
   useEffect(() => {
-    if (!apiKey) {
+    const key = apiKey || (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY : undefined);
+    if (!key) {
       setError("Error: Google Maps API Key is missing. Please check your .env file.");
       return;
     }
     setError(null);
     const loader = new Loader({
-      apiKey: apiKey,
+      apiKey: key,
       version: "quarterly",
       libraries: ["places", "geometry"]
     });

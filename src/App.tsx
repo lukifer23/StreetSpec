@@ -15,7 +15,7 @@ import styles from './App.module.css';
 import './App.css';
 
 function App() {
-  const apiKey = import.meta.env['VITE_GOOGLE_MAPS_API_KEY'] || '';
+  const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || '';
 
   const {
     // State

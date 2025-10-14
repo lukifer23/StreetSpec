@@ -75,8 +75,6 @@ export default defineConfig(({ mode }) => {
       ]),
     ],
     define: {
-      // Pass API key to the renderer build
-      'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(process.env.VITE_GOOGLE_MAPS_API_KEY),
       // Global constants for optimization
       __DEV__: JSON.stringify(!isProduction),
       __PROD__: JSON.stringify(isProduction),
