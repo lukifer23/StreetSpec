@@ -113,7 +113,8 @@ export const useAppLogic = (apiKey: string) => {
 
   // Load Google Maps API
   useEffect(() => {
-    const key = apiKey || (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY : undefined);
+    const key = apiKey || (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY : undefined) || (window as any).electronAPI?.getEnv()?.VITE_GOOGLE_MAPS_API_KEY;
+    console.debug('[maps] Loader init key present?', Boolean(key), 'apiKey prop?', Boolean(apiKey), 'env?', (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ? 'set' : 'empty');
     if (!key) {
       setError("Error: Google Maps API Key is missing. Please check your .env file.");
       return;

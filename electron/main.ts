@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, IpcMainInvokeEvent, Event } from 'electron';
+import { config as dotenvConfig } from 'dotenv';
 import { release } from 'node:os';
 import { join } from 'node:path';
 import * as ort from 'onnxruntime-node';
@@ -31,6 +32,9 @@ const fetch = async (...args: FetchArgs): FetchReturn => {
   return fn(...args);
 };
 
+// Load .env for Electron main/preload processes during development
+dotenvConfig();
+console.log('[env:main] VITE_GOOGLE_MAPS_API_KEY present?', Boolean(process.env.VITE_GOOGLE_MAPS_API_KEY));
 // --- CommonJS __dirname is automatically available ---
 
 const DEFAULT_DEPTH_API_MAX_RETRIES = 5;

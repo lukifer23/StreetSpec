@@ -8,6 +8,7 @@ declare global {
       invoke: (channel: string, data?: any) => Promise<any>;
       sendMessage: (channel: string, data: any) => void;
       onMainProcessMessage: (callback: (data: any) => void) => () => void;
+      getEnv: () => { VITE_GOOGLE_MAPS_API_KEY?: string };
     }
   }
 }
@@ -84,7 +85,9 @@ const electronAPI = {
     return () => {
       ipcRenderer.removeListener(channel, listener);
     };
-  }
+  },
+
+  getEnv: () => ({ VITE_GOOGLE_MAPS_API_KEY: process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY })
 };
 
 // Expose the electronAPI to the renderer process

@@ -13,6 +13,9 @@ window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
 });
 
+// Log env visibility for debugging key injection
+console.debug('[env] VITE_GOOGLE_MAPS_API_KEY present?', Boolean((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY));
+
 // Error handler for the ErrorBoundary
 const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
   console.error('Application error caught by ErrorBoundary:', error, errorInfo);
