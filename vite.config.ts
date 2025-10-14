@@ -170,7 +170,7 @@ export default defineConfig(({ mode }) => {
       devSourcemap: !isProduction,
       preprocessorOptions: {
         scss: {
-          additionalData: `@import "@/styles/variables.scss";`
+          additionalData: ``
         }
       }
     },

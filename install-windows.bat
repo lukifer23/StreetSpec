@@ -2,10 +2,10 @@
 setlocal enabledelayedexpansion
 
 echo ========================================
-echo Street Spec Desktop - Windows Installer
+echo PoleCheck Desktop - Windows Installer
 echo ========================================
 echo.
-echo This script will build and launch the Street Spec Desktop installer.
+echo This script will build and launch the PoleCheck Desktop installer.
 echo Run it from the repository root on a Windows machine.
 echo.
 
@@ -83,7 +83,7 @@ if %errorLevel% neq 0 (
 
 REM Locate the most recent installer package
 set "INSTALLER="
-for /f "delims= tokens=*" %%I in ('dir /b /a:-d /o:-n "release\Street-Spec-Desktop-Setup-*.exe"') do (
+for /f "delims= tokens=*" %%I in ('dir /b /a:-d /o:-n "release\PoleCheck-Desktop-Setup-*.exe"') do (
     set "INSTALLER=%%I"
     goto :FoundInstaller
 )

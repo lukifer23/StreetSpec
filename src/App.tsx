@@ -123,14 +123,8 @@ function App() {
           {isApiLoaded ? (
             <>
               <MapView
-                lat={targetCoords?.lat}
-                lng={targetCoords?.lng}
                 onCameraParamsChange={handleCameraChange}
-                isGeneratingMap={isGeneratingMap}
-                mapGenerationError={mapGenerationError}
-                onnxDepthMap={onnxDepthMap}
                 onGenerateDepthMap={handleGenerateDepthMap}
-                calibrateMode={calibrateMode}
                 onCalibrateClick={handleCalibrateClick}
               />
               <MeasurementTool />
@@ -167,16 +161,15 @@ function App() {
           </div>
         ) : undefined
       }
-    >
-      {isProjectPanelOpen && <ProjectPanel onClose={() => setIsProjectPanelOpen(false)} />}
-      {isSettingsOpen && (
-        <SettingsPanel
-          initial={settings}
-          onSave={handleSaveSettingsPanel}
-          onClose={() => setIsSettingsOpen(false)}
-        />
-      )}
-    </AppLayout>
+    />
+    {isProjectPanelOpen && <ProjectPanel onClose={() => setIsProjectPanelOpen(false)} />}
+    {isSettingsOpen && (
+      <SettingsPanel
+        initial={settings}
+        onSave={handleSaveSettingsPanel}
+        onClose={() => setIsSettingsOpen(false)}
+      />
+    )}
     </>
   );
 }

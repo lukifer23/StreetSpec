@@ -1,5 +1,5 @@
 {
-  "name": "street-spec-desktop",
+  "name": "polecheck-desktop",
   "private": true,
   "version": "0.0.1",
   "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
@@ -108,10 +108,17 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.streetspec.desktop",
+    "appId": "com.polecheck.desktop",
     "asar": true,
     "asarUnpack": [
       "**/*.onnx"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "ssp",
+        "name": "PoleCheck Project File",
+        "description": "PoleCheck Desktop Project File"
+      }
     ],
     "files": [
       "dist/**/*",
@@ -149,32 +156,29 @@
           ]
         }
       ],
-      "artifactName": "Street-Spec-Desktop-${name}-${version}.${ext}",
+      "artifactName": "PoleCheck-Desktop-${name}-${version}.${ext}",
       "sign": false,
-      "icon": "assets/icon.ico",
+      "signDlls": false,
       "verifyUpdateCodeSignature": false,
       "requestedExecutionLevel": "asInvoker"
     },
     "portable": {
-      "artifactName": "Street-Spec-Desktop-Portable-${version}.exe"
+      "artifactName": "PoleCheck-Desktop-Portable-${version}.exe"
     },
-    "nsis": {
+      "nsis": {
       "oneClick": false,
       "allowElevation": true,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico",
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Street Spec Desktop",
+      "shortcutName": "PoleCheck Desktop",
       "displayLanguageSelector": false,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "menuCategory": "Measurement Tools",
-      "include": "StreetSpecInstaller.iss",
-      "artifactName": "Street-Spec-Desktop-Setup-${version}.${ext}",
+      "artifactName": "PoleCheck-Desktop-Setup-${version}.${ext}",
       "perMachine": false,
-      "license": null
+      "license": null,
+      "language": "1033"
     }
   },
   "playwright": {

@@ -82,7 +82,7 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
 3. To create an installer build, run `install-windows.bat`.
    - Re-validates prerequisites and installs dependencies.
    - Executes `npm run build:win` to produce an NSIS installer.
-   - Launches the newest `Street-Spec-Desktop-Setup-*.exe` from the `release/` directory.
+   - Launches the newest `PoleCheck-Desktop-Setup-*.exe` from the `release/` directory.
 
 #### macOS/Linux
 1. Clone the repository:

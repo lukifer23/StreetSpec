@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { convertAreaToDisplay, convertLengthToDisplay } from '../utils/units';
@@ -45,10 +44,8 @@ function calculatePolygonPerimeter(points: { x: number; y: number; z: number }[]
 
 const AreaTool: React.FC = () => {
   const cameraParams = useRootStore((state) => state.currentCameraParams);
-  const [isAreaToolActive, setIsAreaToolActive] = useRootStore(
-    (state) => [state.isAreaToolActive, state.setIsAreaToolActive],
-    shallow
-  );
+  const isAreaToolActive = useRootStore((state) => state.isAreaToolActive);
+  const setIsAreaToolActive = useRootStore((state) => state.setIsAreaToolActive);
   const addMeasurement = useRootStore((state) => state.addMeasurement);
   const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const depthData = useRootStore((state) => state.depthData);
