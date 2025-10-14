@@ -4,6 +4,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
+import { pushNotification } from './notificationStore';
 import type {
   Measurement,
   Project,
@@ -132,6 +133,75 @@ const defaultSettings: AppSettings = {
   enableDepthCache: true,
 };
 
+const isDevEnvironment =
+  (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') ||
+  (typeof window !== 'undefined' && Boolean((window as { __STREETSPEC_DEV__?: boolean }).__STREETSPEC_DEV__));
+
+interface TrimResult {
+  trimmed: Measurement[];
+  removed: number;
+  effectiveLimit: number;
+}
+
+const normalizeLimit = (limit: number | undefined): number => {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (limit < 0) {
+    return 0;
+  }
+
+  return Math.floor(limit);
+};
+
+const trimMeasurementsArray = (
+  measurements: Measurement[],
+  limit: number | undefined
+): TrimResult => {
+  const normalizedLimit = normalizeLimit(limit);
+  const effectiveLimit = Number.isFinite(normalizedLimit)
+    ? normalizedLimit
+    : measurements.length;
+
+  if (normalizedLimit === 0) {
+    return {
+      trimmed: [],
+      removed: measurements.length,
+      effectiveLimit,
+    };
+  }
+
+  if (!Number.isFinite(normalizedLimit) || measurements.length <= normalizedLimit) {
+    return {
+      trimmed: measurements.slice(),
+      removed: 0,
+      effectiveLimit,
+    };
+  }
+
+  const overflow = measurements.length - normalizedLimit;
+
+  return {
+    trimmed: measurements.slice(overflow),
+    removed: overflow,
+    effectiveLimit,
+  };
+};
+
+const notifyMeasurementsTrimmed = (removed: number, limit: number) => {
+  if (removed <= 0) {
+    return;
+  }
+
+  const measurementLabel = removed === 1 ? 'measurement' : 'measurements';
+
+  pushNotification({
+    kind: 'info',
+    message: `Removed ${removed} older ${measurementLabel} to keep history within the limit of ${limit}.`,
+  });
+};
+
 // Create the root store with middleware
 export const useRootStore = create<RootState>()(
   devtools(
@@ -232,6 +302,14 @@ export const useRootStore = create<RootState>()(
             name: '',
           };
           state.measurements.push(newMeasurement);
+
+          const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
+            state.measurements,
+            state.settings.measurementHistoryLimit
+          );
+
+          state.measurements = trimmed;
+          notifyMeasurementsTrimmed(removed, effectiveLimit);
         }),
 
         deleteMeasurement: (id) => set((state) => {
@@ -250,7 +328,13 @@ export const useRootStore = create<RootState>()(
         }),
 
         setMeasurements: (measurements) => set((state) => {
-          state.measurements = measurements;
+          const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
+            measurements,
+            state.settings.measurementHistoryLimit
+          );
+
+          state.measurements = trimmed;
+          notifyMeasurementsTrimmed(removed, effectiveLimit);
         }),
 
         // Project actions
@@ -259,7 +343,24 @@ export const useRootStore = create<RootState>()(
             try {
               const projects = await window.electronAPI.invoke('get-projects');
               set((state) => {
-                state.projects = projects || {};
+                const limit = state.settings.measurementHistoryLimit;
+                const sanitizedProjects: Record<string, Project> = {};
+
+                if (projects) {
+                  for (const [id, project] of Object.entries(projects)) {
+                    const { trimmed } = trimMeasurementsArray(
+                      project.measurements ?? [],
+                      limit
+                    );
+
+                    sanitizedProjects[id] = {
+                      ...project,
+                      measurements: trimmed,
+                    };
+                  }
+                }
+
+                state.projects = projects ? sanitizedProjects : {};
               });
             } catch (error) {
               console.error('Failed to load projects:', error);
@@ -286,8 +387,16 @@ export const useRootStore = create<RootState>()(
         loadProject: (id) => set((state) => {
           const project = state.projects[id];
           if (project) {
-            state.measurements = [...project.measurements];
+            const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
+              project.measurements ?? [],
+              state.settings.measurementHistoryLimit
+            );
+
+            project.measurements = trimmed;
+            state.measurements = trimmed.slice();
             state.currentProjectId = id;
+
+            notifyMeasurementsTrimmed(removed, effectiveLimit);
           }
         }),
 
@@ -334,7 +443,13 @@ export const useRootStore = create<RootState>()(
           const revision = project.revisionHistory.find(r => r.timestamp === timestamp);
           if (!revision) return;
 
-          state.measurements = [...revision.measurements];
+          const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
+            revision.measurements ?? [],
+            state.settings.measurementHistoryLimit
+          );
+
+          state.measurements = trimmed;
+          notifyMeasurementsTrimmed(removed, effectiveLimit);
 
           if (window.electronAPI?.invoke) {
             window.electronAPI.invoke('save-project', project);
@@ -470,13 +585,34 @@ export const useRootStore = create<RootState>()(
             const importedState = JSON.parse(stateString);
             set((state) => {
               if (importedState.measurements) {
-                state.measurements = importedState.measurements;
+                const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
+                  importedState.measurements,
+                  state.settings.measurementHistoryLimit
+                );
+
+                state.measurements = trimmed;
+                notifyMeasurementsTrimmed(removed, effectiveLimit);
               }
               if (importedState.settings) {
                 state.settings = { ...state.settings, ...importedState.settings };
               }
               if (importedState.projects) {
-                state.projects = importedState.projects;
+                const limit = state.settings.measurementHistoryLimit;
+                const sanitizedProjects: Record<string, Project> = {};
+
+                for (const [projectId, project] of Object.entries(importedState.projects)) {
+                  const { trimmed } = trimMeasurementsArray(
+                    project.measurements ?? [],
+                    limit
+                  );
+
+                  sanitizedProjects[projectId] = {
+                    ...project,
+                    measurements: trimmed,
+                  };
+                }
+
+                state.projects = sanitizedProjects;
               }
               if (importedState.currentProjectId) {
                 state.currentProjectId = importedState.currentProjectId;
@@ -490,7 +626,7 @@ export const useRootStore = create<RootState>()(
     ),
     {
       name: 'streetspec-store',
-      enabled: import.meta.env.DEV,
+      enabled: isDevEnvironment,
     }
   )
 );
