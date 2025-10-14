@@ -1,17 +1,27 @@
 import { beforeEach, describe, expect, it } from '@jest/globals';
 import { createMeasurement } from '../measurement';
 import { CameraParams, DecodedDepthData, Point, UNIT_CONVERSIONS } from '../../types/common';
-import { calculateDistance3D, screenToWorldWithDepth } from '../geometry';
+import {
+  calculateDistance3D,
+  screenToWorld,
+  screenToWorldWithDepth,
+  estimateGroundPlaneIntersectionWithConfidence,
+} from '../geometry';
 
 jest.mock('../geometry', () => ({
   screenToWorld: jest.fn(),
-  estimateGroundPlaneIntersection: jest.fn(),
   calculateDistance3D: jest.fn(),
   screenToWorldWithDepth: jest.fn(),
+  estimateGroundPlaneIntersectionWithConfidence: jest.fn(),
 }));
 
 const mockedCalculateDistance3D = calculateDistance3D as jest.MockedFunction<typeof calculateDistance3D>;
 const mockedScreenToWorldWithDepth = screenToWorldWithDepth as jest.MockedFunction<typeof screenToWorldWithDepth>;
+const mockedScreenToWorld = screenToWorld as jest.MockedFunction<typeof screenToWorld>;
+const mockedEstimateGroundPlaneIntersectionWithConfidence =
+  estimateGroundPlaneIntersectionWithConfidence as jest.MockedFunction<
+    typeof estimateGroundPlaneIntersectionWithConfidence
+  >;
 
 describe('createMeasurement', () => {
   const cameraParams: CameraParams = {
@@ -34,6 +44,12 @@ describe('createMeasurement', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedScreenToWorldWithDepth.mockReturnValue({ x: 1, y: 2, z: 3 });
+    mockedEstimateGroundPlaneIntersectionWithConfidence.mockReturnValue({
+      point: { x: 1, y: 0, z: 1 },
+      confidence: 0.5,
+      method: 'ground',
+    });
+    mockedScreenToWorld.mockReturnValue({ x: 0, y: -1, z: 0 });
     mockedCalculateDistance3D.mockReturnValue(mockDistanceMeters);
   });
 
@@ -53,6 +69,7 @@ describe('createMeasurement', () => {
     expect(measurement.distance).toBeCloseTo(mockDistanceMeters);
     expect(measurement.unit).toBe('metric');
     expect(measurement.panoId).toBe(cameraParams.panoId);
+    expect(measurement.source).toBe('planes');
   });
 
   it('converts to feet when unit is imperial', () => {
@@ -71,5 +88,32 @@ describe('createMeasurement', () => {
     expect(measurement.distance).toBeCloseTo(UNIT_CONVERSIONS.metersToFeet(mockDistanceMeters));
     expect(measurement.unit).toBe('imperial');
     expect(measurement.panoId).toBe(cameraParams.panoId);
+    expect(measurement.source).toBe('planes');
+  });
+
+  it('falls back to ground source when depth lookup fails', () => {
+    mockedScreenToWorldWithDepth.mockReturnValueOnce(null).mockReturnValueOnce(null);
+    mockedEstimateGroundPlaneIntersectionWithConfidence.mockReturnValueOnce({
+      point: { x: 0, y: 0, z: 1 },
+      confidence: 0.3,
+      method: 'ground',
+    });
+    mockedEstimateGroundPlaneIntersectionWithConfidence.mockReturnValueOnce({
+      point: { x: 0, y: 0, z: 2 },
+      confidence: 0.4,
+      method: 'ground',
+    });
+
+    const measurement = createMeasurement(
+      startPoint,
+      endPoint,
+      cameraParams,
+      100,
+      100,
+      depthData,
+      'metric'
+    );
+
+    expect(measurement.source).toBe('ground');
   });
 });

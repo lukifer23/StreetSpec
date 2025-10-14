@@ -35,7 +35,8 @@ export function createMeasurement(
 ): Measurement {
   let errorMessage: string | undefined = undefined; // To store potential errors/warnings
   let confidence = 0; // Overall measurement confidence
-  let source = 'unknown'; // Data source used
+  let startSource: Measurement['source'] | 'unknown' = 'unknown';
+  let endSource: Measurement['source'] | 'unknown' = 'unknown';
 
   if (!cameraParams || cameraParams.vFov === undefined) {
       throw new Error("Camera parameters with vertical FOV are required for measurement.");
@@ -54,14 +55,14 @@ export function createMeasurement(
 
     if (worldPoint1) {
       point1Confidence = 0.9; // High confidence for depth-based
-      source = 'depth';
+      startSource = 'planes';
     } else {
       errorMessage = "Depth intersection failed for start point. ";
     }
 
     if (worldPoint2) {
       point2Confidence = 0.9; // High confidence for depth-based
-      if (source === 'unknown') source = 'depth';
+      endSource = 'planes';
     } else {
       errorMessage = (errorMessage || "") + "Depth intersection failed for end point.";
     }
@@ -75,7 +76,9 @@ export function createMeasurement(
     );
     worldPoint1 = result1.point;
     point1Confidence = result1.confidence;
-    source = result1.method;
+    if (result1.point) {
+      startSource = result1.method;
+    }
 
     if (!worldPoint1) {
       errorMessage = (errorMessage || "") + "Ground plane intersection failed for start point. ";
@@ -89,7 +92,9 @@ export function createMeasurement(
     );
     worldPoint2 = result2.point;
     point2Confidence = result2.confidence;
-    if (source === 'unknown') source = result2.method;
+    if (result2.point && endSource === 'unknown') {
+      endSource = result2.method;
+    }
 
     if (!worldPoint2) {
       errorMessage = (errorMessage || "") + "Ground plane intersection failed for end point. ";
@@ -153,11 +158,33 @@ export function createMeasurement(
     panoId: cameraParams.panoId ?? cameraParams.pano,
     cameraParams: cameraParams,
     confidence: Math.max(0, Math.min(1, confidence)), // Clamp to [0, 1]
-    source: source === 'planes' || source === 'onnx' || source === 'ground' ? source : 'ground',
+    source: resolveSource(startSource, endSource),
     error: errorMessage // Include any error/warning messages
   };
 
   return measurement;
+}
+
+function resolveSource(
+  startSource: Measurement['source'] | 'unknown',
+  endSource: Measurement['source'] | 'unknown'
+): Measurement['source'] {
+  const candidates = [startSource, endSource].filter(
+    (value): value is Measurement['source'] => value !== 'unknown' && value !== undefined
+  );
+
+  if (candidates.length === 0) {
+    return 'ground';
+  }
+
+  const uniqueSources = new Set(candidates);
+  if (uniqueSources.size === 1) {
+    const [source] = uniqueSources;
+    return source;
+  }
+
+  // Mixed sources fall back to ground since part of the measurement relied on geometry
+  return 'ground';
 }
 
 // Validate measurement for plausibility and accuracy
