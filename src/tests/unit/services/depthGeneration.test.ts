@@ -101,4 +101,35 @@ describe('depthGeneration helpers', () => {
       invokeDepth: jest.fn().mockResolvedValue(null),
     })).rejects.toThrow('Main process failed to return valid depth map data');
   });
+
+  it('clamps FOV values beyond API limits', async () => {
+    const imageBuffer = Buffer.from([1, 2, 3]);
+    const blob = {
+      type: 'image/jpeg',
+      arrayBuffer: async () => imageBuffer
+    } as Blob;
+    const response = {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      blob: async () => blob,
+    } as Response;
+
+    const fetchImage = jest.fn().mockResolvedValue(response);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await generateDepthMap({ ...baseCameraParams, fov: 200 }, 'api-key', {
+        fetchImage,
+        getCachedDepthMap: jest.fn().mockResolvedValue(null),
+        cacheDepthMap: jest.fn(),
+        invokeDepth: jest.fn().mockResolvedValue({ data: [0.1, 0.2], width: 1, height: 2 } satisfies OnnxDepthMap),
+      });
+
+      expect(fetchImage).toHaveBeenCalledWith(expect.stringContaining('fov=120'));
+      expect(warnSpy).toHaveBeenCalledWith('[DepthGeneration] Clamping FOV from 200 to 120');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });

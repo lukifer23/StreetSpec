@@ -60,6 +60,13 @@ export async function generateDepthMap(
   const imgWidth = options.imageWidth || dimensions.width;
   const imgHeight = options.imageHeight || dimensions.height;
 
+  const rawFov = cameraParams.fov ?? 90;
+  const clampedFov = Math.min(Math.max(rawFov, 1), 120);
+
+  if (clampedFov !== rawFov) {
+    console.warn(`[DepthGeneration] Clamping FOV from ${rawFov} to ${clampedFov}`);
+  }
+
   const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
     `size=${imgWidth}x${imgHeight}&` +
     (cameraParams.panoId
@@ -67,7 +74,7 @@ export async function generateDepthMap(
       : `location=${cameraParams.lat},${cameraParams.lng}&`) +
     `heading=${cameraParams.heading ?? 0}&` +
     `pitch=${cameraParams.pitch ?? 0}&` +
-    `fov=${cameraParams.fov ?? 90}&` +
+    `fov=${clampedFov}&` +
     `key=${apiKey}`;
 
   const response = await deps.fetchImage(apiUrl);
