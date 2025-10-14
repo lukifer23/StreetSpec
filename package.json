@@ -7,7 +7,7 @@
   "type": "commonjs",
   "main": "dist-electron/main.js",
   "scripts": {
-    "clean": "if exist dist rmdir /s /q dist && if exist dist-electron rmdir /s /q dist-electron",
+    "clean": "rimraf dist dist-electron",
     "dev:vite": "vite",
     "dev": "npm run clean && npm run dev:vite",
     "dev:concurrent": "npm run dev:vite",
@@ -99,6 +99,7 @@
     "jest-extended": "^4.0.2",
     "playwright": "^1.45.0",
     "spectron": "^19.0.0",
+    "rimraf": "^6.0.1",
     "terser": "^5.44.0",
     "ts-jest": "^29.4.1",
     "typescript": "^5.5.4",
