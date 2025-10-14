@@ -342,33 +342,71 @@ export const useAppLogic = (apiKey: string) => {
           const message = waitSeconds && Number.isFinite(waitSeconds)
             ? `Street View depth API rate limit reached. Try again in about ${waitSeconds} second${waitSeconds === 1 ? '' : 's'}.`
             : 'Street View depth API rate limit reached. Please wait before retrying.';
-          setDepthFetchStatus({ type: 'error', message } as any);
+          setDepthFetchStatus({
+            status: 'rate-limit',
+            code: 'RATE_LIMIT',
+            message,
+            retryAfterMs: result.retryAfterMs,
+            attempts: result.attempts,
+          });
           return;
         }
 
+        const attempts = result.attempts;
+
         if (result.code === 'NOT_FOUND') {
-          setDepthFetchStatus({ type: 'warning', message: 'No Street View depth data is available for this panorama.' } as any);
+          setDepthFetchStatus({
+            status: 'error',
+            code: 'NOT_FOUND',
+            message: 'No Street View depth data is available for this panorama.',
+            attempts,
+            details: result.details,
+          });
           return;
         }
 
         if (result.code === 'NO_API_KEY') {
-          setDepthFetchStatus({ type: 'error', message: 'Street View depth requests require GOOGLE_MAPS_API_KEY to be configured.' } as any);
+          setDepthFetchStatus({
+            status: 'error',
+            code: 'NO_API_KEY',
+            message: 'Street View depth requests require GOOGLE_MAPS_API_KEY to be configured.',
+            attempts,
+            details: result.details,
+          });
           return;
         }
 
         if (result.code === 'NETWORK_ERROR') {
-          setDepthFetchStatus({ type: 'warning', message: 'Network issue while requesting Street View depth data. Measurements will use ONNX depth only until retry succeeds.' } as any);
+          setDepthFetchStatus({
+            status: 'error',
+            code: 'NETWORK_ERROR',
+            message: 'Network issue while requesting Street View depth data. Measurements will use ONNX depth only until retry succeeds.',
+            attempts,
+            details: result.details,
+          });
           return;
         }
 
-        setDepthFetchStatus({ type: 'error', message: 'Unable to fetch Street View depth data. Falling back to ONNX depth only.' } as any);
+        setDepthFetchStatus({
+          status: 'error',
+          code: result.code,
+          message: result.message ?? 'Unable to fetch Street View depth data. Falling back to ONNX depth only.',
+          attempts,
+          details: result.details,
+        });
       } catch (err) {
         if (cancelled) {
           return;
         }
         console.warn('[depth] Failed to fetch Street View depth data:', err);
         setDepthData(null);
-        setDepthFetchStatus({ type: 'error', message: 'Unexpected error requesting Street View depth data.' } as any);
+        setDepthFetchStatus({
+          status: 'error',
+          code: 'UNKNOWN_ERROR',
+          message: 'Unexpected error requesting Street View depth data.',
+          attempts: 0,
+          details: err instanceof Error ? { message: err.message } : err,
+        });
       }
     };
 

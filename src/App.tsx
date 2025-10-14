@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import MapView from './components/MapView';
 import MeasurementTool from './components/MeasurementTool';
 import SettingsPanel from './components/SettingsPanel';
@@ -11,6 +12,7 @@ import Notifications from './components/Notifications';
 import { Tooltip } from './components/Tooltip';
 import { AppLayout } from './components/AppLayout';
 import { useAppLogic } from './hooks/useAppLogic';
+import { getStatusBannerPresentation } from './utils/statusBanner';
 import styles from './App.module.css';
 import './App.css';
 
@@ -53,6 +55,21 @@ function App() {
   if (error) {
     return <div className={styles['loadingPlaceholder']}>{error}</div>;
   }
+
+  const bannerPresentation = useMemo(
+    () => getStatusBannerPresentation(depthFetchStatus),
+    [depthFetchStatus]
+  );
+
+  const statusBannerClass = bannerPresentation
+    ? bannerPresentation.tone === 'error'
+      ? styles['statusBannerError']
+      : bannerPresentation.tone === 'warning'
+        ? styles['statusBannerWarning']
+        : styles['statusBannerInfo']
+    : null;
+
+  const statusBannerRole = bannerPresentation?.role ?? 'status';
 
   return (
     <>
@@ -146,14 +163,8 @@ function App() {
       statusBanner={
         depthFetchStatus ? (
           <div
-            className={`${styles['statusBanner']} ${
-              depthFetchStatus.status === 'error'
-                ? styles['statusBannerError']
-                : depthFetchStatus.status === 'rate-limit'
-                  ? styles['statusBannerWarning']
-                  : styles['statusBannerInfo']
-            }`}
-            role={depthFetchStatus.status === 'error' ? 'alert' : 'status'}
+            className={`${styles['statusBanner']} ${statusBannerClass ?? styles['statusBannerInfo']}`}
+            role={statusBannerRole}
           >
             {'message' in depthFetchStatus ? depthFetchStatus.message : `Status: ${depthFetchStatus.status}`}
           </div>
