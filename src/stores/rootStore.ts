@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { devtools } from 'zustand/middleware';
@@ -500,7 +501,7 @@ export const useMeasurements = () => useRootStore((state) => state.measurements)
 export const useCameraParams = () => useRootStore((state) => state.currentCameraParams);
 export const useProjects = () => useRootStore((state) => state.projects);
 export const useUIState = () =>
-  useRootStore((state) => ({
+  useRootStore(useShallow((state) => ({
     isSettingsOpen: state.isSettingsOpen,
     isGeneratingMap: state.isGeneratingMap,
     calibrateMode: state.calibrateMode,
@@ -510,27 +511,27 @@ export const useUIState = () =>
     isProjectPanelOpen: state.isProjectPanelOpen,
     isCalibrated: state.isCalibrated,
     onGenerateDepthMap: state.onGenerateDepthMap,
-  }));
+  })));
 
 // Action hooks
 export const useSettingsActions = () =>
-  useRootStore((state) => ({
+  useRootStore(useShallow((state) => ({
     setSettings: state.setSettings,
     updateSettings: state.updateSettings,
     toggleUnit: state.toggleUnit,
-  }));
+  })));
 
 export const useMeasurementActions = () =>
-  useRootStore((state) => ({
+  useRootStore(useShallow((state) => ({
     addMeasurement: state.addMeasurement,
     deleteMeasurement: state.deleteMeasurement,
     renameMeasurement: state.renameMeasurement,
     clearMeasurements: state.clearMeasurements,
     setMeasurements: state.setMeasurements,
-  }));
+  })));
 
 export const useProjectActions = () =>
-  useRootStore((state) => ({
+  useRootStore(useShallow((state) => ({
     loadProjects: state.loadProjects,
     createProject: state.createProject,
     loadProject: state.loadProject,
@@ -538,10 +539,10 @@ export const useProjectActions = () =>
     saveRevision: state.saveRevision,
     revertToRevision: state.revertToRevision,
     saveCurrentProject: state.saveCurrentProject,
-  }));
+  })));
 
 export const useUIActions = () =>
-  useRootStore((state) => ({
+  useRootStore(useShallow((state) => ({
     setIsSettingsOpen: state.setIsSettingsOpen,
     setIsGeneratingMap: state.setIsGeneratingMap,
     setCalibrateMode: state.setCalibrateMode,
@@ -554,4 +555,4 @@ export const useUIActions = () =>
     setIsCalibrated: state.setIsCalibrated,
     setLoading: state.setLoading,
     setOnGenerateDepthMap: state.setOnGenerateDepthMap,
-  }));
+  })));

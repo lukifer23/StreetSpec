@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { useRootStore, useMeasurementActions, useSettingsActions } from '../stores/rootStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { Measurement } from '../types/common';
 import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
 import type { UnitSystem } from '../utils/units';
@@ -64,12 +65,11 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
 
 const MeasurementSidebar: React.FC = () => {
   const { measurements, settings } = useRootStore(
-    useCallback(
+    useShallow(
       (state) => ({
         measurements: state.measurements,
         settings: state.settings,
-      }),
-      []
+      })
     )
   );
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();

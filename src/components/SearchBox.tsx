@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import styles from './SearchBox.module.css';
 
@@ -12,41 +12,91 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<google.maps.places.PlaceResult[]>([]);
   const [showResults, setShowResults] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const setTargetCoords = useRootStore((state) => state.setTargetCoords);
 
+  const geocoder = useMemo(() => {
+    try {
+      if (typeof google !== 'undefined' && google.maps?.Geocoder) {
+        return new google.maps.Geocoder();
+      }
+    } catch {}
+    return null;
+  }, []);
+
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-  
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    // direct coordinate input like "37.4219,-122.0840"
+    const coordMatch = query.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (coordMatch) {
+      const lat = parseFloat(coordMatch[1]!);
+      const lng = parseFloat(coordMatch[2]!);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        const coords = { lat, lng };
+        setTargetCoords(coords);
+        onCoordsEntered?.(coords);
+        setShowResults(false);
+        setSearchQuery('');
+        return;
+      }
+    }
+
+    if (!geocoder) {
+      setIsSearching(false);
+      setErrorMsg('Google Maps is not loaded. Check your API key.');
+      console.warn('[SearchBox] Geocoder unavailable');
+      return;
+    }
 
     setIsSearching(true);
     try {
-      // Use Google Places API for search
-      const service = new google.maps.places.PlacesService(document.createElement('div'));
-      const request = {
-        query: searchQuery,
-        fields: ['name', 'geometry', 'formatted_address']
-      };
-
-      service.textSearch(request, (results, status) => {
+      geocoder.geocode({ address: query }, (results, status) => {
         setIsSearching(false);
-        if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-          setSearchResults(results);
+        if (status === 'OK' && results) {
+          // Map GeocoderResult to a minimal PlaceResult-like shape we already render
+          const places = results.map((r) => ({
+            name: r.formatted_address,
+            formatted_address: r.formatted_address,
+            geometry: r.geometry as any,
+          })) as unknown as google.maps.places.PlaceResult[];
+          setSearchResults(places);
           setShowResults(true);
+          setErrorMsg(null);
+
+          // Auto-pan to the best match immediately for fast UX
+          const best = results[0];
+          const loc = best.geometry?.location;
+          if (loc) {
+            const coords = {
+              lat: typeof (loc as any).lat === 'function' ? (loc as any).lat() : (loc as any).lat,
+              lng: typeof (loc as any).lng === 'function' ? (loc as any).lng() : (loc as any).lng,
+            } as { lat: number; lng: number };
+            setTargetCoords(coords);
+            onCoordsEntered?.(coords);
+          }
+        } else {
+          setSearchResults([]);
+          setShowResults(false);
+          setErrorMsg(status === 'REQUEST_DENIED' ? 'API key invalid or not authorized for Geocoding.' : 'No results found.');
         }
       });
     } catch (error) {
       setIsSearching(false);
       console.error('Search error:', error);
+      setErrorMsg('Search failed. See console for details.');
     }
   };
 
   const handleResultClick = (place: google.maps.places.PlaceResult) => {
     if (place.geometry?.location) {
+      const loc = place.geometry.location as google.maps.LatLng | { lat: () => number; lng: () => number };
       const coords = {
-        lat: place.geometry.location.lat(),
-        lng: place.geometry.location.lng()
-      };
+        lat: typeof (loc as any).lat === 'function' ? (loc as any).lat() : (loc as any).lat,
+        lng: typeof (loc as any).lng === 'function' ? (loc as any).lng() : (loc as any).lng,
+      } as { lat: number; lng: number };
       setTargetCoords(coords);
       onPlaceSelected?.(place);
       onCoordsEntered?.(coords);
@@ -62,7 +112,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
   };
 
   return (
-    <div className={styles['searchBox']}>
+    <div className={styles['container']}>
       <div className={styles['searchInput']}>
         <input
           type="text"
@@ -70,16 +120,16 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyPress={handleKeyPress}
           placeholder="Search for a location..."
-          className={styles['input']}
+          autoComplete="street-address"
         />
         <button
           onClick={handleSearch}
           disabled={isSearching}
-          className={styles['searchButton']}
         >
           {isSearching ? 'Searching...' : 'Search'}
         </button>
       </div>
+      {errorMsg && <div className={styles['error']} role="alert">{errorMsg}</div>}
       
       {showResults && searchResults.length > 0 && (
         <div className={styles['results']}>

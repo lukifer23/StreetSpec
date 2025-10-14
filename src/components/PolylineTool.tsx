@@ -84,7 +84,7 @@ const PolylineTool: React.FC = () => {
     }
 
     // Filter out points without worldPoint
-    const validPoints = points.filter(p => p.worldPoint != null) as Array<Required<Pick<PolylinePoint, 'worldPoint'>> & Omit<PolylinePoint, 'worldPoint'>>;
+    const validPoints = points.filter(p => p.worldPoint != null);
     if (validPoints.length < 2) {
       setTotalDistance(0);
       setSegmentDistances([]);
@@ -95,9 +95,14 @@ const PolylineTool: React.FC = () => {
     let total = 0;
 
     for (let i = 1; i < validPoints.length; i++) {
-      const prevPoint = validPoints[i - 1].worldPoint;
-      const currentPoint = validPoints[i].worldPoint;
-      const distance = calculateDistance3D(prevPoint, currentPoint);
+      // We know worldPoint exists because we filtered for it above
+      // @ts-expect-error - TypeScript can't infer this but we know it's safe
+      const prevWorldPoint = validPoints[i - 1].worldPoint;
+      // @ts-expect-error - TypeScript can't infer this but we know it's safe
+      const currentWorldPoint = validPoints[i].worldPoint;
+
+      // @ts-expect-error - We know these are not undefined because we filtered for them
+      const distance = calculateDistance3D(prevWorldPoint, currentWorldPoint);
       distances.push(distance);
       total += distance;
     }

@@ -809,11 +809,27 @@ const MeasurementTool: React.FC = () => {
   }, [currentCameraParams, hasDepthSupport, isCalibrated]);
 
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+      if (el.isContentEditable) return true;
+      if (el.getAttribute('role') === 'combobox') return true;
+      return false;
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'm' && phase === 'idle') {
+      const key = (event.key || '').toLowerCase();
+      // Ignore when typing in inputs or when modifiers are pressed
+      if (isEditableTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+
+      if (key === 'm' && phase === 'idle') {
         event.preventDefault();
         startMeasurement();
-      } else if (event.key === 'Escape' && phase !== 'idle') {
+      } else if (key === 'escape' && phase !== 'idle') {
         event.preventDefault();
         setPhase('idle');
         setStartPoint(null);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import { useRootStore } from '../stores/rootStore';
+import { useShallow } from 'zustand/react/shallow';
 import { pushNotification } from '../stores/notificationStore';
 import { calibrationManager } from '../services/depthCalibration';
 import { pixelOffsetToVerticalAngle } from '../utils/cameraMath';
@@ -28,49 +29,44 @@ export const useAppLogic = (apiKey: string) => {
   const lastSavedMeasurements = useRef<string | null>(null);
   const lastSavedProjectId = useRef<string | null>(null);
 
-  const store = useRootStore(
-    useCallback(
-      (state) => ({
-        // State values
-        measurements: state.measurements,
-        settings: state.settings,
-        isSettingsOpen: state.isSettingsOpen,
-        isGeneratingMap: state.isGeneratingMap,
-        calibrateMode: state.calibrateMode,
-        error: state.error,
-        mapGenerationError: state.mapGenerationError,
-        isProjectPanelOpen: state.isProjectPanelOpen,
-        targetCoords: state.targetCoords,
-        currentCameraParams: state.currentCameraParams,
-        onnxDepthMap: state.onnxDepthMap,
-        depthData: state.depthData,
-        currentProjectId: state.currentProjectId,
+  const store = useRootStore(useShallow((state) => ({
+    // State values
+    measurements: state.measurements,
+    settings: state.settings,
+    isSettingsOpen: state.isSettingsOpen,
+    isGeneratingMap: state.isGeneratingMap,
+    calibrateMode: state.calibrateMode,
+    error: state.error,
+    mapGenerationError: state.mapGenerationError,
+    isProjectPanelOpen: state.isProjectPanelOpen,
+    targetCoords: state.targetCoords,
+    currentCameraParams: state.currentCameraParams,
+    onnxDepthMap: state.onnxDepthMap,
+    depthData: state.depthData,
+    currentProjectId: state.currentProjectId,
 
-        // Actions (these are stable references in Zustand)
-        loadProjects: state.loadProjects,
-        deleteMeasurement: state.deleteMeasurement,
-        renameMeasurement: state.renameMeasurement,
-        clearMeasurements: state.clearMeasurements,
-        setSettings: state.setSettings,
-        updateSettings: state.updateSettings,
-        toggleUnit: state.toggleUnit,
-        setIsSettingsOpen: state.setIsSettingsOpen,
-        setIsGeneratingMap: state.setIsGeneratingMap,
-        setCalibrateMode: state.setCalibrateMode,
-        setError: state.setError,
-        setMapGenerationError: state.setMapGenerationError,
-        setIsPolylineToolActive: state.setIsPolylineToolActive,
-        setIsAreaToolActive: state.setIsAreaToolActive,
-        setIsVolumeToolActive: state.setIsVolumeToolActive,
-        setIsProjectPanelOpen: state.setIsProjectPanelOpen,
-        setCurrentCameraParams: state.setCurrentCameraParams,
-        setOnnxDepthMap: state.setOnnxDepthMap,
-        setDepthData: state.setDepthData,
-        saveCurrentProject: state.saveCurrentProject,
-      }),
-      []
-    )
-  );
+    // Actions (these are stable references in Zustand)
+    loadProjects: state.loadProjects,
+    deleteMeasurement: state.deleteMeasurement,
+    renameMeasurement: state.renameMeasurement,
+    clearMeasurements: state.clearMeasurements,
+    setSettings: state.setSettings,
+    updateSettings: state.updateSettings,
+    toggleUnit: state.toggleUnit,
+    setIsSettingsOpen: state.setIsSettingsOpen,
+    setIsGeneratingMap: state.setIsGeneratingMap,
+    setCalibrateMode: state.setCalibrateMode,
+    setError: state.setError,
+    setMapGenerationError: state.setMapGenerationError,
+    setIsPolylineToolActive: state.setIsPolylineToolActive,
+    setIsAreaToolActive: state.setIsAreaToolActive,
+    setIsVolumeToolActive: state.setIsVolumeToolActive,
+    setIsProjectPanelOpen: state.setIsProjectPanelOpen,
+    setCurrentCameraParams: state.setCurrentCameraParams,
+    setOnnxDepthMap: state.setOnnxDepthMap,
+    setDepthData: state.setDepthData,
+    saveCurrentProject: state.saveCurrentProject,
+  })));
 
   const {
     measurements,

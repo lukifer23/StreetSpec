@@ -6,6 +6,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 
 import { useRootStore } from '../stores/rootStore';
 import { depthPrefetchService } from '../services/depthPrefetch';
+import { useShallow } from 'zustand/react/shallow';
 
 // Default coords
 const DEFAULT_LAT = 40.7580;
@@ -158,7 +159,7 @@ CalibrationOverlay.displayName = 'CalibrationOverlay';
 
 const CameraHUD = React.memo(() => {
   const cameraParams = useRootStore(selectCameraParams);
-  const hudSettings = useRootStore(selectCameraHudSettings);
+  const hudSettings = useRootStore(useShallow(selectCameraHudSettings));
 
   const hudStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -441,21 +442,32 @@ const MapView: React.FC<{
   useEffect(() => {
     if (!streetViewRef.current || !isInitialized) return;
     const svInstance = streetViewRef.current;
-    const listeners: google.maps.MapsEventListener[] = [];
+    const listeners: Array<google.maps.MapsEventListener | null> = [];
 
-    listeners.push(svInstance.addListener('pano_changed', debouncedUpdateParams));
-    listeners.push(svInstance.addListener('position_changed', debouncedUpdateParams));
-    listeners.push(svInstance.addListener('pov_changed', debouncedUpdateParams));
-    listeners.push(svInstance.addListener('zoom_changed', debouncedUpdateParams));
-    listeners.push(svInstance.addListener('pano_changed', schedulePrefetch));
-    listeners.push(svInstance.addListener('links_changed', schedulePrefetch));
+    try {
+      listeners.push(svInstance.addListener('pano_changed', debouncedUpdateParams));
+      listeners.push(svInstance.addListener('position_changed', debouncedUpdateParams));
+      listeners.push(svInstance.addListener('pov_changed', debouncedUpdateParams));
+      listeners.push(svInstance.addListener('zoom_changed', debouncedUpdateParams));
+      listeners.push(svInstance.addListener('pano_changed', schedulePrefetch));
+      listeners.push(svInstance.addListener('links_changed', schedulePrefetch));
+    } catch (e) {
+      // In case Google Maps objects are not ready yet
+      console.warn('[MapView] Failed to register listeners', e);
+    }
 
     // Initial fetch
     debouncedUpdateParams();
     schedulePrefetch();
 
     return () => {
-      listeners.forEach(listener => listener.remove());
+      for (const listener of listeners) {
+        try {
+          listener?.remove();
+        } catch {
+          // ignore cleanup errors
+        }
+      }
       clearPrefetchTimer();
     };
   }, [clearPrefetchTimer, debouncedUpdateParams, isInitialized, schedulePrefetch]);
