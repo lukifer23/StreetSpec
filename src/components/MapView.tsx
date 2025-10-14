@@ -165,7 +165,7 @@ CalibrationOverlay.displayName = 'CalibrationOverlay';
 
 const CameraHUD = React.memo(() => {
   const cameraParams = useRootStore(selectCameraParams);
-  const hudSettings = useRootStore(selectCameraHudSettings, shallow);
+  const hudSettings = useRootStore(selectCameraHudSettings);
 
   const hudStyle = useMemo(() => ({
     position: 'absolute' as const,
@@ -232,10 +232,9 @@ const MapView: React.FC<{
   onCalibrateClick
 }) => {
   const targetCoords = useRootStore(selectTargetCoords);
-  const { isGeneratingMap, mapGenerationError, calibrateMode } = useRootStore(
-    selectMapViewStatus,
-    shallow
-  );
+  const isGeneratingMap = useRootStore((state) => state.isGeneratingMap);
+  const mapGenerationError = useRootStore((state) => state.mapGenerationError);
+  const calibrateMode = useRootStore((state) => state.calibrateMode);
   const onnxDepthMap = useRootStore(selectOnnxDepthMap);
 
   const { lat, lng } = useMemo(() => ({
@@ -399,7 +398,7 @@ const MapView: React.FC<{
     clearPrefetchTimer();
     prefetchTimerRef.current = window.setTimeout(() => {
       triggerPrefetch();
-    }, 1000);
+    }, 1000) as any;
   }, [clearPrefetchTimer, isInitialized, triggerPrefetch]);
 
   // Initialization Effect

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, IpcMainInvokeEvent, Event } from 'electron';
 import { release } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import * as ort from 'onnxruntime-node';
 import sharp from 'sharp';
 import { existsSync } from 'node:fs';
@@ -9,7 +9,6 @@ import { inflateSync } from 'node:zlib';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseProto } from 'protobufjs';
 import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
-import type { HeadersInit, RequestInit } from 'node-fetch';
 import type { DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
 
 type StoreConstructor = typeof import('electron-store')['default'];
@@ -32,11 +31,7 @@ const fetch = async (...args: FetchArgs): FetchReturn => {
   return fn(...args);
 };
 
-// --- Add ESM __dirname equivalent --- 
-import { fileURLToPath } from 'node:url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-// --- End ESM __dirname equivalent ---
+// --- CommonJS __dirname is automatically available ---
 
 const DEFAULT_DEPTH_API_MAX_RETRIES = 5;
 const DEFAULT_DEPTH_API_RETRY_DELAY_MS = 1000;
@@ -627,7 +622,7 @@ async function getRawDepthData(panoId: string, options: DepthFetchOptions = {}):
       });
 
       if (response.status === RATE_LIMIT.tooManyRequestsCode) {
-        const retryAfter = parseRetryAfter(response.headers) ?? sanitizedDelay;
+        const retryAfter = parseRetryAfter(response.headers as any) ?? sanitizedDelay;
         console.warn(`[depth] Rate limited fetching pano ${panoId}. Attempt ${attempt}/${sanitizedMaxRetries}.`);
         if (attempt >= sanitizedMaxRetries) {
           return {
@@ -643,7 +638,7 @@ async function getRawDepthData(panoId: string, options: DepthFetchOptions = {}):
       }
 
       if (!response.ok) {
-        const message = (await extractErrorMessage(response)) ?? `Street View depth API returned status ${response.status}`;
+        const message = (await extractErrorMessage(response as any)) ?? `Street View depth API returned status ${response.status}`;
         const errorCode = mapHttpStatusToErrorCode(response.status);
         lastError = { code: errorCode, message, details: { status: response.status } };
 
@@ -1057,7 +1052,7 @@ async function createWindow() {
         offsetX: 0,
         offsetY: 0
       };
-      const settings = getStore().get('settings', {} as any) as any;
+      const settings = (getStore() as any).get('settings', {} as any) as any;
       const scale = (settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1) as number;
       const bias = (settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0) as number;
       
@@ -1121,7 +1116,7 @@ async function createWindow() {
     }
 
     try {
-      const settings = store.get('settings', {}) as { depthApiMaxRetries?: number };
+      const settings = (store as any).get('settings', {}) as { depthApiMaxRetries?: number };
       const requestedRetries = Number.isFinite(Number(request.maxRetries)) ? Number(request.maxRetries) : undefined;
       const persistedRetries = Number.isFinite(Number(settings?.depthApiMaxRetries)) ? Number(settings?.depthApiMaxRetries) : undefined;
       const effectiveMaxRetries = requestedRetries ?? persistedRetries ?? RATE_LIMIT.maxRetries;
@@ -1146,7 +1141,7 @@ async function createWindow() {
   // Persistence handlers
   ipcMain.handle('get-projects', async () => {
     try {
-      return getStore().get('projects', {});
+      return (getStore() as any).get('projects', {});
     } catch (error) {
       return {};
     }
@@ -1155,7 +1150,7 @@ async function createWindow() {
   // Measurements persistence handlers
   ipcMain.handle('get-measurements', async () => {
     try {
-      return getStore().get('measurements', []);
+      return (getStore() as any).get('measurements', []);
     } catch (_error) {
       return [];
     }
@@ -1163,7 +1158,7 @@ async function createWindow() {
 
   ipcMain.handle('save-measurements', async (_event: IpcMainInvokeEvent, measurements: any[]) => {
     try {
-      getStore().set('measurements', measurements);
+      (getStore() as any).set('measurements', measurements);
       return true;
     } catch (_error) {
       return false;
@@ -1172,9 +1167,9 @@ async function createWindow() {
 
   ipcMain.handle('save-project', async (event: IpcMainInvokeEvent, project: any) => {
     try {
-      const projects = getStore().get('projects', {});
+      const projects = (getStore() as any).get('projects', {});
       projects[project.id] = project;
-      getStore().set('projects', projects);
+      (getStore() as any).set('projects', projects);
       return true;
     } catch (_error) {
       return false;
@@ -1183,9 +1178,9 @@ async function createWindow() {
 
   ipcMain.handle('delete-project', async (event: IpcMainInvokeEvent, projectId: string) => {
     try {
-      const projects = getStore().get('projects', {});
+      const projects = (getStore() as any).get('projects', {});
       delete projects[projectId];
-      getStore().set('projects', projects);
+      (getStore() as any).set('projects', projects);
       return true;
     } catch (_error) {
       return false;
@@ -1194,7 +1189,7 @@ async function createWindow() {
 
   ipcMain.handle('get-settings', async () => {
     try {
-      return getStore().get('settings', {
+      return (getStore() as any).get('settings', {
         defaultUnit: 'metric',
         autoSave: true,
         theme: 'light',
@@ -1224,7 +1219,7 @@ async function createWindow() {
 
   ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: any) => {
     try {
-      getStore().set('settings', settings);
+      (getStore() as any).set('settings', settings);
       return true;
     } catch (_error) {
       return false;
@@ -1233,7 +1228,7 @@ async function createWindow() {
 
   ipcMain.handle('clear-data', async () => {
     try {
-      getStore().delete('measurements');
+      (getStore() as any).delete('measurements');
       return true;
     } catch (_error) {
       return false;

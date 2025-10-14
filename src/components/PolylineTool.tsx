@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { shallow } from 'zustand/shallow';
 import { useRootStore } from '../stores/rootStore';
 import { UNIT_CONVERSIONS } from '../types/common';
 import type { Point, Measurement } from '../types/common';
@@ -14,12 +13,11 @@ interface PolylinePoint extends Point {
 
 const PolylineTool: React.FC = () => {
   const cameraParams = useRootStore((state) => state.currentCameraParams);
-  const [isPolylineToolActive, setIsPolylineToolActive] = useRootStore(
-    (state) => [state.isPolylineToolActive, state.setIsPolylineToolActive],
-    shallow
-  );
+  const isPolylineToolActive = useRootStore((state) => state.isPolylineToolActive);
+  const setIsPolylineToolActive = useRootStore((state) => state.setIsPolylineToolActive);
   const addMeasurement = useRootStore((state) => state.addMeasurement);
-  const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
+  const settings = useRootStore((state) => state.settings);
+  const defaultUnit = settings.defaultUnit;
   const depthData = useRootStore((state) => state.depthData);
 
   const [points, setPoints] = useState<PolylinePoint[]>([]);
@@ -86,7 +84,7 @@ const PolylineTool: React.FC = () => {
     }
 
     // Filter out points without worldPoint
-    const validPoints = points.filter(p => p.worldPoint != null);
+    const validPoints = points.filter(p => p.worldPoint != null) as Array<Required<Pick<PolylinePoint, 'worldPoint'>> & Omit<PolylinePoint, 'worldPoint'>>;
     if (validPoints.length < 2) {
       setTotalDistance(0);
       setSegmentDistances([]);
@@ -97,8 +95,8 @@ const PolylineTool: React.FC = () => {
     let total = 0;
 
     for (let i = 1; i < validPoints.length; i++) {
-      const prevPoint = validPoints[i - 1].worldPoint!;
-      const currentPoint = validPoints[i].worldPoint!;
+      const prevPoint = validPoints[i - 1].worldPoint;
+      const currentPoint = validPoints[i].worldPoint;
       const distance = calculateDistance3D(prevPoint, currentPoint);
       distances.push(distance);
       total += distance;

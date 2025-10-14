@@ -155,15 +155,15 @@ function App() {
         depthFetchStatus ? (
           <div
             className={`${styles['statusBanner']} ${
-              depthFetchStatus.type === 'error'
+              depthFetchStatus.status === 'error'
                 ? styles['statusBannerError']
-                : depthFetchStatus.type === 'warning'
+                : depthFetchStatus.status === 'rate-limit'
                   ? styles['statusBannerWarning']
                   : styles['statusBannerInfo']
             }`}
-            role={depthFetchStatus.type === 'error' ? 'alert' : 'status'}
+            role={depthFetchStatus.status === 'error' ? 'alert' : 'status'}
           >
-            {depthFetchStatus.message}
+            {'message' in depthFetchStatus ? depthFetchStatus.message : `Status: ${depthFetchStatus.status}`}
           </div>
         ) : undefined
       }

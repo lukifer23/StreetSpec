@@ -67,7 +67,7 @@ class CalibrationManager {
     const median = this.median(residuals);
     const mad = this.median(residuals.map(r => Math.abs(r - median))) || 1e-6;
     const threshold = median + 3 * mad;
-    const inliers = this.samples.filter((_s, i) => residuals[i] <= threshold);
+    const inliers = this.samples.filter((_s, i) => residuals[i]! <= threshold);
 
     const { scale, bias } = deriveScaleAndBias(inliers.length >= this.minSamplesForFit ? inliers : this.samples);
 
@@ -81,7 +81,7 @@ class CalibrationManager {
     if (arr.length === 0) return 0;
     const sorted = [...arr].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
   }
 }
 

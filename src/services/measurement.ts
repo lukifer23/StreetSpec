@@ -121,7 +121,7 @@ export function createMeasurement(
       panoId: cameraParams.panoId ?? cameraParams.pano,
       cameraParams: cameraParams,
       confidence: 0,
-      source: 'failed',
+      source: undefined,
       error: errorMessage || "Failed to determine 3D coordinates for measurement."
     };
   }
@@ -153,7 +153,7 @@ export function createMeasurement(
     panoId: cameraParams.panoId ?? cameraParams.pano,
     cameraParams: cameraParams,
     confidence: Math.max(0, Math.min(1, confidence)), // Clamp to [0, 1]
-    source,
+    source: source === 'planes' || source === 'onnx' || source === 'ground' ? source : 'ground',
     error: errorMessage // Include any error/warning messages
   };
 

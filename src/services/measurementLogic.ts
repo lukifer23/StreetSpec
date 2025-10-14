@@ -45,8 +45,9 @@ function computeNormalizedSobelGradient(mapX: number, mapY: number, depthMap: On
       const neighbor = depthMap.data[yy * depthMap.width + xx];
       if (!neighbor || neighbor <= 0 || !Number.isFinite(neighbor)) continue;
 
-      const weightX = SOBEL_X[ky + 1][kx + 1]!;
-      const weightY = SOBEL_Y[ky + 1][kx + 1]!;
+      const sobelIndex = (ky + 1) as 0 | 1 | 2;
+      const weightX = SOBEL_X[sobelIndex][(kx + 1) as 0 | 1 | 2];
+      const weightY = SOBEL_Y[sobelIndex][(kx + 1) as 0 | 1 | 2];
       gx += neighbor * weightX;
       gy += neighbor * weightY;
       validNeighbors++;
