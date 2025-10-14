@@ -2,29 +2,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
-import { convertLengthToDisplay, convertVolumeToDisplay } from '../utils/units';
+import { convertAreaToDisplay, convertLengthToDisplay, convertVolumeToDisplay } from '../utils/units';
+import { analyzeVolumeBase, MINIMUM_BASE_AREA } from '../utils/volumeBase';
+import type { VolumeBaseAnalysis } from '../utils/volumeBase';
 import styles from './VolumeTool.module.css';
 
 interface VolumePoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
   worldSource?: 'planes' | 'ground';
-}
-
-// Calculate volume of rectangular prism defined by two opposite corners
-function calculateRectangularVolume(
-  corner1: { x: number; y: number; z: number },
-  corner2: { x: number; y: number; z: number },
-  height: number = 3 // Default height in meters
-): { volume: number; dimensions: { length: number; width: number; height: number } } {
-  const length = Math.abs(corner2.x - corner1.x);
-  const width = Math.abs(corner2.z - corner1.z);
-  const volume = length * width * height;
-
-  return {
-    volume,
-    dimensions: { length, width, height }
-  };
 }
 
 const VolumeTool: React.FC = () => {
@@ -39,10 +25,13 @@ const VolumeTool: React.FC = () => {
   const [volume, setVolume] = useState(0);
   const [dimensions, setDimensions] = useState({ length: 0, width: 0, height: 3 });
   const [height, setHeight] = useState(3); // Default height in meters
+  const [baseAnalysis, setBaseAnalysis] = useState<VolumeBaseAnalysis | null>(null);
+  const [baseArea, setBaseArea] = useState(0);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Handle canvas clicks to add points
   const handleCanvasClick = useCallback((event: MouseEvent) => {
-    if (!isVolumeToolActive || !cameraParams || points.length >= 2) return;
+    if (!isVolumeToolActive || !cameraParams) return;
 
     // Get click position relative to the MapView canvas
     const mapView = document.querySelector('[data-testid="map-view"]') as HTMLElement;
@@ -87,27 +76,58 @@ const VolumeTool: React.FC = () => {
 
       setPoints(prev => [...prev, newPoint]);
     }
-  }, [isVolumeToolActive, cameraParams, points.length, depthData]);
+  }, [isVolumeToolActive, cameraParams, depthData]);
 
   // Calculate volume when points or height change
   useEffect(() => {
-    if (points.length < 2) {
+    if (points.length === 0) {
+      setBaseAnalysis(null);
+      setBaseArea(0);
       setVolume(0);
       setDimensions({ length: 0, width: 0, height });
+      setValidationError(null);
       return;
     }
 
-    const worldPoints = points.map(p => p.worldPoint!).filter(Boolean);
-    if (worldPoints.length < 2) {
+    const worldPoints = points
+      .map((p) => p.worldPoint)
+      .filter((p): p is { x: number; y: number; z: number } => Boolean(p));
+
+    if (points.length < 3) {
+      setBaseAnalysis(null);
+      setBaseArea(0);
       setVolume(0);
       setDimensions({ length: 0, width: 0, height });
+      setValidationError('Add at least three ground points to define the base polygon.');
       return;
     }
 
-    const result = calculateRectangularVolume(worldPoints[0]!, worldPoints[1]!, height);
-    setVolume(result.volume);
-    setDimensions(result.dimensions);
-  }, [points, height]);
+    if (worldPoints.length < 3) {
+      setBaseAnalysis(null);
+      setBaseArea(0);
+      setVolume(0);
+      setDimensions({ length: 0, width: 0, height });
+      setValidationError('Unable to resolve ground coordinates for all points. Try selecting different points.');
+      return;
+    }
+
+    const analysis = analyzeVolumeBase(worldPoints, cameraParams?.heading);
+
+    if (!analysis || analysis.area < MINIMUM_BASE_AREA) {
+      setBaseAnalysis(null);
+      setBaseArea(0);
+      setVolume(0);
+      setDimensions({ length: 0, width: 0, height });
+      setValidationError('Base polygon is too small or degenerate. Adjust the points and try again.');
+      return;
+    }
+
+    setBaseAnalysis(analysis);
+    setBaseArea(analysis.area);
+    setDimensions({ length: analysis.length, width: analysis.width, height });
+    setVolume(analysis.area * height);
+    setValidationError(null);
+  }, [points, height, cameraParams?.heading]);
 
   // Add event listeners when tool is active
   useEffect(() => {
@@ -128,50 +148,79 @@ const VolumeTool: React.FC = () => {
 
   // Complete the measurement
   const handleCompleteMeasurement = useCallback(() => {
-    if (points.length >= 2 && volume > 0) {
-      const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
-      const confidence =
-        planesBackedCount === points.length
-          ? 0.7
-          : planesBackedCount > 0
-            ? 0.6
-            : 0.45;
-
-      // Create volume measurement object
-      const { value: displayVolumeValue } = convertVolumeToDisplay(volume, defaultUnit);
-
-      const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
-        kind: 'volume',
-        label: `Volume (${dimensions.length.toFixed(1)}m x ${dimensions.width.toFixed(1)}m x ${dimensions.height.toFixed(1)}m)`,
-        startPoint: points[0]!,
-        endPoint: points[1]!,
-        distance: displayVolumeValue ?? volume,
-        unit: defaultUnit,
-        panoId: cameraParams?.panoId ?? cameraParams?.pano,
-        cameraParams: cameraParams || undefined,
-        confidence,
-        source: 'volume',
-        volumeCubicMeters: volume,
-        areaSquareMeters: dimensions.length * dimensions.width,
-        dimensionsMeters: { ...dimensions },
-        points: points.map(({ x, y }) => ({ x, y })),
-        metadata: {
-          heightMeters: height,
-          worldPointsMeters: points.map((p) => p.worldPoint).filter(Boolean),
-          pointSources: points.map((point) => point.worldSource ?? 'ground'),
-        },
-        error: points.length < 2 ? 'Need 2 points for volume measurement' : undefined
-      };
-
-      addMeasurement(volumeMeasurement);
-
-      // Reset tool
-      setPoints([]);
-      setVolume(0);
-      setDimensions({ length: 0, width: 0, height: 3 });
-      setHeight(3);
+    if (!baseAnalysis || volume <= 0) {
+      return;
     }
-  }, [points, volume, dimensions, defaultUnit, cameraParams, addMeasurement, height]);
+
+    const worldPoints = points
+      .map((p) => p.worldPoint)
+      .filter((p): p is { x: number; y: number; z: number } => Boolean(p));
+
+    if (worldPoints.length < 3) {
+      return;
+    }
+
+    const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
+    const confidence =
+      planesBackedCount === points.length
+        ? 0.72
+        : planesBackedCount > 0
+          ? 0.62
+          : 0.48;
+
+    const { value: displayVolumeValue } = convertVolumeToDisplay(volume, defaultUnit);
+    const baseOrientationDegrees = (baseAnalysis.orientationRadians * 180) / Math.PI;
+    const headingDegrees = cameraParams?.heading;
+
+    const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
+      kind: 'volume',
+      label: `Volume (base ${baseAnalysis.length.toFixed(1)}m × ${baseAnalysis.width.toFixed(1)}m, height ${height.toFixed(1)}m)`,
+      startPoint: points[0]!,
+      endPoint: points[points.length - 1]!,
+      distance: displayVolumeValue ?? volume,
+      unit: defaultUnit,
+      panoId: cameraParams?.panoId ?? cameraParams?.pano,
+      cameraParams: cameraParams || undefined,
+      confidence,
+      source: 'volume',
+      volumeCubicMeters: volume,
+      areaSquareMeters: baseArea,
+      dimensionsMeters: { length: baseAnalysis.length, width: baseAnalysis.width, height },
+      points: points.map(({ x, y }) => ({ x, y })),
+      metadata: {
+        heightMeters: height,
+        baseAreaSquareMeters: baseArea,
+        baseOrientationRadians: baseAnalysis.orientationRadians,
+        baseOrientationDegrees,
+        baseCentroidGroundFrameMeters: baseAnalysis.centroid,
+        basePolygonWorldMeters: worldPoints,
+        basePolygonGroundFrameMeters: baseAnalysis.projectedPoints,
+        worldPointsMeters: worldPoints,
+        headingDegreesAtCapture: headingDegrees,
+        pointSources: points.map((point) => point.worldSource ?? 'ground'),
+      },
+      error: points.length < 3 ? 'Need at least three points for volume measurement' : undefined,
+    };
+
+    addMeasurement(volumeMeasurement);
+
+    setPoints([]);
+    setVolume(0);
+    setDimensions({ length: 0, width: 0, height: 3 });
+    setHeight(3);
+    setBaseAnalysis(null);
+    setBaseArea(0);
+    setValidationError(null);
+  }, [
+    baseAnalysis,
+    volume,
+    points,
+    defaultUnit,
+    cameraParams,
+    addMeasurement,
+    height,
+    baseArea,
+  ]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {
@@ -179,6 +228,9 @@ const VolumeTool: React.FC = () => {
     setVolume(0);
     setDimensions({ length: 0, width: 0, height: 3 });
     setHeight(3);
+    setBaseAnalysis(null);
+    setBaseArea(0);
+    setValidationError(null);
   }, []);
 
   // Close tool
@@ -194,6 +246,8 @@ const VolumeTool: React.FC = () => {
   const { value: displayLengthValue } = convertLengthToDisplay(dimensions.length, defaultUnit);
   const { value: displayWidthValue } = convertLengthToDisplay(dimensions.width, defaultUnit);
   const { value: displayDimensionHeightValue } = convertLengthToDisplay(dimensions.height, defaultUnit);
+  const { value: displayBaseAreaValue, unitLabel: areaUnit } = convertAreaToDisplay(baseArea, defaultUnit);
+  const canComplete = Boolean(baseAnalysis && volume > 0);
 
   return (
     <div className={styles['volumeTool']}>
@@ -205,8 +259,8 @@ const VolumeTool: React.FC = () => {
       <div className={styles['toolContent']}>
         <div className={styles['instructions']}>
           <p><strong>Instructions:</strong></p>
-          <p>Click two opposite corners of the rectangular area to measure.</p>
-          <p>Adjust the height below for 3D volume calculation.</p>
+          <p>Click to add ground points outlining the base footprint (minimum of three points).</p>
+          <p>Adjust the height slider to extrude the polygon into a volume.</p>
         </div>
 
         <div className={styles['heightControl']}>
@@ -226,16 +280,28 @@ const VolumeTool: React.FC = () => {
 
         <div className={styles['measurementInfo']}>
           <div className={styles['pointsCount']}>
-            Points: {points.length}/2
+            Points: {points.length}
           </div>
 
-          {volume > 0 && displayVolumeValue !== undefined && displayLengthValue !== undefined && displayWidthValue !== undefined && displayDimensionHeightValue !== undefined && (
+          {validationError && (
+            <div className={styles['validationMessage']}>
+              {validationError}
+            </div>
+          )}
+
+          {volume > 0 && displayVolumeValue !== undefined && displayLengthValue !== undefined && displayWidthValue !== undefined && displayDimensionHeightValue !== undefined && displayBaseAreaValue !== undefined && (
             <div className={styles['volumeInfo']}>
               <div className={styles['volumeValue']}>
                 Volume: {displayVolumeValue.toFixed(2)} {volumeUnit}
               </div>
               <div className={styles['dimensions']}>
-                Dimensions: {displayLengthValue.toFixed(1)} x {displayWidthValue.toFixed(1)} x {displayDimensionHeightValue.toFixed(1)} {lengthUnit}
+                Base dimensions: {displayLengthValue.toFixed(1)} × {displayWidthValue.toFixed(1)} {lengthUnit}
+              </div>
+              <div className={styles['baseArea']}>
+                Base area: {displayBaseAreaValue.toFixed(2)} {areaUnit}
+              </div>
+              <div className={styles['heightValue']}>
+                Height: {displayDimensionHeightValue.toFixed(1)} {lengthUnit}
               </div>
             </div>
           )}
@@ -244,7 +310,7 @@ const VolumeTool: React.FC = () => {
         <div className={styles['controls']}>
           <button
             onClick={handleCompleteMeasurement}
-            disabled={points.length < 2}
+            disabled={!canComplete}
             className={styles['completeButton']}
           >
             Complete Volume Measurement
