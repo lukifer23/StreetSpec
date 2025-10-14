@@ -645,7 +645,7 @@ function pixelOffsetToVerticalAngle(pixelY: number, viewHeight: number, vFov: nu
 export interface GroundPlaneResult {
   point: Vector3 | null;
   confidence: number;
-  method: 'depth' | 'estimated' | 'fallback';
+  method: 'ground' | 'planes' | 'onnx';
 }
 
 export function estimateGroundPlaneIntersectionWithConfidence(
@@ -675,14 +675,14 @@ export function estimateGroundPlaneIntersectionWithConfidence(
     return {
       point,
       confidence: Math.max(0.1, confidence), // Minimum confidence
-      method: 'estimated'
+      method: 'ground'
     };
   }
 
   return {
     point: null,
     confidence: 0,
-    method: 'fallback'
+    method: 'ground'
   };
 }
 
