@@ -175,6 +175,93 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
       expect(result.existsAfterDelete).toBe(false);
     });
 
+    test('should not invoke infer-depth until user generates a depth map', async () => {
+      await mainWindow.waitUntilWindowLoaded();
+
+      const ready = await mainWindow.executeAsync((done: (result: boolean) => void) => {
+        const start = Date.now();
+        const check = () => {
+          const mapNode = document.querySelector('[data-testid="map-view"]');
+          if (mapNode) {
+            done(true);
+            return;
+          }
+          if (Date.now() - start > 15000) {
+            done(false);
+            return;
+          }
+          setTimeout(check, 100);
+        };
+        check();
+      });
+
+      expect(ready).toBe(true);
+
+      await mainWindow.execute(() => {
+        const win = window as any;
+
+        win.__invokeLog = [];
+        if (!win.__originalInvoke) {
+          win.__originalInvoke = win.electronAPI.invoke.bind(win.electronAPI);
+        }
+
+        const originalInvoke = win.__originalInvoke;
+
+        win.electronAPI.invoke = async (channel: string, ...args: any[]) => {
+          win.__invokeLog?.push({ channel, ts: Date.now() });
+          if (channel === 'infer-depth') {
+            return { width: 1, height: 1, data: [1] };
+          }
+          return originalInvoke ? originalInvoke(channel, ...args) : undefined;
+        };
+
+        return true;
+      });
+
+      try {
+        await mainWindow.pause(5000);
+
+        const idleCount = await mainWindow.execute(() => {
+          const win = window as any;
+          return win.__invokeLog?.filter((entry: { channel: string }) => entry.channel === 'infer-depth').length ?? 0;
+        });
+
+        expect(idleCount).toBe(0);
+
+        await mainWindow.execute(() => {
+          const button = Array.from(document.querySelectorAll('button')).find(btn =>
+            btn.textContent?.includes('Generate Depth Map')
+          );
+          if (!button) {
+            throw new Error('Generate Depth Map button not found');
+          }
+          (button as HTMLButtonElement).click();
+        });
+
+        await mainWindow.pause(2000);
+
+        const afterClickCount = await mainWindow.execute(() => {
+          const win = window as any;
+          return win.__invokeLog?.filter((entry: { channel: string }) => entry.channel === 'infer-depth').length ?? 0;
+        });
+
+        expect(afterClickCount).toBeGreaterThan(0);
+      } finally {
+        await mainWindow.execute(() => {
+          const win = window as any;
+
+          if (win.__originalInvoke) {
+            win.electronAPI.invoke = win.__originalInvoke;
+            delete win.__originalInvoke;
+          }
+
+          delete win.__invokeLog;
+
+          return true;
+        });
+      }
+    });
+
     test('should reject invalid invoke channels', async () => {
       const result = await mainWindow.execute(() => {
         try {

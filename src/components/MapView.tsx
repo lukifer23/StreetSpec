@@ -229,6 +229,7 @@ const MapView: React.FC<{
   const mapGenerationError = useRootStore((state) => state.mapGenerationError);
   const calibrateMode = useRootStore((state) => state.calibrateMode);
   const onnxDepthMap = useRootStore(selectOnnxDepthMap);
+  const hasDepthMap = Boolean(onnxDepthMap);
 
   const { lat, lng } = useMemo(() => ({
     lat: targetCoords?.lat,
@@ -321,7 +322,7 @@ const MapView: React.FC<{
   }, []);
 
   const triggerPrefetch = useCallback(() => {
-    if (!streetViewRef.current) return;
+    if (!streetViewRef.current || !hasDepthMap || isGeneratingMap) return;
 
     const panorama = streetViewRef.current;
     if (!panorama) return;
@@ -370,29 +371,43 @@ const MapView: React.FC<{
 
       // Initialize and trigger prefetch
       depthPrefetchService.init(apiKey);
-      depthPrefetchService.prefetchAdjacent(
-        currentPanoId,
-        adjacentPanoIds,
-        cameraParams,
-        { maxConcurrent: 2, quality: 'medium', enableCache: true }
-      ).catch(error => {
-        // Silent failure - prefetching is optional
-        console.warn('[MapView] Prefetch failed:', error);
-      });
+      depthPrefetchService
+        .prefetchAdjacent(
+          currentPanoId,
+          adjacentPanoIds,
+          cameraParams,
+          { maxConcurrent: 2, quality: 'medium', enableCache: true }
+        )
+        .catch(error => {
+          // Silent failure - prefetching is optional
+          console.warn('[MapView] Prefetch failed:', error);
+        });
     } catch (error) {
       // Silent error handling
       console.warn('[MapView] Prefetch trigger error:', error);
     }
-  }, []);
+  }, [hasDepthMap, isGeneratingMap]);
 
   const schedulePrefetch = useCallback(() => {
-    if (!isInitialized) return;
+    if (!isInitialized || !hasDepthMap || isGeneratingMap) return;
 
     clearPrefetchTimer();
     prefetchTimerRef.current = window.setTimeout(() => {
       triggerPrefetch();
     }, 1000) as any;
-  }, [clearPrefetchTimer, isInitialized, triggerPrefetch]);
+  }, [clearPrefetchTimer, hasDepthMap, isGeneratingMap, isInitialized, triggerPrefetch]);
+
+  useEffect(() => {
+    if (!hasDepthMap || isGeneratingMap) {
+      clearPrefetchTimer();
+    }
+  }, [clearPrefetchTimer, hasDepthMap, isGeneratingMap]);
+
+  useEffect(() => {
+    if (isInitialized && hasDepthMap && !isGeneratingMap) {
+      schedulePrefetch();
+    }
+  }, [hasDepthMap, isGeneratingMap, isInitialized, schedulePrefetch]);
 
   // Initialization Effect
   useEffect(() => {
