@@ -66,6 +66,7 @@ export const useAppLogic = (apiKey: string) => {
     setOnnxDepthMap: state.setOnnxDepthMap,
     setDepthData: state.setDepthData,
     saveCurrentProject: state.saveCurrentProject,
+    setTargetCoords: state.setTargetCoords,
   })));
 
   const {
@@ -102,6 +103,7 @@ export const useAppLogic = (apiKey: string) => {
     setOnnxDepthMap,
     setDepthData,
     saveCurrentProject,
+    setTargetCoords,
   } = store;
 
   useEffect(() => {
@@ -134,6 +136,26 @@ export const useAppLogic = (apiKey: string) => {
       setError("Failed to load Google Maps. Please check the console and API Key.");
     });
   }, [apiKey, setError]);
+
+  // Default address center once the API is ready
+  useEffect(() => {
+    if (!isApiLoaded || targetCoords) {
+      return;
+    }
+    try {
+      if (typeof google !== 'undefined' && google.maps?.Geocoder) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: '715 Maple St, Collinsville, IL 62234' }, (results, status) => {
+          if (status === 'OK' && results && results[0]?.geometry?.location) {
+            const loc = results[0]!.geometry!.location!;
+            setTargetCoords({ lat: loc.lat(), lng: loc.lng() });
+          }
+        });
+      }
+    } catch {
+      // ignore geocode fallback errors
+    }
+  }, [isApiLoaded, targetCoords, setTargetCoords]);
 
   // Apply theme when settings change
   useEffect(() => {
