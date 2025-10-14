@@ -1,5 +1,25 @@
 import type { IpcRendererEvent } from 'electron';
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('path');
+try {
+  const dotenv = require('dotenv');
+  const candidates = [
+    path.join(__dirname, '..', '.env'),
+    path.join(process.cwd(), '.env')
+  ];
+  let loadedPath: string | null = null;
+  for (const p of candidates) {
+    const res: any = dotenv.config({ path: p });
+    if (res && res.parsed) {
+      loadedPath = p;
+      break;
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.log('[env:preload] loaded', loadedPath ?? 'none', 'VITE?', Boolean(process.env.VITE_GOOGLE_MAPS_API_KEY), 'GOOGLE?', Boolean(process.env.GOOGLE_MAPS_API_KEY));
+} catch (_e) {
+  // ignore
+}
 
 // Type declaration for window.electronAPI
 declare global {

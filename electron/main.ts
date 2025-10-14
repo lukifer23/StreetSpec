@@ -32,9 +32,26 @@ const fetch = async (...args: FetchArgs): FetchReturn => {
   return fn(...args);
 };
 
-// Load .env for Electron main/preload processes during development
-dotenvConfig();
-console.log('[env:main] VITE_GOOGLE_MAPS_API_KEY present?', Boolean(process.env.VITE_GOOGLE_MAPS_API_KEY));
+// Load .env for Electron main/preload processes during development with robust fallbacks
+(() => {
+  try {
+    const candidates = [
+      join(__dirname, '..', '.env'),
+      join(process.cwd(), '.env')
+    ];
+    let loaded: string | null = null;
+    for (const p of candidates) {
+      const res = dotenvConfig({ path: p });
+      if ((res as any)?.parsed) {
+        loaded = p;
+        break;
+      }
+    }
+    console.log('[env:main] loaded', loaded ?? 'none', 'VITE?', Boolean(process.env.VITE_GOOGLE_MAPS_API_KEY), 'GOOGLE?', Boolean(process.env.GOOGLE_MAPS_API_KEY));
+  } catch {
+    // ignore
+  }
+})();
 // --- CommonJS __dirname is automatically available ---
 
 const DEFAULT_DEPTH_API_MAX_RETRIES = 5;
