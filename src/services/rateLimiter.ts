@@ -17,6 +17,7 @@ interface RateLimitState {
   lastFailure: number;
   circuitOpen: boolean;
   circuitOpenTime: number;
+  nextAvailableIn?: number;
 }
 
 interface RequestOptions {
@@ -38,11 +39,13 @@ class RateLimiter {
     timestamp: number;
   }>;
   private isProcessing: boolean = false;
+  private retryTimers: Map<string, ReturnType<typeof setTimeout>>;
 
   constructor() {
     this.configs = new Map();
     this.states = new Map();
     this.requestQueue = [];
+    this.retryTimers = new Map();
     this.setupDefaultConfigs();
   }
 
@@ -89,7 +92,8 @@ class RateLimiter {
       failures: 0,
       lastFailure: 0,
       circuitOpen: false,
-      circuitOpenTime: 0
+      circuitOpenTime: 0,
+      nextAvailableIn: 0
     });
   }
 
@@ -147,6 +151,7 @@ class RateLimiter {
 
         const availableSlots = Math.max(0, config.maxRequests - state.requests);
         const toProcess = requests.slice(0, availableSlots);
+        const hasRemainingRequests = requests.length > toProcess.length;
 
         if (toProcess.length > 0) {
           // Process available requests in parallel
@@ -166,6 +171,16 @@ class RateLimiter {
           });
 
           processingPromises.push(...categoryPromises);
+
+          // Clear any pending retry timer since work has resumed
+          this.clearRetryTimer(category);
+          state.nextAvailableIn = 0;
+        }
+
+        if (availableSlots === 0 || hasRemainingRequests) {
+          const waitTime = Math.max(0, state.lastReset + config.windowMs - now);
+          state.nextAvailableIn = waitTime;
+          this.scheduleRetry(category, waitTime);
         }
       }
 
@@ -179,9 +194,34 @@ class RateLimiter {
 
       // Continue processing if there are still requests in queue
       if (this.requestQueue.length > 0) {
-        // Use setTimeout to prevent stack overflow and allow other operations
-        setTimeout(() => this.processQueue(), 0);
+        const categoriesWithTimers = new Set(this.retryTimers.keys());
+        if (categoriesWithTimers.size === 0) {
+          // No timers scheduled (e.g., requests without configs), process immediately
+          setTimeout(() => this.processQueue(), 0);
+        }
       }
+    }
+  }
+
+  private scheduleRetry(category: string, delay: number): void {
+    const existingTimer = this.retryTimers.get(category);
+    if (existingTimer) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(category);
+      this.processQueue();
+    }, delay);
+
+    this.retryTimers.set(category, timer);
+  }
+
+  private clearRetryTimer(category: string): void {
+    const existingTimer = this.retryTimers.get(category);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.retryTimers.delete(category);
     }
   }
 
@@ -383,6 +423,7 @@ class RateLimiter {
       state.failures = 0;
       state.circuitOpen = false;
       state.circuitOpenTime = 0;
+      state.nextAvailableIn = 0;
     }
   }
 
@@ -415,6 +456,8 @@ class RateLimiter {
       ));
     });
     this.requestQueue = [];
+    this.retryTimers.forEach(timer => clearTimeout(timer));
+    this.retryTimers.clear();
   }
 }
 
