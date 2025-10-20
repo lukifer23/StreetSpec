@@ -1,26 +1,104 @@
-.searchInput {
-  width: 400px; /* Even wider search input */
-  padding: 9px 15px; /* Adjusted padding */
-  border: 1px solid #ced4da;
-  border-radius: 6px; /* Slightly more rounded */
-  font-size: 0.95rem; /* Slightly smaller font */
-  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-  box-sizing: border-box; /* Include padding and border in width */
+.container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 480px;
 }
 
-.searchInput:focus {
+.searchInput {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  background-color: #fff;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.searchInput:focus-within {
   border-color: #86b7fe;
-  outline: 0;
   box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
 
-.container {
-  display: flex;
-  flex-direction: column;
+.searchInput input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  padding: 0.35rem 0.25rem;
+  font-size: 0.95rem;
+  background: transparent;
+  outline: none;
+}
+
+.searchInput input::placeholder {
+  color: #6c757d;
+}
+
+.searchInput button {
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 4px;
+  background-color: #0d6efd;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  white-space: nowrap;
+}
+
+.searchInput button:hover:not(:disabled) {
+  background-color: #0b5ed7;
+}
+
+.searchInput button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.results {
+  margin-top: 0.25rem;
+  background-color: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(33, 37, 41, 0.15);
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.resultItem {
+  padding: 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f3f5;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.resultItem:hover {
+  background-color: #f1f3f5;
+}
+
+.resultItem:last-child {
+  border-bottom: none;
+}
+
+.placeName {
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 0.15rem;
+}
+
+.placeAddress {
+  font-size: 0.875rem;
+  color: #6c757d;
 }
 
 .error {
   color: #dc3545;
   font-size: 0.875rem;
-  margin-top: 4px;
+  margin-top: 0.25rem;
 }
