@@ -1,10 +1,267 @@
-.container {
+.polylineTool {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  background-color: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  padding: 8px;
+  top: 96px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--overlay-gap, 16px);
+  width: min(360px, calc(100vw - 48px));
+  max-height: calc(100vh - 144px);
+  padding: var(--overlay-padding, 18px);
+  background: var(--overlay-surface, rgba(12, 16, 24, 0.92));
+  color: var(--overlay-text, #f5f7ff);
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--overlay-radius, 14px);
+  box-shadow: var(--overlay-shadow, 0 22px 55px rgba(5, 10, 20, 0.55));
+  backdrop-filter: blur(var(--overlay-blur, 14px));
+  overflow: hidden;
+  z-index: 20;
+}
+
+.toolHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--overlay-divider, rgba(255, 255, 255, 0.12));
+}
+
+.toolHeader h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--overlay-heading, #ffffff);
+}
+
+.closeButton {
+  background: transparent;
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.18));
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.closeButton:hover,
+.closeButton:focus-visible {
+  border-color: var(--overlay-accent, rgba(135, 158, 255, 0.9));
+  box-shadow: 0 0 0 2px rgba(135, 158, 255, 0.35);
+  outline: none;
+}
+
+.toolContent {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.toolContent::-webkit-scrollbar {
+  width: 6px;
+}
+
+.toolContent::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.instructions {
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--overlay-subtext, rgba(223, 229, 255, 0.82));
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.instructions p {
+  margin: 0;
+}
+
+.instructions p + p {
+  margin-top: 6px;
+}
+
+.instructions kbd {
+  display: inline-block;
+  padding: 2px 6px;
   border-radius: 4px;
-  z-index: 100;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+.measurementInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.12));
+}
+
+.pointsCount {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--overlay-heading, #ffffff);
+}
+
+.distanceInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.totalDistance {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--overlay-heading, #ffffff);
+}
+
+.segments {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(10, 14, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.segments h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--overlay-subheading, rgba(212, 220, 255, 0.95));
+}
+
+.segments ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--overlay-subtext, rgba(223, 229, 255, 0.8));
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.completeButton,
+.cancelButton {
+  flex: 1 1 auto;
+  min-width: 140px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.completeButton {
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  box-shadow: 0 12px 30px rgba(102, 126, 234, 0.35);
+}
+
+.completeButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px rgba(102, 126, 234, 0.45);
+}
+
+.completeButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.cancelButton {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: transparent;
+  color: var(--overlay-subtext, rgba(223, 229, 255, 0.85));
+}
+
+.cancelButton:hover,
+.cancelButton:focus-visible {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: var(--overlay-heading, #ffffff);
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.cameraInfo {
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(10, 14, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.85rem;
+  color: var(--overlay-subtext, rgba(223, 229, 255, 0.8));
+}
+
+.cameraInfo h4 {
+  margin: 0 0 6px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--overlay-subheading, rgba(212, 220, 255, 0.95));
+}
+
+.cameraInfo ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cameraInfo li {
+  list-style: disc;
+}
+
+@media (max-width: 900px) {
+  .polylineTool {
+    top: 80px;
+    right: 16px;
+    width: min(320px, calc(100vw - 32px));
+    max-height: calc(100vh - 128px);
+  }
+}
+
+@media (max-width: 640px) {
+  .polylineTool {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 96px);
+  }
+
+  .controls {
+    flex-direction: column;
+  }
+
+  .completeButton,
+  .cancelButton {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-height: 620px) {
+  .polylineTool {
+    top: 16px;
+    max-height: calc(100vh - 32px);
+  }
 }
