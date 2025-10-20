@@ -1,31 +1,218 @@
 .container {
   position: absolute;
-  top: 50px;
-  left: 10px;
-  background-color: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  padding: 8px;
-  border-radius: 4px;
-  z-index: 100;
+  top: 96px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(360px, calc(100vw - 48px));
+  max-height: calc(100vh - 144px);
+  padding: var(--overlay-padding, 18px);
+  background: var(--overlay-surface, rgba(12, 16, 24, 0.92));
+  color: var(--overlay-text, #f5f7ff);
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--overlay-radius, 14px);
+  box-shadow: var(--overlay-shadow, 0 22px 55px rgba(5, 10, 20, 0.55));
+  backdrop-filter: blur(var(--overlay-blur, 14px));
+  overflow: hidden;
+  z-index: 22;
 }
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--overlay-divider, rgba(255, 255, 255, 0.12));
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--overlay-heading, #ffffff);
 }
 
 .closeButton {
-  background: none;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.18));
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .closeButton:hover,
-.closeButton:focus {
-  border-color: #fff;
+.closeButton:focus-visible {
+  border-color: var(--overlay-accent, rgba(135, 158, 255, 0.9));
+  box-shadow: 0 0 0 2px rgba(135, 158, 255, 0.35);
+  outline: none;
+}
+
+.newProject {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--overlay-border, rgba(255, 255, 255, 0.12));
+}
+
+.newProject input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.24);
+  color: inherit;
+  font-size: 0.9rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.newProject input::placeholder {
+  color: rgba(223, 229, 255, 0.6);
+}
+
+.newProject input:focus {
+  outline: none;
+  border-color: var(--overlay-accent, rgba(135, 158, 255, 0.9));
+  box-shadow: 0 0 0 2px rgba(135, 158, 255, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.newProject button {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 12px 30px rgba(102, 126, 234, 0.35);
+}
+
+.newProject button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px rgba(102, 126, 234, 0.45);
+}
+
+.projectList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.projectList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.projectList::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.projectList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(10, 14, 22, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.projectList li:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.projectList li span {
+  flex: 1 1 auto;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.projectList li span:hover {
+  text-decoration: underline;
+}
+
+.projectList li button {
+  border-radius: 999px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: transparent;
+  color: rgba(255, 135, 135, 0.9);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.projectList li button:hover,
+.projectList li button:focus-visible {
+  border-color: rgba(255, 135, 135, 0.75);
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.16);
+  outline: none;
+}
+
+.active {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.35) 0%, rgba(118, 75, 162, 0.35) 100%);
+  border-color: rgba(135, 158, 255, 0.65);
+  box-shadow: 0 14px 32px rgba(102, 126, 234, 0.35);
+}
+
+@media (max-width: 900px) {
+  .container {
+    top: 80px;
+    left: 16px;
+    width: min(320px, calc(100vw - 32px));
+    max-height: calc(100vh - 128px);
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 96px);
+  }
+
+  .newProject {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .newProject button {
+    width: 100%;
+  }
+}
+
+@media (max-height: 620px) {
+  .container {
+    top: 16px;
+    max-height: calc(100vh - 32px);
+  }
 }
