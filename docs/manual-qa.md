@@ -20,3 +20,20 @@ These checks assume a Windows 10/11 device with DirectML-compatible hardware and
    - The main process reloads once more and logs `Execution providers in use: cpu`. Depth inference should continue to succeed with CPU execution.
 
 Record pass/fail results for each step to ensure GPU preference changes behave safely on Windows hardware.
+
+## Street View rate-limit and network failure behavior
+
+1. With valid API key, quickly pan through 10+ panos and observe any `rate-limit` banners. Ensure app retries and continues using ONNX depth until SV depth returns.
+2. Temporarily block network (e.g., disable adapter) while measuring. Verify graceful degradation, notifications, and stability.
+3. Restore network; ensure recovery without restart.
+
+## Depth prefetch behavior
+
+1. Generate ONNX depth for current pano. Wait 1–2s; navigate to an adjacent pano.
+2. Confirm faster availability indicated by status banner and cache logs.
+
+## Golden-scene spot checks (manual)
+
+Use a curated set of poles/edges with known heights at 5–30 m. For each:
+- Generate depth, calibrate horizon, measure height twice.
+- Accept if relative error ≤2%; flag otherwise and capture logs.

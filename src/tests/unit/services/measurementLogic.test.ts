@@ -194,6 +194,19 @@ describe('Measurement Logic Service', () => {
       expect(highThreshold).toBeCloseTo(100, 1);
       expect(lowThreshold).toBeCloseTo(5, 1);
     });
+
+    it('supports kernel size 9 without error', () => {
+      const width = 17;
+      const height = 17;
+      const data = new Array(width * height).fill(10);
+      const dm: OnnxDepthMap = { data, width, height } as any;
+      const d = estimateDistanceToPoint(8, 8, width, height, mockCameraParams, dm, {
+        depthKernelSize: 9 as any,
+        depthUseBilinear: false,
+        depthEdgeRejectThreshold: 0.35
+      } as any);
+      expect(typeof d === 'number' || d === null).toBe(true);
+    });
   });
 
   describe('calculateEstimatedHeight', () => {

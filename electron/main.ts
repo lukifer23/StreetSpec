@@ -1433,6 +1433,37 @@ async function createWindow() {
       return false;
     }
   });
+
+  // Telemetry logging (opt-in, anonymized)
+  ipcMain.handle('log-telemetry', async (_event: IpcMainInvokeEvent, payload: any) => {
+    try {
+      const settings = (getStore() as any).get('settings', { telemetryOptIn: false });
+      if (!settings?.telemetryOptIn) {
+        return { accepted: false, reason: 'opt_out' };
+      }
+
+      const logDir = join(app.getPath('userData'), 'logs');
+      const logFile = join(logDir, `telemetry-${new Date().toISOString().split('T')[0]}.jsonl`);
+
+      if (!existsSync(logDir)) {
+        await fs.promises.mkdir(logDir, { recursive: true });
+      }
+
+      const entry = {
+        ts: Date.now(),
+        event: String(payload?.event ?? 'unknown'),
+        data: sanitizeTelemetry(payload?.data ?? {}),
+        appVersion: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch
+      };
+
+      await fs.promises.appendFile(logFile, JSON.stringify(entry) + '\n', 'utf8');
+      return { accepted: true };
+    } catch (error) {
+      return { accepted: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 }
 
 // Helper function to clean up old log files
@@ -1455,6 +1486,28 @@ async function cleanupOldLogs(logDir: string, daysToKeep: number): Promise<void>
     }
   } catch (error) {
     console.warn('[cleanup] Failed to clean up old logs:', error);
+  }
+}
+
+function sanitizeTelemetry(data: any): any {
+  try {
+    if (!data || typeof data !== 'object') return {};
+    const clone: any = Array.isArray(data) ? [] : {};
+    for (const [k, v] of Object.entries(data)) {
+      if (/email|name|token|key|address|phone|lat|lng|location/i.test(k)) {
+        continue; // drop potential PII/geo
+      }
+      if (typeof v === 'object' && v !== null) {
+        clone[k] = sanitizeTelemetry(v);
+      } else if (typeof v === 'string') {
+        clone[k] = v.slice(0, 256);
+      } else if (typeof v === 'number' || typeof v === 'boolean') {
+        clone[k] = v;
+      }
+    }
+    return clone;
+  } catch {
+    return {};
   }
 }
 
