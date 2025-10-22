@@ -1,4 +1,4 @@
-import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
+import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData, OnnxDepthMap, AppSettings } from '../types/common';
 
 const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');
 type CalibratedVector3 = Vector3 & { [calibrationAppliedSymbol]?: boolean };
@@ -470,11 +470,13 @@ export function screenToWorldWithDepth(
         if (selectedPlane) {
             const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
             const dotVN = dotProduct(directionVector, normal);
+            // Reject near-parallel intersections
             if (Math.abs(dotVN) >= epsilon) {
                 // Google depth planes follow n dot x + d = 0 with normals pointing toward the camera.
                 // The intersection distance along the viewing ray is therefore t = -d / (n dot v).
                 const t = -selectedPlane.d / dotVN;
-                if (t > epsilon) {
+                // Clamp t to plausible scene bounds to reduce numeric outliers
+                if (t > epsilon && t < 1e5) {
                     minDistance = t;
                 }
             }
@@ -491,7 +493,7 @@ export function screenToWorldWithDepth(
             }
             // Same Street View plane convention applies when examining all planes.
             const t = -plane.d / dotVN;
-            if (t > epsilon && t < minDistance) {
+            if (t > epsilon && t < minDistance && t < 1e5) {
                 minDistance = t;
             }
         }
@@ -705,4 +707,12 @@ export function getGeometryCacheStats(): {
     trigCacheSize: trigCache.size,
     depthSignatureCacheSize: depthDataSignatureCache.size,
   };
+}
+
+// Lightweight invariant check helper for plane parameters (development builds)
+export function validatePlaneInvariant(plane: { nx: number; ny: number; nz: number; d: number }): boolean {
+  const nLen = Math.hypot(plane.nx, plane.ny, plane.nz);
+  if (!Number.isFinite(nLen) || nLen < 1e-6) return false;
+  // Normals from Street View are unit length or close; allow small drift
+  return nLen > 0.5 && nLen < 2.0;
 }

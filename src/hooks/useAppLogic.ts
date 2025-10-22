@@ -334,7 +334,11 @@ export const useAppLogic = (apiKey: string) => {
       }
 
       if (result.detected && result.confidence > 0.5) {
-        const newSettings = { ...settings, calibrationPitchOffsetDeg: result.pitchOffset };
+        // Persist per-zoom bias entry as an additive reference, and set live offset
+        const zoomKey = Math.max(0, Math.min(4, Math.round(currentCameraParams.zoom ?? 1)));
+        const calibrationBiasByZoom = { ...(settings.calibrationBiasByZoom ?? {}) } as Record<number, number>;
+        calibrationBiasByZoom[zoomKey] = result.pitchOffset;
+        const newSettings = { ...settings, calibrationPitchOffsetDeg: result.pitchOffset, calibrationBiasByZoom } as typeof settings;
         updateSettings({ calibrationPitchOffsetDeg: result.pitchOffset });
         await window.electronAPI?.invoke('save-settings', newSettings);
         setIsCalibrated(true);

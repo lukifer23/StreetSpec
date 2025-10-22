@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
+import { estimateDistanceToPoint } from '../services/measurementLogic';
 import { convertAreaToDisplay, convertLengthToDisplay, convertVolumeToDisplay } from '../utils/units';
 import { analyzeVolumeBase, MINIMUM_BASE_AREA } from '../utils/volumeBase';
 import type { VolumeBaseAnalysis } from '../utils/volumeBase';
@@ -53,6 +54,18 @@ const VolumeTool: React.FC = () => {
       if (depthWorld) {
         worldPoint = depthWorld;
         worldSource = 'planes';
+      }
+    }
+
+    if (!worldPoint) {
+      const onnx = useRootStore.getState().onnxDepthMap;
+      if (onnx && cameraParams) {
+        const d = estimateDistanceToPoint(x, y, viewWidth, viewHeight, cameraParams, onnx);
+        if (d && Number.isFinite(d) && d > 0) {
+          const dir = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
+          worldPoint = { x: dir.x * d, y: dir.y * d, z: dir.z * d };
+          worldSource = 'onnx';
+        }
       }
     }
 

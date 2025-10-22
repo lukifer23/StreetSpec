@@ -163,14 +163,16 @@ export interface AppSettings {
   measurementHistoryLimit: number;
   useGPU?: boolean;
   calibrationPitchOffsetDeg?: number;
+  calibrationBiasByZoom?: Record<number, number>;
   cameraHeight?: number;
   depthScale?: number;
   depthBias?: number;
-  depthKernelSize?: 3 | 5 | 7;
+  depthKernelSize?: 3 | 5 | 7 | 9;
   depthUseBilinear?: boolean;
   depthEdgeRejectThreshold?: number; // normalized gradient threshold 0..1
   autoCalibrateDepth?: boolean;
   showDebugOverlay?: boolean;
+  telemetryOptIn?: boolean;
   depthApiMaxRetries?: number;
   depthQuality?: 'low' | 'medium' | 'high';
   enableDepthCache?: boolean;

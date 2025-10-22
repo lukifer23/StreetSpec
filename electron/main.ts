@@ -72,6 +72,8 @@ const storeReady: Promise<ElectronStoreInstance> = (async () => {
         measurementHistoryLimit: 1000,
         useGPU: false,
         calibrationPitchOffsetDeg: 0,
+        calibrationBiasByZoom: {},
+        telemetryOptIn: false,
         depthScale: 1,
         depthBias: 0,
         depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
@@ -138,6 +140,8 @@ const storeReady: Promise<ElectronStoreInstance> = (async () => {
           measurementHistoryLimit: { type: 'number', minimum: 1, maximum: 10000 },
           useGPU: { type: 'boolean' },
           calibrationPitchOffsetDeg: { type: 'number' },
+          calibrationBiasByZoom: { type: 'object', additionalProperties: { type: 'number' } },
+          telemetryOptIn: { type: 'boolean' },
           depthScale: { type: 'number' },
           depthBias: { type: 'number' },
           depthKernelSize: { type: 'number', enum: [3, 5, 7] },
@@ -899,10 +903,17 @@ async function loadModel(): Promise<void> {
 
   if (!modelPath) {
     console.error('[model] Model file not found. Checked paths:', candidates);
-    if (win) {
-      win.webContents.send('main-process-message', { type: 'error', message: 'ONNX model file not found.' });
+    // Attempt fallback to tiny model explicitly
+    const { resolvedPath: tinyFallback } = resolveModelPath(tinyModelFilename);
+    if (tinyFallback) {
+      selectedModelFilename = tinyModelFilename;
+      console.warn('[model] Falling back to tiny model:', tinyModelFilename);
+    } else {
+      if (win) {
+        win.webContents.send('main-process-message', { type: 'error', message: 'ONNX model file not found.' });
+      }
+      return;
     }
-    return;
   }
 
   let providerAttempts: ExecutionProviderList[] = [];
@@ -1168,6 +1179,7 @@ async function createWindow() {
       const settings = (getStore() as any).get('settings', {} as any) as any;
       const scale = (settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1) as number;
       const bias = (settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0) as number;
+      // calibrationBiasByZoom is persisted for horizon pitch; kept for future mapping refinements
       
       logMemoryUsage('After inference');
       return {
@@ -1310,6 +1322,8 @@ async function createWindow() {
         measurementHistoryLimit: 1000,
         useGPU: false,
         calibrationPitchOffsetDeg: 0,
+        calibrationBiasByZoom: {},
+        telemetryOptIn: false,
         depthScale: 1,
         depthBias: 0,
         depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
@@ -1323,6 +1337,8 @@ async function createWindow() {
         measurementHistoryLimit: 1000,
         useGPU: false,
         calibrationPitchOffsetDeg: 0,
+        calibrationBiasByZoom: {},
+        telemetryOptIn: false,
         depthScale: 1,
         depthBias: 0,
         depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES

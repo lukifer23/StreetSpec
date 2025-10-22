@@ -1,3 +1,17 @@
+import { validatePlaneInvariant, screenToWorldWithDepth } from '../../../services/geometry';
+
+describe('geometry invariants', () => {
+  test('validatePlaneInvariant rejects degenerate normals', () => {
+    expect(validatePlaneInvariant({ nx: 0, ny: 0, nz: 0, d: 1 })).toBe(false);
+    expect(validatePlaneInvariant({ nx: Infinity as any, ny: 0, nz: 0, d: 0 })).toBe(false);
+  });
+
+  test('validatePlaneInvariant accepts near-unit normals', () => {
+    expect(validatePlaneInvariant({ nx: 0, ny: 1, nz: 0, d: 1 })).toBe(true);
+    expect(validatePlaneInvariant({ nx: 0.6, ny: 0.6, nz: 0.6, d: 1 })).toBe(true);
+  });
+});
+
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import {
   calculateFov,

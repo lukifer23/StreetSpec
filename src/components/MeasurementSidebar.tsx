@@ -60,6 +60,11 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
     parts.push(`Source ${measurement.source}`);
   }
 
+  // Calibration state at time of capture
+  const calOffset = measurement.cameraParams?.calibrationPitchOffsetDeg ?? 0;
+  const isCalibrated = Math.abs(calOffset) > 1e-6;
+  parts.push(isCalibrated ? `Cal ${calOffset.toFixed(2)}°` : 'Uncalibrated');
+
   return parts.length > 0 ? parts.join(' | ') : undefined;
 };
 

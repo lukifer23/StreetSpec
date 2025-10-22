@@ -62,7 +62,7 @@ interface CachedDepthMap {
 }
 
 // Cache configuration
-const CACHE_VERSION = '1.1'; // Updated version for compression
+const CACHE_VERSION = '1.2'; // Updated version for compression and key schema
 const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
 const MAX_CACHE_SIZE = 100; // Increased cache size with compression
 const MAX_MEMORY_MB = 200; // Maximum memory usage in MB
@@ -94,12 +94,24 @@ function generateCacheKey(params: CameraParams): string {
   const normalizedHeading = normalizeNumericParam(params.heading);
   const normalizedPitch = normalizeNumericParam(params.pitch);
   const normalizedFov = normalizeNumericParam(params.fov);
+  const normalizedVFov = normalizeNumericParam(params.vFov);
+  const normalizedZoom = normalizeNumericParam(params.zoom);
 
   if (!normalizedHeading || !normalizedPitch || !normalizedFov) {
     return '';
   }
 
-  return `${CACHE_PREFIX}${params.panoId}_${normalizedHeading}_${normalizedPitch}_${normalizedFov}`;
+  // Include optional parameters when present to better scope cache entries
+  const pieces = [
+    `${CACHE_PREFIX}${params.panoId}`,
+    normalizedHeading,
+    normalizedPitch,
+    normalizedFov,
+    normalizedVFov ?? 'nv',
+    normalizedZoom ?? 'nz'
+  ];
+
+  return pieces.join('_');
 }
 
 // Compress depth data if needed

@@ -1,9 +1,9 @@
 import type { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings } from '../types/common';
-import { screenToWorldWithDepth } from './geometry';
+import { screenToWorldWithDepth, screenToWorld, estimateGroundPlaneIntersection } from './geometry';
 import { pixelOffsetToVerticalAngle, degreesToRadians } from '../utils/cameraMath';
 
 // Size of square kernel (odd number)
-const DEFAULT_KERNEL_SIZE = 5 as 3 | 5 | 7;
+const DEFAULT_KERNEL_SIZE = 5 as 3 | 5 | 7 | 9;
 const DEFAULT_USE_BILINEAR = true;
 const DEFAULT_EDGE_REJECT_THRESHOLD = 0.35; // 0..1 normalized gradient magnitude
 
@@ -77,7 +77,7 @@ function getRobustDepthSample(
   mapX: number,
   mapY: number,
   depthMap: OnnxDepthMap,
-  kernelSize: 3 | 5 | 7,
+  kernelSize: 3 | 5 | 7 | 9,
   edgeRejectThreshold = DEFAULT_EDGE_REJECT_THRESHOLD
 ): number | null {
   const half = Math.floor(kernelSize / 2);
@@ -114,6 +114,7 @@ function getRobustDepthSample(
 
   const workingValues = filteredVals.length > 0 ? filteredVals : fallbackVals;
   const sorted = [...workingValues].sort((a, b) => a - b);
+  // Percentile filter: use median, but avoid extremes with narrow neighborhoods
   const mid = Math.floor(sorted.length / 2);
   const depth = sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 
@@ -215,7 +216,7 @@ export function estimateDistanceToPoint(
     mappedY = Math.max(0, Math.min(depthMap.height - 1, mappedY));
 
     const useBilinear = settings?.depthUseBilinear ?? DEFAULT_USE_BILINEAR;
-    const kernelSize = settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE;
+    const kernelSize = (settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE) as 3 | 5 | 7 | 9;
     const edgeRejectThreshold = Math.max(
         0,
         Math.min(1, settings?.depthEdgeRejectThreshold ?? DEFAULT_EDGE_REJECT_THRESHOLD),
@@ -288,4 +289,41 @@ export function calculateEstimatedHeight(
     const heightAtBase = distanceToBase * Math.tan(angleToBase);
     const heightAtTop = distanceToBase * Math.tan(angleToTop);
     return heightAtBase - heightAtTop;
+}
+
+/**
+ * Fused world conversion using Street View planes when available, else estimating
+ * with ONNX depth (distance) and ground-plane geometry as a last resort.
+ */
+export function fusedWorldPoint(
+  point: Point,
+  viewportWidth: number,
+  viewportHeight: number,
+  cameraParams: CameraParams | null,
+  depthData: DecodedDepthData | null,
+  onnxDistanceMeters: number | null
+): { world: { x: number; y: number; z: number } | null; method: 'planes' | 'onnx' | 'ground'; confidence: number } {
+  if (!cameraParams) {
+    return { world: null, method: 'ground', confidence: 0 };
+  }
+  // Prefer planes when available
+  if (depthData) {
+    const world = screenToWorldWithDepth(point, cameraParams, viewportWidth, viewportHeight, depthData);
+    if (world) {
+      return { world, method: 'planes', confidence: 0.9 };
+    }
+  }
+  // ONNX distance: project along ray
+  if (onnxDistanceMeters && Number.isFinite(onnxDistanceMeters) && onnxDistanceMeters > 0) {
+    const dir = screenToWorld(point, cameraParams, viewportWidth, viewportHeight);
+    const world = { x: dir.x * onnxDistanceMeters, y: dir.y * onnxDistanceMeters, z: dir.z * onnxDistanceMeters };
+    return { world, method: 'onnx', confidence: 0.6 };
+  }
+  // Ground plane fallback
+  {
+    const dir = screenToWorld(point, cameraParams, viewportWidth, viewportHeight);
+    const world = estimateGroundPlaneIntersection(dir, cameraParams);
+    if (world) return { world, method: 'ground', confidence: 0.4 };
+  }
+  return { world: null, method: 'ground', confidence: 0 };
 }

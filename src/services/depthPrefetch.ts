@@ -119,6 +119,15 @@ class DepthPrefetchService {
     // Start prefetch tasks
     for (const panoId of panosToPrefetch) {
       this.startPrefetchTask(panoId, cameraParams, { enableCache, quality });
+      // Opportunistically request Street View depth planes for panoId (renderer->main IPC)
+      try {
+        if (window.electronAPI?.invoke) {
+          // fire-and-forget, renderer will not use response directly
+          window.electronAPI.invoke('fetch-depth-data', { panoId }).catch(() => {});
+        }
+      } catch {
+        // ignore prefetch plane errors
+      }
     }
   }
 

@@ -3,6 +3,7 @@ import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { convertAreaToDisplay, convertLengthToDisplay } from '../utils/units';
 import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
+import { estimateDistanceToPoint } from '../services/measurementLogic';
 import styles from './AreaTool.module.css';
 
 interface AreaPoint extends Point {
@@ -78,6 +79,18 @@ const AreaTool: React.FC = () => {
       if (depthWorld) {
         worldPoint = depthWorld;
         worldSource = 'planes';
+      }
+    }
+
+    if (!worldPoint) {
+      const onnx = useRootStore.getState().onnxDepthMap;
+      if (onnx && cameraParams) {
+        const d = estimateDistanceToPoint(x, y, viewWidth, viewHeight, cameraParams, onnx);
+        if (d && Number.isFinite(d) && d > 0) {
+          const dir = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
+          worldPoint = { x: dir.x * d, y: dir.y * d, z: dir.z * d };
+          worldSource = 'onnx';
+        }
       }
     }
 
