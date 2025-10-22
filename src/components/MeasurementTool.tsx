@@ -745,7 +745,13 @@ const MeasurementTool: React.FC = () => {
         setStartPoint(coords);
       }
     }
-  }, [phase, startPoint, getClickCoords, completeMeasurement, hasDepthSupport, isCalibrated]);
+  }, [
+    phase,
+    startPoint,
+    getClickCoords,
+    completeMeasurement,
+    hasDepthSupport
+  ]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (phase === 'placingEnd') {

@@ -9,7 +9,7 @@ import styles from './PolylineTool.module.css';
 interface PolylinePoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
-  worldSource?: 'planes' | 'ground';
+  worldSource?: 'planes' | 'ground' | 'onnx';
 }
 
 const PolylineTool: React.FC = () => {
@@ -108,13 +108,8 @@ const PolylineTool: React.FC = () => {
     let total = 0;
 
     for (let i = 1; i < validPoints.length; i++) {
-      // We know worldPoint exists because we filtered for it above
-      // @ts-expect-error - TypeScript can't infer this but we know it's safe
-      const prevWorldPoint = validPoints[i - 1].worldPoint;
-      // @ts-expect-error - TypeScript can't infer this but we know it's safe
-      const currentWorldPoint = validPoints[i].worldPoint;
-
-      // @ts-expect-error - We know these are not undefined because we filtered for them
+      const prevWorldPoint = validPoints[i - 1].worldPoint!;
+      const currentWorldPoint = validPoints[i].worldPoint!;
       const distance = calculateDistance3D(prevWorldPoint, currentWorldPoint);
       distances.push(distance);
       total += distance;

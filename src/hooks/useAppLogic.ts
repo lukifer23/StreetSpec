@@ -258,7 +258,7 @@ export const useAppLogic = (apiKey: string) => {
     }
 
     setCurrentCameraParams(merged);
-  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams, updateSettings]);
+  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams, updateSettings, setIsCalibrated]);
 
   const handleCalibrateClick = useCallback((pixelY: number, viewH: number) => {
      if (
@@ -281,7 +281,7 @@ export const useAppLogic = (apiKey: string) => {
       kind: 'success',
       message: `Manual calibration saved. Pitch offset ${offset.toFixed(2)} deg.`,
     });
-  }, [currentCameraParams, settings, updateSettings, setCalibrateMode]);
+  }, [currentCameraParams, settings, updateSettings, setCalibrateMode, setIsCalibrated]);
 
   const handleAutoCalibrate = useCallback(async () => {
     if (!currentCameraParams || (!depthData && !onnxDepthMap)) {
@@ -362,7 +362,7 @@ export const useAppLogic = (apiKey: string) => {
         message: 'Auto-calibration failed. Please try manual calibration.',
       });
     }
-  }, [currentCameraParams, depthData, onnxDepthMap, settings, updateSettings]);
+  }, [currentCameraParams, depthData, onnxDepthMap, settings, updateSettings, setIsCalibrated]);
 
   // Fetch Street View depth data when pano changes
   useEffect(() => {

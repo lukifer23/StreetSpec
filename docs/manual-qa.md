@@ -37,3 +37,25 @@ Record pass/fail results for each step to ensure GPU preference changes behave s
 Use a curated set of poles/edges with known heights at 5–30 m. For each:
 - Generate depth, calibrate horizon, measure height twice.
 - Accept if relative error ≤2%; flag otherwise and capture logs.
+
+Golden fixture format (for automated tests in `src/tests/fixtures/golden/*.json`):
+
+```
+{
+  "name": "fixture-identifier",
+  "cameraParams": { "vFov": 60, "heading": 0, "pitch": 0 },
+  "viewport": { "width": 1280, "height": 720 },
+  "basePoint": { "x": 640, "y": 540 },
+  "topPoint": { "x": 640, "y": 420 },
+  "baseDistanceMeters": 15.0,
+  "expectedHeightMeters": 6.5,
+  "tolerancePercent": 2.0
+}
+```
+
+## Compliance & Keys
+
+1. Do not persist raw Street View imagery or depth payloads beyond transient processing/cache where permitted.
+2. Store only derived measurements and anonymized logs (no PII).
+3. Restrict API keys to required APIs (Maps JS, Places, Street View Static, Street View Depth); scope to Windows app.
+4. Document key handling and rotation. Keys are read via env (`VITE_GOOGLE_MAPS_API_KEY`, `GOOGLE_MAPS_API_KEY`).
