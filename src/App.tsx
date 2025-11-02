@@ -43,6 +43,7 @@ function App() {
     isProjectPanelOpen,
     currentCameraParams,
     onnxDepthMap,
+    depthGenProgress,
 
     // Actions
     setIsSettingsOpen,
@@ -184,28 +185,29 @@ function App() {
                 </div>
               }
             >
-              <ErrorBoundary
-                onError={(error, errorInfo) => {
-                  errorHandler.handleError({
-                    id: `mapview-${Date.now()}`,
-                    code: 'UI_RENDER_FAILED',
-                    message: error.message,
-                    userFriendlyMessage: 'Map view error. Some features may be unavailable.',
-                    severity: 'medium' as any,
-                    category: 'ui' as any,
-                    recoverable: true,
-                    timestamp: Date.now(),
-                    stack: error.stack,
-                    details: errorInfo
-                  });
-                }}
-              >
-                <MapView
-                  onCameraParamsChange={handleCameraChange}
-                  onGenerateDepthMap={handleGenerateDepthMap}
-                  onCalibrateClick={handleCalibrateClick}
-                />
-              </ErrorBoundary>
+                      <ErrorBoundary
+                        onError={(error, errorInfo) => {
+                          errorHandler.handleError({
+                            id: `mapview-${Date.now()}`,
+                            code: 'UI_RENDER_FAILED',
+                            message: error.message,
+                            userFriendlyMessage: 'Map view error. Some features may be unavailable.',
+                            severity: 'medium' as any,
+                            category: 'ui' as any,
+                            recoverable: true,
+                            timestamp: Date.now(),
+                            stack: error.stack,
+                            details: errorInfo
+                          });
+                        }}
+                      >
+                        <MapView
+                          onCameraParamsChange={handleCameraChange}
+                          onGenerateDepthMap={handleGenerateDepthMap}
+                          onCalibrateClick={handleCalibrateClick}
+                          depthGenProgress={depthGenProgress}
+                        />
+                      </ErrorBoundary>
               <ErrorBoundary
                 onError={(error, errorInfo) => {
                   errorHandler.handleError({

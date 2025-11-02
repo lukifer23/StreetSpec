@@ -25,6 +25,43 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.undoRedoControls {
+  display: flex;
+  gap: 4px;
+}
+
+.undoButton,
+.redoButton {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 28px;
+}
+
+.undoButton:hover:not(:disabled),
+.redoButton:hover:not(:disabled) {
+  background: #5a6268;
+  transform: translateY(-1px);
+}
+
+.undoButton:disabled,
+.redoButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: #adb5bd;
 }
 
 .unitToggle {
@@ -132,6 +169,21 @@
   font-size: 14px;
   color: #343a40;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.confidenceBadge {
+  font-size: 10px;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  display: inline-block;
+  min-width: 40px;
+  text-align: center;
 }
 
 .measurementMeta {

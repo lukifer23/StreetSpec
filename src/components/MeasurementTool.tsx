@@ -761,7 +761,9 @@ const MeasurementTool: React.FC = () => {
       console.error('[measure] No height calculated');
       pushNotification({
         kind: 'error',
+        title: 'Invalid Measurement',
         message: 'Could not calculate height. Ensure both points are on measurable surfaces.',
+        timeoutMs: 5000
       });
       setStartPoint(null);
       setPhase('idle');
@@ -773,11 +775,23 @@ const MeasurementTool: React.FC = () => {
       console.error('[measure] Invalid height result:', finalHeight);
       pushNotification({
         kind: 'error',
+        title: 'Invalid Measurement',
         message: 'Invalid measurement result. Please try different points.',
+        timeoutMs: 5000
       });
       setStartPoint(null);
       setPhase('idle');
       return;
+    }
+
+    // Warn if confidence is low
+    if (confidence < 0.3) {
+      pushNotification({
+        kind: 'warning',
+        title: 'Low Confidence Measurement',
+        message: `Measurement confidence is ${Math.round(confidence * 100)}%. Results may be inaccurate.`,
+        timeoutMs: 5000
+      });
     }
 
     // Check for unrealistic measurements (likely calibration issues)
@@ -815,6 +829,14 @@ const MeasurementTool: React.FC = () => {
     };
     console.log('[measure] Creating measurement:', newMeasurement);
     addMeasurement(newMeasurement);
+
+    // Visual feedback: show success notification
+    pushNotification({
+      kind: 'success',
+      title: 'Measurement Added',
+      message: `${finalDistance?.toFixed(2) ?? finalHeight.toFixed(2)} ${defaultUnit === 'metric' ? 'm' : 'ft'} (confidence: ${Math.round(measurementConfidence * 100)}%)`,
+      timeoutMs: 3000
+    });
 
     console.log('[measure] Resetting measurement state');
     setStartPoint(null);
@@ -952,6 +974,12 @@ const MeasurementTool: React.FC = () => {
     setCurrentMousePos(null);
   }, [currentCameraParams, hasDepthSupport, isCalibrated]);
 
+  // Undo/Redo functionality
+  const undoMeasurement = useRootStore((state) => state.undoMeasurement);
+  const redoMeasurement = useRootStore((state) => state.redoMeasurement);
+  const canUndo = useRootStore((state) => state.canUndo());
+  const canRedo = useRootStore((state) => state.canRedo());
+
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
       const el = target as HTMLElement | null;
@@ -965,8 +993,25 @@ const MeasurementTool: React.FC = () => {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = (event.key || '').toLowerCase();
-      // Ignore when typing in inputs or when modifiers are pressed
-      if (isEditableTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey) {
+      const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+      
+      // Handle undo/redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z)
+      if (isCtrlOrCmd && !isEditableTarget(event.target)) {
+        if (key === 'z' && !event.shiftKey) {
+          event.preventDefault();
+          if (canUndo) {
+            undoMeasurement();
+          }
+          return;
+        } else if ((key === 'y' || (key === 'z' && event.shiftKey)) && canRedo) {
+          event.preventDefault();
+          redoMeasurement();
+          return;
+        }
+      }
+
+      // Ignore when typing in inputs or when modifiers are pressed (except for undo/redo above)
+      if (isEditableTarget(event.target) || (isCtrlOrCmd && key !== 'z' && key !== 'y')) {
         return;
       }
 
@@ -983,7 +1028,7 @@ const MeasurementTool: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [phase, startMeasurement]);
+  }, [phase, startMeasurement, undoMeasurement, redoMeasurement, canUndo, canRedo]);
 
   const overlayClassName = useMemo(() =>
     `${styles['overlay']} ${phase !== 'idle' ? styles['overlayActive'] : ''}`,

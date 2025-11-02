@@ -514,6 +514,8 @@ export const useAppLogic = (apiKey: string) => {
   }, [currentCameraParams?.panoId, settings.depthApiMaxRetries, setDepthData]);
 
   // Depth Map Generation Logic
+  const [depthGenProgress, setDepthGenProgress] = useState<{ stage: 'fetching' | 'processing' | 'complete'; quality?: 'low' | 'medium' | 'high' } | undefined>();
+
   const handleGenerateDepthMap = useCallback(async () => {
     if (!currentCameraParams || !apiKey || isGeneratingMap) {
       return;
@@ -521,6 +523,7 @@ export const useAppLogic = (apiKey: string) => {
 
     setIsGeneratingMap(true);
     setMapGenerationError(null);
+    setDepthGenProgress({ stage: 'fetching', quality: 'high' });
 
     try {
       const deps = {
@@ -531,6 +534,7 @@ export const useAppLogic = (apiKey: string) => {
           if (!window.electronAPI?.invoke) {
             throw new Error('Electron IPC not available');
           }
+          setDepthGenProgress({ stage: 'processing', quality: 'high' });
           const result = await window.electronAPI.invoke('infer-depth', base64data);
           if (!result) {
             throw new Error('Depth inference returned null');
@@ -541,14 +545,23 @@ export const useAppLogic = (apiKey: string) => {
 
       const result = await generateDepthMap(currentCameraParams, apiKey, deps, {
         enableCache: true,
-        quality: 'high'
+        quality: 'high',
+        progressive: false,
+        onProgress: (progress) => {
+          setDepthGenProgress(progress);
+        }
       });
 
       setOnnxDepthMap(result.depthMap);
       setMapGenerationError(null);
+      setDepthGenProgress({ stage: 'complete', quality: 'high' });
+      
+      // Clear progress after brief delay
+      setTimeout(() => setDepthGenProgress(undefined), 2000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setMapGenerationError(errorMessage);
+      setDepthGenProgress(undefined);
       
       // Show user-friendly error notification
       pushNotification({
@@ -749,6 +762,7 @@ export const useAppLogic = (apiKey: string) => {
     currentCameraParams,
     onnxDepthMap,
     depthData,
+    depthGenProgress,
     deleteMeasurement,
     renameMeasurement,
     handleAutoCalibrate,

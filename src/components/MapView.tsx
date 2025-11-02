@@ -40,38 +40,110 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
   };
 }
 
-// Memoized status indicator component
+// Progress tracking for depth generation
+interface DepthGenerationProgress {
+  stage: 'fetching' | 'processing' | 'complete';
+  quality?: 'low' | 'medium' | 'high';
+  progress?: number; // 0-100
+}
+
+// Memoized status indicator component with enhanced progress feedback
 export const GenStatusIndicator = React.memo<{
   isGeneratingMap: boolean;
   mapGenerationError: string | null;
   onnxDepthMap: any;
-}>(({ isGeneratingMap, mapGenerationError, onnxDepthMap }) => {
+  progress?: DepthGenerationProgress;
+}>(({ isGeneratingMap, mapGenerationError, onnxDepthMap, progress }) => {
+  const [progressPercent, setProgressPercent] = React.useState(0);
+
+  // Simulate progress based on stage
+  React.useEffect(() => {
+    if (!isGeneratingMap) {
+      setProgressPercent(0);
+      return;
+    }
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+    
+    if (progress?.stage === 'fetching') {
+      // Fetching: 0-40%
+      let current = 0;
+      interval = setInterval(() => {
+        current = Math.min(40, current + 2);
+        setProgressPercent(current);
+        if (current >= 40) {
+          if (interval) clearInterval(interval);
+        }
+      }, 100);
+    } else if (progress?.stage === 'processing') {
+      // Processing: 40-90%
+      let current = 40;
+      interval = setInterval(() => {
+        current = Math.min(90, current + 3);
+        setProgressPercent(current);
+        if (current >= 90) {
+          if (interval) clearInterval(interval);
+        }
+      }, 150);
+    } else if (progress?.stage === 'complete') {
+      setProgressPercent(100);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGeneratingMap, progress?.stage]);
+
   const message = useMemo(() => {
     if (isGeneratingMap) {
-      return 'Generating depth map...';
+      const qualityLabel = progress?.quality ? ` (${progress.quality} quality)` : '';
+      if (progress?.stage === 'fetching') {
+        return `Fetching image${qualityLabel}...`;
+      } else if (progress?.stage === 'processing') {
+        return `Processing depth${qualityLabel}...`;
+      }
+      return `Generating depth map${qualityLabel}...`;
     } else if (mapGenerationError) {
-      return `Error generating depth map: ${mapGenerationError}`;
+      return `Error: ${mapGenerationError}`;
     } else if (onnxDepthMap) {
-      return `Depth map ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
+      return `✓ Depth map ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
     } else {
       return 'Depth map not generated';
     }
-  }, [isGeneratingMap, mapGenerationError, onnxDepthMap]);
+  }, [isGeneratingMap, mapGenerationError, onnxDepthMap, progress]);
 
   const statusIndicatorStyle = useMemo(() => ({
     position: 'absolute' as const,
     top: '10px',
     right: '10px',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: mapGenerationError ? 'rgba(220, 53, 69, 0.9)' : 'rgba(0, 0, 0, 0.8)',
     color: '#fff',
-    padding: '4px 8px',
-    borderRadius: '4px',
-    fontSize: '0.8em',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    fontSize: '0.85em',
     zIndex: 100,
     display: 'flex' as const,
-    alignItems: 'center' as const,
-    gap: '4px'
+    flexDirection: 'column' as const,
+    gap: '6px',
+    minWidth: '200px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+  }), [mapGenerationError]);
+
+  const progressBarStyle = useMemo(() => ({
+    width: '100%',
+    height: '3px',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: '2px',
+    overflow: 'hidden' as const
   }), []);
+
+  const progressFillStyle = useMemo(() => ({
+    height: '100%',
+    width: `${progressPercent}%`,
+    backgroundColor: '#4CAF50',
+    transition: 'width 0.3s ease',
+    borderRadius: '2px'
+  }), [progressPercent]);
 
   return (
     <div
@@ -79,30 +151,37 @@ export const GenStatusIndicator = React.memo<{
       aria-live={isGeneratingMap ? 'assertive' : 'polite'}
       style={statusIndicatorStyle}
     >
-      {isGeneratingMap && (
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 38 38"
-          stroke="#fff"
-          aria-hidden="true"
-        >
-          <g fill="none" fillRule="evenodd">
-            <circle cx="19" cy="19" r="18" strokeOpacity="0.25" />
-            <path d="M37 19c0-9.94-8.06-18-18-18" stroke="#fff">
-              <animateTransform
-                attributeName="transform"
-                type="rotate"
-                from="0 19 19"
-                to="360 19 19"
-                dur="1s"
-                repeatCount="indefinite"
-              />
-            </path>
-          </g>
-        </svg>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {isGeneratingMap && (
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 38 38"
+            stroke="#fff"
+            aria-hidden="true"
+          >
+            <g fill="none" fillRule="evenodd">
+              <circle cx="19" cy="19" r="18" strokeOpacity="0.25" />
+              <path d="M37 19c0-9.94-8.06-18-18-18" stroke="#fff">
+                <animateTransform
+                  attributeName="transform"
+                  type="rotate"
+                  from="0 19 19"
+                  to="360 19 19"
+                  dur="1s"
+                  repeatCount="indefinite"
+                />
+              </path>
+            </g>
+          </svg>
+        )}
+        <span style={{ flex: 1 }}>{message}</span>
+      </div>
+      {isGeneratingMap && progressPercent > 0 && (
+        <div style={progressBarStyle}>
+          <div style={progressFillStyle} />
+        </div>
       )}
-      {message}
     </div>
   );
 });
@@ -221,9 +300,11 @@ const MapView: React.FC<{
   onCameraParamsChange: (params: CameraParams) => void;
   onGenerateDepthMap: () => void;
   onCalibrateClick?: (pixelY: number, viewportH: number) => void;
+  depthGenProgress?: DepthGenerationProgress;
 }> = React.memo(({
   onCameraParamsChange,
-  onCalibrateClick
+  onCalibrateClick,
+  depthGenProgress
 }) => {
   // Use shallow comparison for better performance
   const targetCoords = useRootStore(selectTargetCoords);
@@ -568,6 +649,7 @@ const MapView: React.FC<{
           isGeneratingMap={isGeneratingMap}
           mapGenerationError={mapGenerationError}
           onnxDepthMap={onnxDepthMap}
+          progress={depthGenProgress}
         />
       </div>
     </ErrorBoundary>

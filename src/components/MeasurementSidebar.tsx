@@ -44,6 +44,11 @@ const MeasurementItem: React.FC<MeasurementItemProps> = ({
   onDelete
 }) => {
   const secondary = formatSecondaryLine(measurement, defaultUnit);
+  
+  // Visual validation indicators
+  const confidence = measurement.confidence ?? 0;
+  const confidenceColor = confidence >= 0.7 ? '#28a745' : confidence >= 0.4 ? '#ffc107' : '#dc3545';
+  const confidenceLabel = confidence >= 0.7 ? 'High' : confidence >= 0.4 ? 'Medium' : 'Low';
 
   return (
     <li className={styles['measurementItem']}>
@@ -54,23 +59,44 @@ const MeasurementItem: React.FC<MeasurementItemProps> = ({
         onChange={(event) => onRename(measurement.id, event.target.value)}
         className={styles['nameInput']}
         title="Rename Measurement"
+        maxLength={100}
       />
       <div className={styles['measurementSummary']}>
         <div className={styles['measurementValue']}>
           {formatPrimaryLine(measurement, defaultUnit)}
+          {measurement.confidence !== undefined && (
+            <span 
+              className={styles['confidenceBadge']}
+              style={{ backgroundColor: confidenceColor }}
+              title={`Confidence: ${confidenceLabel} (${Math.round(confidence * 100)}%)`}
+            >
+              {Math.round(confidence * 100)}%
+            </span>
+          )}
         </div>
         {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
       </div>
       <button
-        onClick={() => onDelete(measurement.id)}
+        onClick={() => {
+          if (window.confirm('Delete this measurement?')) {
+            onDelete(measurement.id);
+          }
+        }}
         className={styles['deleteButton']}
         title="Delete Measurement"
       >
-        Delete
+        ×
       </button>
     </li>
   );
 };
+
+const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string | undefined => {
+  const parts: string[] = [];
+
+  if (measurement.kind === 'polyline' && measurement.points) {
+    parts.push(`${measurement.points.length} points`);
+  }
 
   if (measurement.kind === 'area' && Number.isFinite(measurement.perimeterMeters)) {
     const display = getLengthDisplay(measurement, defaultUnit, measurement.perimeterMeters);
@@ -121,6 +147,10 @@ const MeasurementSidebar: React.FC = () => {
     )
   );
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();
+  const undoMeasurement = useRootStore((state) => state.undoMeasurement);
+  const redoMeasurement = useRootStore((state) => state.redoMeasurement);
+  const canUndo = useRootStore((state) => state.canUndo());
+  const canRedo = useRootStore((state) => state.canRedo());
   const { toggleUnit } = useSettingsActions();
   const handleUnitToggle = useCallback(() => {
     toggleUnit();
@@ -246,6 +276,24 @@ const MeasurementSidebar: React.FC = () => {
           >
             {settings.defaultUnit === 'metric' ? 'm/ft' : 'ft/m'}
           </button>
+          <div className={styles['undoRedoControls']}>
+            <button
+              onClick={() => undoMeasurement()}
+              disabled={!canUndo}
+              className={styles['undoButton']}
+              title="Undo (Ctrl+Z)"
+            >
+              ↶
+            </button>
+            <button
+              onClick={() => redoMeasurement()}
+              disabled={!canRedo}
+              className={styles['redoButton']}
+              title="Redo (Ctrl+Y)"
+            >
+              ↷
+            </button>
+          </div>
           {measurements.length > 0 && (
             <>
               <button 
@@ -304,6 +352,8 @@ const MeasurementSidebar: React.FC = () => {
         <div className={styles['shortcuts']}>
           <span title="Start height measurement (M key)">M: Measure</span>
           <span title="Toggle measurement units (U key)">U: Units</span>
+          <span title="Undo measurement change (Ctrl+Z)">Ctrl+Z: Undo</span>
+          <span title="Redo measurement change (Ctrl+Y)">Ctrl+Y: Redo</span>
           <span title="Export measurements to CSV (Ctrl+E)">Ctrl+E: Export</span>
           <span title="Clear all measurements (Ctrl+Shift+Delete)">Ctrl+Shift+Del: Clear</span>
         </div>
