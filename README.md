@@ -136,7 +136,17 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
 ```bash
 npm run build:win
 ```
-This creates a Windows installer in the `release/` directory.
+This creates a Windows installer in the `release/` directory. The installer includes:
+- ✅ All application files and dependencies
+- ✅ ONNX depth estimation model (~94 MB)
+- ✅ Runtime dependencies (bundled with Electron)
+- ✅ Desktop and Start Menu shortcuts
+- ✅ File association for `.ssp` project files
+
+**Output files:**
+- `PoleCheck-Desktop-Setup-{version}.exe` - NSIS installer (recommended)
+- `PoleCheck-Desktop-Portable-{version}.exe` - Portable executable
+- `PoleCheck-Desktop-{version}.zip` - ZIP archive
 
 ### All Platforms
 ```bash
@@ -146,6 +156,18 @@ This command will:
 1.  Build the React frontend (`dist/`).
 2.  Build the Electron main and preload scripts (`dist-electron/`).
 3.  Use `electron-builder` to package the application for your current platform into the `release/` directory.
+
+### Installation Requirements
+For end users installing the built application:
+- **Operating System:** Windows 10 (1903+) or Windows 11
+- **Architecture:** x64 (64-bit) only
+- **RAM:** 4 GB minimum (8 GB recommended)
+- **Storage:** 500 MB free disk space
+- **Internet:** Required for Google Maps API access
+
+**Note:** All runtime dependencies are bundled with the installer. No additional software installation is required.
+
+See [INSTALLATION.md](./INSTALLATION.md) for detailed installation instructions.
 
 ## Usage Guide
 

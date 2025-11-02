@@ -110,22 +110,38 @@
   },
   "build": {
     "appId": "com.polecheck.desktop",
+    "productName": "PoleCheck Desktop",
+    "copyright": "Copyright © 2024 PoleCheck Team",
     "asar": true,
     "asarUnpack": [
       "**/*.onnx"
     ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
     "fileAssociations": [
       {
         "ext": "ssp",
         "name": "PoleCheck Project File",
-        "description": "PoleCheck Desktop Project File"
+        "description": "PoleCheck Desktop Project File",
+        "icon": "assets/icon.ico"
       }
     ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/**/*.{md,ts,map}",
+      "!node_modules/.cache",
+      "!node_modules/@types",
+      "!**/*.{test,spec}.{js,ts}",
+      "!**/test{,s}/**/*",
+      "!**/tests/**/*",
+      "!**/__tests__/**/*",
+      "!**/*.test.{js,ts}",
+      "!**/*.spec.{js,ts}"
     ],
     "extraResources": [
       {
@@ -157,11 +173,13 @@
           ]
         }
       ],
+      "icon": "assets/icon.ico",
       "artifactName": "PoleCheck-Desktop-${name}-${version}.${ext}",
       "sign": false,
       "signDlls": false,
       "verifyUpdateCodeSignature": false,
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "publisherName": "PoleCheck Team"
     },
     "portable": {
       "artifactName": "PoleCheck-Desktop-Portable-${version}.exe"
@@ -169,6 +187,7 @@
     "nsis": {
       "oneClick": false,
       "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "PoleCheck Desktop",
@@ -179,7 +198,11 @@
       "artifactName": "PoleCheck-Desktop-Setup-${version}.${ext}",
       "perMachine": false,
       "license": null,
-      "language": "1033"
+      "language": "1033",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "warningsAsErrors": false
     }
   },
   "playwright": {

@@ -135,7 +135,18 @@ export default defineConfig(({ mode }) => {
           chunkFileNames: isProduction ? 'assets/[name]-[hash].js' : 'assets/[name].js',
           entryFileNames: isProduction ? 'assets/[name]-[hash].js' : 'assets/[name].js',
           assetFileNames: isProduction ? 'assets/[name]-[hash].[ext]' : 'assets/[name].[ext]'
+        },
+        // Handle CommonJS modules properly
+        external: (id) => {
+          // Don't externalize react-window, we want it bundled
+          return false;
         }
+      },
+      commonjsOptions: {
+        include: [/react-window/, /node_modules\/react-window/],
+        transformMixedEsModules: true,
+        defaultIsModuleExports: 'auto',
+        requireReturnsDefault: 'auto'
       },
       // Optimize chunk size
       chunkSizeWarningLimit: 1000,
@@ -158,7 +169,9 @@ export default defineConfig(({ mode }) => {
         '@assets': path.resolve(__dirname, 'src/assets')
       },
       // Optimize module resolution
-      dedupe: ['react', 'react-dom']
+      dedupe: ['react', 'react-dom'],
+      // Ensure proper resolution of CommonJS modules
+      conditions: ['import', 'module', 'browser', 'default']
     },
     server: {
       host: '127.0.0.1',
@@ -182,7 +195,11 @@ export default defineConfig(({ mode }) => {
         '@googlemaps/js-api-loader',
         'react-window'
       ],
-      exclude: ['electron']
+      exclude: ['electron'],
+      esbuildOptions: {
+        // Handle CommonJS modules
+        target: 'esnext'
+      }
     },
     // CSS optimization
     css: {

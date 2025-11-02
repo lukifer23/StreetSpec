@@ -5,6 +5,7 @@ import type { Measurement } from '../types/common';
 import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
 import type { UnitSystem } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
+// Import react-window - Vite will handle CommonJS interop
 import { FixedSizeList } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
 
@@ -22,13 +23,6 @@ const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): s
       return `${measurement.label}`;
   }
 };
-
-const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string | undefined => {
-  const parts: string[] = [];
-
-  if (measurement.kind === 'polyline' && measurement.points) {
-    parts.push(`${measurement.points.length} points`);
-  }
 
 interface MeasurementItemProps {
   measurement: Measurement;
