@@ -321,7 +321,7 @@ export const useAppLogic = (apiKey: string) => {
       const viewHeight = mapViewElement?.clientHeight ?? 600;
 
       let result = depthData
-        ? detectHorizonFromDepth(depthData, currentCameraParams, viewWidth, viewHeight)
+        ? detectHorizonFromDepth(depthData, currentCameraParams, viewWidth, viewHeight, onnxDepthMap, true)
         : { detected: false, confidence: 0, pitchOffset: 0, method: 'fallback' as const };
 
       // Fallback: estimate pitch using ONNX depth gradient when Street View planes are unavailable
@@ -358,24 +358,32 @@ export const useAppLogic = (apiKey: string) => {
       }
 
       if (result.detected && result.confidence > 0.5) {
-        // Persist per-zoom bias entry as an additive reference, and set live offset
+        // Persist per-zoom bias entry with interpolation support
         const zoomKey = Math.max(0, Math.min(4, Math.round(currentCameraParams.zoom ?? 1)));
         const calibrationBiasByZoom = { ...(settings.calibrationBiasByZoom ?? {}) } as Record<number, number>;
         calibrationBiasByZoom[zoomKey] = result.pitchOffset;
+        
+        // Also store at fractional zoom levels for smoother interpolation
+        const fractionalZoom = currentCameraParams.zoom ?? 1;
+        if (Math.abs(fractionalZoom - zoomKey) > 0.1) {
+          const fractionalKey = Math.round(fractionalZoom * 10) / 10;
+          calibrationBiasByZoom[fractionalKey] = result.pitchOffset;
+        }
+        
         const newSettings = { ...settings, calibrationPitchOffsetDeg: result.pitchOffset, calibrationBiasByZoom } as typeof settings;
-        updateSettings({ calibrationPitchOffsetDeg: result.pitchOffset });
+        updateSettings({ calibrationPitchOffsetDeg: result.pitchOffset, calibrationBiasByZoom });
         await window.electronAPI?.invoke('save-settings', newSettings);
         setIsCalibrated(true);
         pushNotification({
           kind: 'success',
           title: 'Auto calibration complete',
-          message: `Pitch offset ${result.pitchOffset.toFixed(2)} deg (confidence ${(result.confidence * 100).toFixed(0)}%).`,
+          message: `Pitch offset ${result.pitchOffset.toFixed(2)} deg (confidence ${(result.confidence * 100).toFixed(0)}%) at zoom ${zoomKey}.`,
         });
       } else {
         pushNotification({
           kind: 'warning',
           title: 'Auto calibration failed',
-          message: `Confidence too low (${(result.confidence * 100).toFixed(0)}%). Try manual calibration.`,
+          message: `Confidence too low (${(result.confidence * 100).toFixed(0)}%). Try manual calibration or add more depth data.`,
         });
       }
     } catch (error) {
@@ -508,86 +516,51 @@ export const useAppLogic = (apiKey: string) => {
   // Depth Map Generation Logic
   const handleGenerateDepthMap = useCallback(async () => {
     if (!currentCameraParams || !apiKey || isGeneratingMap) {
-      if (!currentCameraParams) {
-        pushNotification({
-          kind: 'error',
-          message: 'No camera parameters available. Please wait for the Street View panorama to load.',
-        });
-      } else if (!apiKey) {
-        pushNotification({
-          kind: 'error',
-          message: 'Google Maps API key is missing. Check the .env configuration.',
-        });
-      } else if (isGeneratingMap) {
-        pushNotification({
-          kind: 'info',
-          message: 'Depth map generation is already in progress.',
-        });
-      }
-      return;
-    }
-
-    // Validate camera parameters
-    if (!currentCameraParams.panoId && (!currentCameraParams.lat || !currentCameraParams.lng)) {
-      pushNotification({
-        kind: 'error',
-        message: 'Invalid location data. Please try a different location.',
-      });
       return;
     }
 
     setIsGeneratingMap(true);
     setMapGenerationError(null);
-    setOnnxDepthMap(null);
 
     try {
-      const fetchImage = createDepthMapFetcher();
-      const { depthMap, fromCache } = await generateDepthMap(currentCameraParams, apiKey, {
-        fetchImage,
+      const deps = {
+        fetchImage: createDepthMapFetcher(),
         getCachedDepthMap,
         cacheDepthMap,
-        invokeDepth: async (base64data) => {
+        invokeDepth: async (base64data: string) => {
           if (!window.electronAPI?.invoke) {
-            throw new Error('IPC invoke function not available. Please restart the application.');
+            throw new Error('Electron IPC not available');
           }
-
-          try {
-            return await window.electronAPI.invoke('infer-depth', base64data);
-          } catch (err) {
-            throw err instanceof Error ? err : new Error('Depth inference failed');
+          const result = await window.electronAPI.invoke('infer-depth', base64data);
+          if (!result) {
+            throw new Error('Depth inference returned null');
           }
+          return result;
         }
-      }, {
-        quality: settings.depthQuality,
-        enableCache: settings.enableDepthCache
+      };
+
+      const result = await generateDepthMap(currentCameraParams, apiKey, deps, {
+        enableCache: true,
+        quality: 'high'
       });
 
-      if (fromCache) {
-        console.log('[depth] Using cached depth map');
-      }
-
-      setOnnxDepthMap(depthMap);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate depth map';
-
-      // Provide more specific error messages based on error type
-      let userMessage = errorMessage;
-      if (errorMessage.includes('API key')) {
-        userMessage = 'Google Maps API key error. Please check your API key configuration.';
-      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
-        userMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (errorMessage.includes('timeout')) {
-        userMessage = 'Request timed out. The location might be too remote or the service unavailable.';
-      } else if (errorMessage.includes('Static API')) {
-        userMessage = 'Street View image unavailable. This location might not have Street View coverage.';
-      }
-
-      setMapGenerationError(userMessage);
-      console.error('[depth] Generation failed:', error);
+      setOnnxDepthMap(result.depthMap);
+      setMapGenerationError(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setMapGenerationError(errorMessage);
+      
+      // Show user-friendly error notification
+      pushNotification({
+        kind: 'error',
+        title: 'Depth Map Generation Failed',
+        message: `Failed to generate depth map: ${errorMessage}. Please try again or check your connection.`,
+        timeoutMs: 10000
+      });
     } finally {
       setIsGeneratingMap(false);
     }
-  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setMapGenerationError, setOnnxDepthMap, settings.depthQuality, settings.enableDepthCache]);
+  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setOnnxDepthMap, setMapGenerationError]);
 
   const handleClearMeasurements = useCallback(async () => {
     clearMeasurements();

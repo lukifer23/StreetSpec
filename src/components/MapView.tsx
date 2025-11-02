@@ -225,12 +225,15 @@ const MapView: React.FC<{
   onCameraParamsChange,
   onCalibrateClick
 }) => {
+  // Use shallow comparison for better performance
   const targetCoords = useRootStore(selectTargetCoords);
   const isGeneratingMap = useRootStore((state) => state.isGeneratingMap);
   const mapGenerationError = useRootStore((state) => state.mapGenerationError);
   const calibrateMode = useRootStore((state) => state.calibrateMode);
   const onnxDepthMap = useRootStore(selectOnnxDepthMap);
-  const hasDepthMap = Boolean(onnxDepthMap);
+  
+  // Memoize derived values
+  const hasDepthMap = useMemo(() => Boolean(onnxDepthMap), [onnxDepthMap]);
 
   const { lat, lng } = useMemo(() => ({
     lat: targetCoords?.lat,

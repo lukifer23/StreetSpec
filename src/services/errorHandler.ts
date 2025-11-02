@@ -130,10 +130,13 @@ class ErrorHandlerService implements ErrorHandler {
             ? 'warning'
             : 'info';
 
+        const userMessage = this.getUserFriendlyMessage(error);
+        const title = this.getErrorTitle(error);
+
         pushNotification({
           kind,
-          title: this.getErrorTitle(error),
-          message: error.userFriendlyMessage,
+          title,
+          message: userMessage,
           timeoutMs: error.severity === ErrorSeverity.CRITICAL ? 0 : 8000
         });
       }).catch(() => {
@@ -150,13 +153,15 @@ class ErrorHandlerService implements ErrorHandler {
     // Fallback DOM-based notification
     const notification = document.createElement('div');
     notification.className = `error-notification error-${error.severity}`;
+    const userMessage = this.getUserFriendlyMessage(error);
+    const title = this.getErrorTitle(error);
     notification.innerHTML = `
       <div class="error-header">
         <span class="error-icon">!</span>
-        <span class="error-title">${this.getErrorTitle(error)}</span>
+        <span class="error-title">${title}</span>
         <button class="error-close" onclick="this.parentElement.parentElement.remove()">×</button>
       </div>
-      <div class="error-message">${error.userFriendlyMessage}</div>
+      <div class="error-message">${userMessage}</div>
     `;
 
     notification.style.cssText = `
@@ -258,7 +263,34 @@ class ErrorHandlerService implements ErrorHandler {
   }
 
   private getErrorTitle(error: AppError): string {
-    switch (error.severity) {
+    // Provide context-specific titles based on error code
+    const codeTitles: Record<string, string> = {
+      'NETWORK_TIMEOUT': 'Connection Timeout',
+      'NETWORK_UNREACHABLE': 'Network Unavailable',
+      'API_RATE_LIMITED': 'Rate Limit Exceeded',
+      'API_UNAUTHORIZED': 'Authentication Error',
+      'MODEL_LOAD_FAILED': 'Model Loading Failed',
+      'MODEL_INFERENCE_FAILED': 'Depth Estimation Failed',
+      'MODEL_MEMORY_ERROR': 'Memory Error',
+      'GEOMETRY_INVALID_POINT': 'Invalid Measurement Point',
+      'GEOMETRY_CALCULATION_FAILED': 'Calculation Error',
+      'GEOMETRY_DEPTH_INTERSECTION_FAILED': 'Depth Intersection Failed',
+      'MEASUREMENT_INVALID_CAMERA': 'Camera Data Invalid',
+      'MEASUREMENT_NO_DEPTH_DATA': 'Depth Data Unavailable',
+      'MEASUREMENT_CALCULATION_FAILED': 'Measurement Failed',
+      'STORAGE_SAVE_FAILED': 'Save Failed',
+      'STORAGE_LOAD_FAILED': 'Load Failed',
+      'STORAGE_CORRUPTED': 'Data Corrupted',
+      'UI_RENDER_FAILED': 'Display Error',
+      'SYSTEM_MEMORY_LOW': 'Low Memory',
+      'SYSTEM_RESOURCE_UNAVAILABLE': 'Resource Unavailable',
+    };
+
+    return codeTitles[error.code] || this.getSeverityTitle(error.severity);
+  }
+
+  private getSeverityTitle(severity: ErrorSeverity): string {
+    switch (severity) {
       case ErrorSeverity.LOW:
         return 'Information';
       case ErrorSeverity.MEDIUM:
@@ -270,6 +302,33 @@ class ErrorHandlerService implements ErrorHandler {
       default:
         return 'Error';
     }
+  }
+
+  getUserFriendlyMessage(error: AppError): string {
+    // Provide context-specific user-friendly messages
+    const codeMessages: Record<string, string> = {
+      'NETWORK_TIMEOUT': 'The request took too long. Please check your internet connection and try again.',
+      'NETWORK_UNREACHABLE': 'Unable to connect to the server. Please check your internet connection.',
+      'API_RATE_LIMITED': 'Too many requests. Please wait a moment before trying again.',
+      'API_UNAUTHORIZED': 'Authentication failed. Please check your API key settings.',
+      'MODEL_LOAD_FAILED': 'Failed to load the depth estimation model. Please restart the application.',
+      'MODEL_INFERENCE_FAILED': 'Depth estimation failed. Try generating the depth map again.',
+      'MODEL_MEMORY_ERROR': 'Not enough memory available. Try closing other applications or reducing cache size.',
+      'GEOMETRY_INVALID_POINT': 'Invalid measurement point selected. Please click on a visible object.',
+      'GEOMETRY_CALCULATION_FAILED': 'Measurement calculation failed. Try selecting different points.',
+      'GEOMETRY_DEPTH_INTERSECTION_FAILED': 'Could not determine depth at this location. Try a different point.',
+      'MEASUREMENT_INVALID_CAMERA': 'Camera parameters are invalid. Please reload the Street View.',
+      'MEASUREMENT_NO_DEPTH_DATA': 'Depth data is not available. Please generate a depth map first.',
+      'MEASUREMENT_CALCULATION_FAILED': 'Unable to calculate measurement. Ensure depth map is generated and points are valid.',
+      'STORAGE_SAVE_FAILED': 'Failed to save data. Please check available disk space.',
+      'STORAGE_LOAD_FAILED': 'Failed to load saved data. The file may be corrupted.',
+      'STORAGE_CORRUPTED': 'Saved data appears corrupted. Some data may be lost.',
+      'UI_RENDER_FAILED': 'Display error occurred. The interface may not update correctly.',
+      'SYSTEM_MEMORY_LOW': 'System memory is low. Consider closing other applications.',
+      'SYSTEM_RESOURCE_UNAVAILABLE': 'A required system resource is unavailable. Please try again later.',
+    };
+
+    return codeMessages[error.code] || error.userFriendlyMessage || error.message || 'An unexpected error occurred.';
   }
 
   private getErrorColor(severity: ErrorSeverity): string {

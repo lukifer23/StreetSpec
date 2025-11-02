@@ -11,8 +11,10 @@ import SearchBox from './components/SearchBox';
 import Notifications from './components/Notifications';
 import { Tooltip } from './components/Tooltip';
 import { AppLayout } from './components/AppLayout';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppLogic } from './hooks/useAppLogic';
 import { getStatusBannerPresentation } from './utils/statusBanner';
+import { errorHandler } from './services/errorHandler';
 import styles from './App.module.css';
 import './App.css';
 
@@ -132,21 +134,118 @@ function App() {
           )}
         </div>
       }
-      sidebar={<MeasurementSidebar />}
+      sidebar={
+        <ErrorBoundary
+          onError={(error, errorInfo) => {
+            errorHandler.handleError({
+              id: `sidebar-${Date.now()}`,
+              code: 'UI_RENDER_FAILED',
+              message: error.message,
+              userFriendlyMessage: 'Measurement sidebar error. Measurements may not display correctly.',
+              severity: 'medium' as any,
+              category: 'ui' as any,
+              recoverable: true,
+              timestamp: Date.now(),
+              stack: error.stack,
+              details: errorInfo
+            });
+          }}
+          fallback={
+            <div style={{ padding: '20px' }}>
+              <p>Sidebar unavailable. Please reload the page.</p>
+            </div>
+          }
+        >
+          <MeasurementSidebar />
+        </ErrorBoundary>
+      }
       mapArea={
         <div className={styles['mapArea']}>
           {isApiLoaded ? (
-            <>
-              <MapView
-                onCameraParamsChange={handleCameraChange}
-                onGenerateDepthMap={handleGenerateDepthMap}
-                onCalibrateClick={handleCalibrateClick}
-              />
-              <MeasurementTool />
-              <PolylineTool />
-              <AreaTool />
-              <VolumeTool />
-            </>
+            <ErrorBoundary
+              onError={(error, errorInfo) => {
+                errorHandler.handleError({
+                  id: `mapview-${Date.now()}`,
+                  code: 'UI_RENDER_FAILED',
+                  message: error.message,
+                  userFriendlyMessage: 'Map display error occurred. The map may not function correctly.',
+                  severity: 'high' as any,
+                  category: 'ui' as any,
+                  recoverable: true,
+                  timestamp: Date.now(),
+                  stack: error.stack,
+                  details: errorInfo
+                });
+              }}
+              fallback={
+                <div className={styles['loadingPlaceholder']}>
+                  <p>Map display error. Please reload the page.</p>
+                  <button onClick={() => window.location.reload()}>Reload</button>
+                </div>
+              }
+            >
+              <ErrorBoundary
+                onError={(error, errorInfo) => {
+                  errorHandler.handleError({
+                    id: `mapview-${Date.now()}`,
+                    code: 'UI_RENDER_FAILED',
+                    message: error.message,
+                    userFriendlyMessage: 'Map view error. Some features may be unavailable.',
+                    severity: 'medium' as any,
+                    category: 'ui' as any,
+                    recoverable: true,
+                    timestamp: Date.now(),
+                    stack: error.stack,
+                    details: errorInfo
+                  });
+                }}
+              >
+                <MapView
+                  onCameraParamsChange={handleCameraChange}
+                  onGenerateDepthMap={handleGenerateDepthMap}
+                  onCalibrateClick={handleCalibrateClick}
+                />
+              </ErrorBoundary>
+              <ErrorBoundary
+                onError={(error, errorInfo) => {
+                  errorHandler.handleError({
+                    id: `measurement-${Date.now()}`,
+                    code: 'MEASUREMENT_CALCULATION_FAILED',
+                    message: error.message,
+                    userFriendlyMessage: 'Measurement tool error. Please try again or restart the tool.',
+                    severity: 'medium' as any,
+                    category: 'measurement' as any,
+                    recoverable: true,
+                    timestamp: Date.now(),
+                    stack: error.stack,
+                    details: errorInfo
+                  });
+                }}
+              >
+                <MeasurementTool />
+              </ErrorBoundary>
+              <ErrorBoundary
+                onError={(error) => {
+                  console.warn('[App] Polyline tool error:', error);
+                }}
+              >
+                <PolylineTool />
+              </ErrorBoundary>
+              <ErrorBoundary
+                onError={(error) => {
+                  console.warn('[App] Area tool error:', error);
+                }}
+              >
+                <AreaTool />
+              </ErrorBoundary>
+              <ErrorBoundary
+                onError={(error) => {
+                  console.warn('[App] Volume tool error:', error);
+                }}
+              >
+                <VolumeTool />
+              </ErrorBoundary>
+            </ErrorBoundary>
           ) : (
             <div className={styles['loadingPlaceholder']}>Loading Map...</div>
           )}

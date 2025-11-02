@@ -193,6 +193,8 @@ if (!app.requestSingleInstanceLock()) {
 let depthSession: ort.InferenceSession | null = null;
 let sessionLoadAttempts = 0;
 const MAX_SESSION_LOAD_ATTEMPTS = 3;
+let sessionInUse = false;
+const sessionMutex = { locked: false };
 
 // Memory monitoring and management
 let lastMemoryCheck = Date.now();
@@ -223,11 +225,19 @@ function logMemoryUsage(context: string): void {
 }
 
 async function cleanupModelSession(): Promise<void> {
+  // Wait for any active inference to complete
+  let waitCount = 0;
+  while (sessionInUse && waitCount < 50) {
+    await sleep(100);
+    waitCount++;
+  }
+
   if (depthSession) {
     try {
       console.log('[model] Cleaning up ONNX session...');
       const sessionToRelease = depthSession;
       depthSession = null; // Clear reference immediately to prevent reuse
+      sessionInUse = false;
       await sessionToRelease.release();
       sessionLoadAttempts = 0;
       logMemoryUsage('After session cleanup');
@@ -235,6 +245,7 @@ async function cleanupModelSession(): Promise<void> {
       console.error('[model] Error during session cleanup:', error);
       // Force clear reference even if release fails
       depthSession = null;
+      sessionInUse = false;
       sessionLoadAttempts = 0;
     }
   }
@@ -1118,6 +1129,15 @@ async function createWindow() {
       return null;
     }
     
+    // Acquire session lock
+    if (sessionMutex.locked) {
+      let waitCount = 0;
+      while (sessionMutex.locked && waitCount < 100) {
+        await sleep(50);
+        waitCount++;
+      }
+    }
+
     if (!depthSession) {
       console.warn('[infer-depth] No depth session available, attempting reload...');
       const reloadSuccess = await reloadModelSession();
@@ -1133,6 +1153,8 @@ async function createWindow() {
       return null;
     }
 
+    sessionMutex.locked = true;
+    sessionInUse = true;
     const sessionRef = depthSession; // Capture reference for safe cleanup
 
     try {
@@ -1188,6 +1210,9 @@ async function createWindow() {
       inputTensor.dispose();
 
       const outputTensor = results[sessionRef.outputNames[0]];
+      if (!outputTensor) {
+        throw new Error('ONNX output tensor is null');
+      }
       console.log('[infer-depth] output dims', outputTensor.dims, 'dataLen', (outputTensor.data as Float32Array).length);
 
       let h: number | undefined;
@@ -1229,6 +1254,9 @@ async function createWindow() {
       outputTensor.dispose();
       
       logMemoryUsage('After inference');
+      sessionMutex.locked = false;
+      sessionInUse = false;
+      
       return {
         data: outputData,
         width: w,
@@ -1238,6 +1266,8 @@ async function createWindow() {
     } catch (error) {
       console.error('[infer-depth] failed', error);
       logMemoryUsage('After inference failure');
+      sessionMutex.locked = false;
+      sessionInUse = false;
       
       // Attempt to recover from session errors
       if (error instanceof Error && (error.message.includes('session') || error.message.includes('Session'))) {
@@ -1249,6 +1279,7 @@ async function createWindow() {
       // Ensure session is marked as potentially invalid
       if (error instanceof Error && (error.message.includes('disposed') || error.message.includes('released'))) {
         depthSession = null;
+        sessionInUse = false;
       }
       
       event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });

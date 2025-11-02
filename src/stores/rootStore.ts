@@ -46,6 +46,13 @@ interface RootState {
   // Measurements
   measurements: Measurement[];
   
+  // Undo/Redo history for measurements
+  measurementHistory: {
+    past: Measurement[][];
+    present: Measurement[];
+    future: Measurement[];
+  };
+  
   // Projects
   projects: Record<string, Project>;
   currentProjectId: string | null;
@@ -86,6 +93,18 @@ interface RootState {
   renameMeasurement: (id: string, newName: string) => void;
   clearMeasurements: () => void;
   setMeasurements: (measurements: Measurement[]) => void;
+  
+  // Undo/Redo actions
+  undoMeasurement: () => boolean; // Returns true if undo was successful
+  redoMeasurement: () => boolean; // Returns true if redo was successful
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  
+  // Measurement templates
+  saveMeasurementTemplate: (name: string, measurement: Measurement) => void;
+  loadMeasurementTemplate: (name: string) => Measurement | null;
+  getMeasurementTemplates: () => string[];
+  deleteMeasurementTemplate: (name: string) => void;
   
   // Project actions
   loadProjects: () => Promise<void>;
@@ -202,6 +221,66 @@ const notifyMeasurementsTrimmed = (removed: number, limit: number) => {
   });
 };
 
+// Undo/Redo history management
+const MAX_HISTORY_SIZE = 50;
+
+function saveToHistory(state: RootState): void {
+  const current = [...state.measurements];
+  
+  // Only save if measurements actually changed
+  const lastState = state.measurementHistory.present;
+  if (lastState.length === current.length && 
+      lastState.every((m, i) => m.id === current[i]?.id && 
+                               m.timestamp === current[i]?.timestamp)) {
+    return; // No change, skip history entry
+  }
+
+  // Add current state to past, clear future
+  state.measurementHistory.past.push([...lastState]);
+  state.measurementHistory.present = current;
+  state.measurementHistory.future = [];
+
+  // Limit history size
+  if (state.measurementHistory.past.length > MAX_HISTORY_SIZE) {
+    state.measurementHistory.past.shift();
+  }
+}
+
+// Measurement templates storage (in-memory, could be persisted)
+const measurementTemplates = new Map<string, Measurement>();
+
+function getMeasurementTemplates(): string[] {
+  return Array.from(measurementTemplates.keys());
+}
+
+function saveMeasurementTemplate(name: string, measurement: Measurement): void {
+  // Create a copy without id/timestamp for template
+  const template: Measurement = {
+    ...measurement,
+    id: uuidv4(), // New ID for template instance
+    timestamp: Date.now(),
+    name: name
+  };
+  measurementTemplates.set(name, template);
+}
+
+function loadMeasurementTemplate(name: string): Measurement | null {
+  const template = measurementTemplates.get(name);
+  if (!template) return null;
+  
+  // Return a copy with new ID and timestamp
+  return {
+    ...template,
+    id: uuidv4(),
+    timestamp: Date.now(),
+    name: ''
+  };
+}
+
+function deleteMeasurementTemplate(name: string): void {
+  measurementTemplates.delete(name);
+}
+
 // Create the root store with middleware
 export const useRootStore = create<RootState>()(
   devtools(
@@ -217,6 +296,11 @@ export const useRootStore = create<RootState>()(
         onnxDepthMap: null,
         depthData: null,
         measurements: [],
+        measurementHistory: {
+          past: [],
+          present: [],
+          future: []
+        },
         projects: {},
         currentProjectId: null,
         isSettingsOpen: false,
@@ -351,8 +435,10 @@ export const useRootStore = create<RootState>()(
           state.depthData = depthData;
         }),
 
-        // Measurement actions
+        // Measurement actions with undo/redo support
         addMeasurement: (measurement) => set((state) => {
+          saveToHistory(state);
+          
           const newMeasurement: Measurement = {
             ...measurement,
             id: uuidv4(),
@@ -367,33 +453,136 @@ export const useRootStore = create<RootState>()(
           );
 
           state.measurements = trimmed;
+          state.measurementHistory.present = [...state.measurements];
           notifyMeasurementsTrimmed(removed, effectiveLimit);
         }),
 
         deleteMeasurement: (id) => set((state) => {
+          saveToHistory(state);
           state.measurements = state.measurements.filter((m) => m.id !== id);
+          state.measurementHistory.present = [...state.measurements];
         }),
 
         renameMeasurement: (id, newName) => set((state) => {
+          saveToHistory(state);
           const measurement = state.measurements.find((m) => m.id === id);
           if (measurement) {
             measurement.name = newName;
+            state.measurementHistory.present = [...state.measurements];
           }
         }),
 
         clearMeasurements: () => set((state) => {
+          saveToHistory(state);
           state.measurements = [];
+          state.measurementHistory.present = [];
         }),
 
         setMeasurements: (measurements) => set((state) => {
+          saveToHistory(state);
           const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
             measurements,
             state.settings.measurementHistoryLimit
           );
 
           state.measurements = trimmed;
+          state.measurementHistory.present = [...state.measurements];
           notifyMeasurementsTrimmed(removed, effectiveLimit);
         }),
+
+        // Undo/Redo actions
+        undoMeasurement: () => {
+          const state = get();
+          if (state.measurementHistory.past.length === 0) {
+            return false;
+          }
+
+          set((state) => {
+            const previous = state.measurementHistory.past.pop()!;
+            state.measurementHistory.future.unshift([...state.measurementHistory.present]);
+            state.measurementHistory.present = previous;
+            state.measurements = [...previous];
+          });
+
+          pushNotification({
+            kind: 'success',
+            message: 'Measurement change undone',
+            timeoutMs: 2000
+          });
+          return true;
+        },
+
+        redoMeasurement: () => {
+          const state = get();
+          if (state.measurementHistory.future.length === 0) {
+            return false;
+          }
+
+          set((state) => {
+            const next = state.measurementHistory.future.shift()!;
+            state.measurementHistory.past.push([...state.measurementHistory.present]);
+            state.measurementHistory.present = next;
+            state.measurements = [...next];
+          });
+
+          pushNotification({
+            kind: 'success',
+            message: 'Measurement change redone',
+            timeoutMs: 2000
+          });
+          return true;
+        },
+
+        canUndo: () => {
+          const state = get();
+          return state.measurementHistory.past.length > 0;
+        },
+
+        canRedo: () => {
+          const state = get();
+          return state.measurementHistory.future.length > 0;
+        },
+
+        // Measurement template actions
+        saveMeasurementTemplate: (name, measurement) => {
+          saveMeasurementTemplate(name, measurement);
+          pushNotification({
+            kind: 'success',
+            message: `Template "${name}" saved`,
+            timeoutMs: 2000
+          });
+        },
+
+        loadMeasurementTemplate: (name) => {
+          const template = loadMeasurementTemplate(name);
+          if (template) {
+            const state = get();
+            saveToHistory(state);
+            set((state) => {
+              state.measurements.push(template);
+              state.measurementHistory.present = [...state.measurements];
+            });
+            pushNotification({
+              kind: 'success',
+              message: `Template "${name}" loaded`,
+              timeoutMs: 2000
+            });
+          }
+          return template;
+        },
+
+        getMeasurementTemplates: () => {
+          return getMeasurementTemplates();
+        },
+
+        deleteMeasurementTemplate: (name) => {
+          deleteMeasurementTemplate(name);
+          pushNotification({
+            kind: 'success',
+            message: `Template "${name}" deleted`,
+            timeoutMs: 2000
+          });
+        },
 
         // Project actions
         loadProjects: async () => {

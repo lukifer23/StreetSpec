@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import path from 'node:path'
+import type { Plugin } from 'vite'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -9,8 +10,25 @@ export default defineConfig(({ mode }) => {
   process.env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
   const isProduction = mode === 'production';
 
+  // Plugin to replace CSP in production builds
+  const cspTransformPlugin = (): Plugin => ({
+    name: 'csp-transform',
+    transformIndexHtml(html) {
+      if (isProduction) {
+        // Production CSP: strict, no unsafe-eval or unsafe-inline
+        const productionCSP = "default-src 'self'; img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://streetviewpixels.googleapis.com; style-src 'self' https://fonts.googleapis.com; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com; connect-src 'self' https://maps.googleapis.com https://streetviewpixels.googleapis.com https://maps.gstatic.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'self' blob:";
+        return html.replace(
+          /<meta http-equiv="Content-Security-Policy" content="[^"]*">/,
+          `<meta http-equiv="Content-Security-Policy" content="${productionCSP}">`
+        );
+      }
+      return html;
+    }
+  });
+
   return {
     plugins: [
+      cspTransformPlugin(),
       react({
         // Optimize React for production
         jsxImportSource: undefined, // Remove Emotion JSX runtime

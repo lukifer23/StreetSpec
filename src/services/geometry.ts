@@ -1,4 +1,4 @@
-import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
+import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData, OnnxDepthMap } from '../types/common';
 
 const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');
 type CalibratedVector3 = Vector3 & { [calibrationAppliedSymbol]?: boolean };
@@ -40,7 +40,8 @@ const FOV_CACHE_LIMIT = 100;
 const trigCache = new Map<number, { cos: number; sin: number }>();
 const TRIG_CACHE_LIMIT = 1000;
 
-const depthDataSignatureCache = new Map<DecodedDepthData, string>();
+// Use WeakMap to prevent memory leaks - automatically garbage collected when depthData is GC'd
+const depthDataSignatureCache = new WeakMap<DecodedDepthData, string>();
 
 function getCacheKey(operation: string, params: unknown): string {
   return `${operation}_${JSON.stringify(params)}`;
@@ -259,10 +260,73 @@ export function calculateFov(
  * @param viewHeight - The height of the viewport/canvas in pixels.
  * @returns A normalized 3D direction vector {x, y, z}.
  */
-export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, viewWidth: number, viewHeight: number): Vector3 {
+/**
+ * Get effective calibration pitch offset, accounting for zoom-level bias interpolation
+ */
+function getEffectiveCalibrationOffset(
+  cameraParams: CameraParams,
+  zoomBiasTable?: Record<number, number>
+): number {
+  const baseOffset = cameraParams.calibrationPitchOffsetDeg ?? 0;
+  
+  if (!zoomBiasTable || Object.keys(zoomBiasTable).length === 0) {
+    return baseOffset;
+  }
+
+  const zoom = cameraParams.zoom ?? 1;
+  const zoomLevels = Object.keys(zoomBiasTable)
+    .map(k => Number(k))
+    .filter(k => Number.isFinite(k))
+    .sort((a, b) => a - b);
+
+  if (zoomLevels.length === 0) return baseOffset;
+  if (zoomLevels.length === 1) return zoomBiasTable[zoomLevels[0]!] ?? baseOffset;
+
+  // Find surrounding zoom levels
+  let lower = zoomLevels[0]!;
+  let upper = zoomLevels[zoomLevels.length - 1]!;
+
+  for (let i = 0; i < zoomLevels.length - 1; i++) {
+    if (zoom >= zoomLevels[i]! && zoom <= zoomLevels[i + 1]!) {
+      lower = zoomLevels[i]!;
+      upper = zoomLevels[i + 1]!;
+      break;
+    }
+  }
+
+  // Extrapolate if outside range
+  if (zoom < lower) {
+    return zoomBiasTable[lower] ?? baseOffset;
+  }
+  if (zoom > upper) {
+    return zoomBiasTable[upper] ?? baseOffset;
+  }
+
+  // Linear interpolation
+  const lowerBias = zoomBiasTable[lower] ?? baseOffset;
+  const upperBias = zoomBiasTable[upper] ?? baseOffset;
+  const t = (zoom - lower) / (upper - lower);
+  return lowerBias + t * (upperBias - lowerBias);
+}
+
+export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, viewWidth: number, viewHeight: number, zoomBiasTable?: Record<number, number>): Vector3 {
+    // Validate inputs
+    if (!Number.isFinite(screenPoint.x) || !Number.isFinite(screenPoint.y) || 
+        !Number.isFinite(viewWidth) || !Number.isFinite(viewHeight) ||
+        viewWidth <= 0 || viewHeight <= 0) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
+
     const { heading = 0, pitch = 0, vFov = 90 } = cameraParams;
-    const calibrationOffset = cameraParams.calibrationPitchOffsetDeg ?? 0;
+    const calibrationOffset = zoomBiasTable 
+      ? getEffectiveCalibrationOffset(cameraParams, zoomBiasTable)
+      : (cameraParams.calibrationPitchOffsetDeg ?? 0);
     const effectivePitch = pitch - calibrationOffset;
+
+    // Clamp inputs to reasonable ranges
+    const clampedHeading = Number.isFinite(heading) ? heading % 360 : 0;
+    const clampedPitch = Number.isFinite(effectivePitch) ? Math.max(-90, Math.min(90, effectivePitch)) : 0;
+    const clampedVFov = Number.isFinite(vFov) && vFov > 0 && vFov <= 180 ? vFov : 90;
 
     // 1. Convert screen coordinates to Normalized Device Coordinates (NDC)
     // NDC range from -1 to 1, with (0,0) at the center.
@@ -280,11 +344,16 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
 
     // 2. Account for FOV and aspect ratio
     // Calculate the distance from the camera to the projection plane based on FOV
-    const fovRadians = degreesToRadians(vFov);
+    const fovRadians = degreesToRadians(clampedVFov);
     // tan(fov/2) = (projectionPlaneHeight/2) / distance
     // distance = (projectionPlaneHeight/2) / tan(fov/2)
     // Assuming projectionPlaneHeight corresponds to NDC range [-1, 1], so height/2 = 1
-    const zDistance = 1 / Math.tan(fovRadians / 2); 
+    const halfFovRad = fovRadians / 2;
+    const tanHalfFov = Math.tan(halfFovRad);
+    if (!Number.isFinite(tanHalfFov) || tanHalfFov <= 0) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
+    const zDistance = 1 / tanHalfFov; 
 
     const aspectRatio = viewWidth / viewHeight;
 
@@ -297,27 +366,51 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     };
 
     // 4. Apply rotations based on camera heading and pitch
-    const pitchTrig = getTrigValues(-effectivePitch);
+    const pitchTrig = getTrigValues(-clampedPitch);
     const cosPitch = pitchTrig.cos;
     const sinPitch = pitchTrig.sin;
+    if (!Number.isFinite(cosPitch) || !Number.isFinite(sinPitch)) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
+    
     let rotatedY = vector.y * cosPitch - vector.z * sinPitch;
     let rotatedZ = vector.y * sinPitch + vector.z * cosPitch;
     vector = { x: vector.x, y: rotatedY, z: rotatedZ };
 
+    // Validate intermediate vector
+    if (!Number.isFinite(vector.x) || !Number.isFinite(vector.y) || !Number.isFinite(vector.z)) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
+
     // Heading rotation (around Y-axis)
     // Positive heading turns right, negative turns left
     // Rotate the *opposite* way
-    const headingTrig = getTrigValues(-heading);
+    const headingTrig = getTrigValues(-clampedHeading);
     const cosHeading = headingTrig.cos;
     const sinHeading = headingTrig.sin;
+    if (!Number.isFinite(cosHeading) || !Number.isFinite(sinHeading)) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
+    
     let rotatedX = vector.x * cosHeading + vector.z * sinHeading;
     rotatedZ = -vector.x * sinHeading + vector.z * cosHeading;
     vector = { x: rotatedX, y: vector.y, z: rotatedZ };
+    
+    // Validate final vector before normalization
+    if (!Number.isFinite(vector.x) || !Number.isFinite(vector.y) || !Number.isFinite(vector.z)) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
     
     // 5. Normalize the vector to get a unit direction vector
     // Conventionally, in Street View context: +Y is up, +X is right, +Z is forward.
     // Our calculation results in +Z forward, +Y up, +X right relative to camera view. Let's keep this.
     const normalized = normalizeVector(vector) as CalibratedVector3;
+    
+    // Validate normalized vector
+    if (!Number.isFinite(normalized.x) || !Number.isFinite(normalized.y) || !Number.isFinite(normalized.z)) {
+        return { x: 0, y: 0, z: 1 }; // Return default forward vector
+    }
+    
     normalized[calibrationAppliedSymbol] = true;
     return normalized;
 }
@@ -360,9 +453,19 @@ export function estimateGroundPlaneIntersection(
         return null;
     }
 
+    // Validate working vector components are finite
+    if (!Number.isFinite(workingVector.x) || !Number.isFinite(workingVector.y) || !Number.isFinite(workingVector.z)) {
+        return null;
+    }
+
     // Calculate the scaling factor 't' such that the point P = t * D has P.y = -cameraHeight
     // t * directionVector.y = -cameraHeight
     const t = -cameraHeight / workingVector.y;
+
+    // Validate t is finite and positive
+    if (!Number.isFinite(t) || t <= 0 || t > 1e5) {
+        return null;
+    }
 
     // Calculate the intersection point
     const intersectionPoint: Vector3 = {
@@ -370,6 +473,16 @@ export function estimateGroundPlaneIntersection(
         y: t * workingVector.y, // Should be approximately -cameraHeight
         z: t * workingVector.z,
     };
+
+    // Final validation of intersection point
+    if (!Number.isFinite(intersectionPoint.x) || !Number.isFinite(intersectionPoint.y) || !Number.isFinite(intersectionPoint.z)) {
+        return null;
+    }
+
+    const dist = Math.hypot(intersectionPoint.x, intersectionPoint.y, intersectionPoint.z);
+    if (dist > 1e5 || dist < 1e-6) {
+        return null; // Unrealistic distance
+    }
 
     return intersectionPoint;
 }
@@ -468,16 +581,40 @@ export function screenToWorldWithDepth(
     if (isValidPlaneIndex) {
         const selectedPlane = depthData.planes[planeIndex!];
         if (selectedPlane) {
-            const normal: Vector3 = { x: selectedPlane.nx, y: selectedPlane.ny, z: selectedPlane.nz };
-            const dotVN = dotProduct(directionVector, normal);
-            // Reject near-parallel intersections
-            if (Math.abs(dotVN) >= epsilon) {
-                // Google depth planes follow n dot x + d = 0 with normals pointing toward the camera.
-                // The intersection distance along the viewing ray is therefore t = -d / (n dot v).
-                const t = -selectedPlane.d / dotVN;
-                // Clamp t to plausible scene bounds to reduce numeric outliers
-                if (t > epsilon && t < 1e5) {
-                    minDistance = t;
+            // Validate plane normal
+            const normalLen = Math.hypot(selectedPlane.nx, selectedPlane.ny, selectedPlane.nz);
+            if (!Number.isFinite(normalLen) || normalLen < 1e-6 || normalLen > 2.0) {
+                // Invalid plane normal, skip this plane
+            } else {
+                const normal: Vector3 = { 
+                    x: selectedPlane.nx / normalLen, 
+                    y: selectedPlane.ny / normalLen, 
+                    z: selectedPlane.nz / normalLen 
+                };
+                const dotVN = dotProduct(directionVector, normal);
+                
+                // Reject near-parallel intersections (more conservative threshold)
+                const PARALLEL_THRESHOLD = epsilon * 10; // 1e-5
+                if (Math.abs(dotVN) >= PARALLEL_THRESHOLD) {
+                    // Google depth planes follow n dot x + d = 0 with normals pointing toward the camera.
+                    // The intersection distance along the viewing ray is therefore t = -d / (n dot v).
+                    const t = -selectedPlane.d / dotVN;
+                    
+                    // Validate t is finite and within plausible scene bounds
+                    if (Number.isFinite(t) && t > epsilon && t < 1e5) {
+                        // Validate the resulting world point
+                        const testPoint: Vector3 = {
+                            x: directionVector.x * t,
+                            y: directionVector.y * t,
+                            z: directionVector.z * t
+                        };
+                        if (Number.isFinite(testPoint.x) && Number.isFinite(testPoint.y) && Number.isFinite(testPoint.z)) {
+                            const testDist = Math.hypot(testPoint.x, testPoint.y, testPoint.z);
+                            if (testDist > epsilon && testDist < 1e5) {
+                                minDistance = t;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -485,29 +622,62 @@ export function screenToWorldWithDepth(
 
     // 4. Fall back to searching all planes if no valid plane was found
     if (minDistance === Infinity) {
+        const PARALLEL_THRESHOLD = epsilon * 10; // 1e-5
         for (const plane of depthData.planes) {
-            const normal: Vector3 = { x: plane.nx, y: plane.ny, z: plane.nz };
-            const dotVN = dotProduct(directionVector, normal);
-            if (Math.abs(dotVN) < epsilon) {
-                continue;
+            // Validate plane normal
+            const normalLen = Math.hypot(plane.nx, plane.ny, plane.nz);
+            if (!Number.isFinite(normalLen) || normalLen < 1e-6 || normalLen > 2.0) {
+                continue; // Skip invalid plane
             }
+            
+            const normal: Vector3 = { 
+                x: plane.nx / normalLen, 
+                y: plane.ny / normalLen, 
+                z: plane.nz / normalLen 
+            };
+            const dotVN = dotProduct(directionVector, normal);
+            
+            if (Math.abs(dotVN) < PARALLEL_THRESHOLD) {
+                continue; // Skip near-parallel planes
+            }
+            
             // Same Street View plane convention applies when examining all planes.
             const t = -plane.d / dotVN;
-            if (t > epsilon && t < minDistance && t < 1e5) {
-                minDistance = t;
+            
+            // Validate t is finite and closer than current best
+            if (Number.isFinite(t) && t > epsilon && t < minDistance && t < 1e5) {
+                // Validate the resulting world point
+                const testPoint: Vector3 = {
+                    x: directionVector.x * t,
+                    y: directionVector.y * t,
+                    z: directionVector.z * t
+                };
+                if (Number.isFinite(testPoint.x) && Number.isFinite(testPoint.y) && Number.isFinite(testPoint.z)) {
+                    const testDist = Math.hypot(testPoint.x, testPoint.y, testPoint.z);
+                    if (testDist > epsilon && testDist < 1e5) {
+                        minDistance = t;
+                    }
+                }
             }
         }
     }
 
     // 5. If a valid intersection distance was found, calculate the world point
-    if (minDistance !== Infinity) {
+    if (minDistance !== Infinity && Number.isFinite(minDistance)) {
         const worldPoint: Vector3 = {
             x: directionVector.x * minDistance,
             y: directionVector.y * minDistance,
             z: directionVector.z * minDistance,
         };
-        setCachedResult(cacheKey, worldPoint);
-        return worldPoint;
+        
+        // Final validation of world point
+        if (Number.isFinite(worldPoint.x) && Number.isFinite(worldPoint.y) && Number.isFinite(worldPoint.z)) {
+            const dist = Math.hypot(worldPoint.x, worldPoint.y, worldPoint.z);
+            if (dist > epsilon && dist < 1e5) {
+                setCachedResult(cacheKey, worldPoint);
+                return worldPoint;
+            }
+        }
     }
 
     setCachedResult(cacheKey, null);
@@ -639,13 +809,162 @@ function houghLineFit(
   return { slope, intercept, votes: maxVotes };
 }
 
-export function detectHorizonFromDepth(
-  depthData: DecodedDepthData,
-  cameraParams: CameraParams,
+// Temporal smoothing for horizon detection
+class HorizonTracker {
+  private history: Array<{ pitchOffset: number; confidence: number; timestamp: number }> = [];
+  private readonly maxHistory = 10;
+  private readonly timeWindow = 2000; // 2 seconds
+
+  add(pitchOffset: number, confidence: number): void {
+    const now = Date.now();
+    this.history.push({ pitchOffset, confidence, timestamp: now });
+    
+    // Remove old entries
+    this.history = this.history.filter(h => now - h.timestamp < this.timeWindow);
+    
+    // Limit size
+    if (this.history.length > this.maxHistory) {
+      this.history = this.history.slice(-this.maxHistory);
+    }
+  }
+
+  getSmoothed(): { pitchOffset: number; confidence: number } | null {
+    if (this.history.length === 0) return null;
+    
+    // Weighted average by confidence, with exponential decay for older samples
+    const now = Date.now();
+    let totalWeight = 0;
+    let weightedSum = 0;
+    let maxConfidence = 0;
+
+    for (const entry of this.history) {
+      const age = now - entry.timestamp;
+      const timeWeight = Math.exp(-age / (this.timeWindow / 2)); // Exponential decay
+      const weight = entry.confidence * timeWeight;
+      totalWeight += weight;
+      weightedSum += entry.pitchOffset * weight;
+      maxConfidence = Math.max(maxConfidence, entry.confidence);
+    }
+
+    if (totalWeight === 0) return null;
+
+    return {
+      pitchOffset: weightedSum / totalWeight,
+      confidence: maxConfidence * Math.min(1, this.history.length / 3) // Boost confidence with more samples
+    };
+  }
+
+  reset(): void {
+    this.history = [];
+  }
+}
+
+const horizonTracker = new HorizonTracker();
+
+/**
+ * Gradient-based horizon detection using depth discontinuities
+ */
+function detectHorizonFromGradient(
+  onnxDepthMap: OnnxDepthMap | null,
   viewWidth: number,
   viewHeight: number
+): { horizonY: number; confidence: number } | null {
+  if (!onnxDepthMap) return null;
+
+  const depthMap = onnxDepthMap.data;
+  const mapWidth = onnxDepthMap.width;
+  const mapHeight = onnxDepthMap.height;
+  
+  // Compute vertical gradients for each row
+  const rowGradients: number[] = [];
+  const minGradientY = Math.floor(mapHeight * 0.3);
+  const maxGradientY = Math.floor(mapHeight * 0.85);
+
+  for (let y = minGradientY; y < maxGradientY; y++) {
+    let totalGradient = 0;
+    let count = 0;
+
+    for (let x = 1; x < mapWidth - 1; x += 2) {
+      const idx = y * mapWidth + x;
+      if (idx >= depthMap.length || idx < 0) continue;
+
+      const center = depthMap[idx];
+      const up = depthMap[Math.max(0, (y - 1) * mapWidth + x)];
+      const down = depthMap[Math.min(depthMap.length - 1, (y + 1) * mapWidth + x)];
+
+      if (center && up && down && center > 0 && up > 0 && down > 0) {
+        const verticalGradient = Math.abs(down - up) / center;
+        totalGradient += verticalGradient;
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      rowGradients.push(totalGradient / count);
+    } else {
+      rowGradients.push(Infinity);
+    }
+  }
+
+  // Find row with minimum gradient (horizon typically has low vertical gradient)
+  let minGradient = Infinity;
+  let bestRow = -1;
+  for (let i = 0; i < rowGradients.length; i++) {
+    if (rowGradients[i]! < minGradient && Number.isFinite(rowGradients[i]!)) {
+      minGradient = rowGradients[i]!;
+      bestRow = i + minGradientY;
+    }
+  }
+
+  if (bestRow === -1 || minGradient === Infinity) return null;
+
+  // Convert to viewport coordinates
+  const horizonY = (bestRow / mapHeight) * viewHeight;
+  
+  // Confidence based on gradient magnitude (lower is better for horizon)
+  const normalizedGradient = Math.min(1, minGradient * 10);
+  const confidence = Math.max(0.3, 1 - normalizedGradient);
+
+  return { horizonY, confidence };
+}
+
+export function detectHorizonFromDepth(
+  depthData: DecodedDepthData | null,
+  cameraParams: CameraParams,
+  viewWidth: number,
+  viewHeight: number,
+  onnxDepthMap?: OnnxDepthMap | null,
+  useTemporalSmoothing: boolean = true
 ): HorizonDetectionResult {
   if (!depthData || depthData.planes.length === 0) {
+    // Try gradient-based detection as fallback
+    if (onnxDepthMap) {
+      const gradientResult = detectHorizonFromGradient(onnxDepthMap, viewWidth, viewHeight);
+      if (gradientResult) {
+        const centerY = viewHeight / 2;
+        const pixelOffset = gradientResult.horizonY - centerY;
+        const vFov = cameraParams.vFov || 90;
+        const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
+        const pitchOffset = Math.max(-30, Math.min(30, -angleOffset));
+        
+        const result = {
+          pitchOffset,
+          confidence: gradientResult.confidence * 0.7, // Lower confidence for gradient-only
+          method: 'gradient' as const,
+          detected: true
+        };
+        
+        if (useTemporalSmoothing) {
+          horizonTracker.add(pitchOffset, result.confidence);
+          const smoothed = horizonTracker.getSmoothed();
+          if (smoothed) {
+            return { ...result, pitchOffset: smoothed.pitchOffset, confidence: smoothed.confidence };
+          }
+        }
+        
+        return result;
+      }
+    }
     return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
   }
 
@@ -682,68 +1001,114 @@ export function detectHorizonFromDepth(
   }
 
   if (samplePoints.length < 20) {
+    // Try gradient-based detection as fallback
+    if (onnxDepthMap) {
+      const gradientResult = detectHorizonFromGradient(onnxDepthMap, viewWidth, viewHeight);
+      if (gradientResult) {
+        const centerY = viewHeight / 2;
+        const pixelOffset = gradientResult.horizonY - centerY;
+        const vFov = cameraParams.vFov || 90;
+        const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
+        const pitchOffset = Math.max(-30, Math.min(30, -angleOffset));
+        return {
+          pitchOffset,
+          confidence: gradientResult.confidence * 0.6,
+          method: 'gradient',
+          detected: true
+        };
+      }
+    }
     return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
   }
 
-  // Try multi-scale RANSAC first
-  const ransacResult = multiScaleRansacLineFit(samplePoints, [1.0, 0.5, 2.0], 100, 5.0);
-  
-  // Try Hough transform as alternative
-  const houghResult = houghLineFit(samplePoints, viewWidth, viewHeight);
+  // Multi-method detection with confidence weighting
+  const methods: Array<{ pitchOffset: number; confidence: number; method: 'ransac' | 'hough' | 'gradient' }> = [];
 
-  // Select best method based on inlier count/votes
-  let bestLine: { slope: number; intercept: number; inliers: number; method: 'ransac' | 'hough' } | null = null;
-  
+  // Try multi-scale RANSAC
+  const ransacResult = multiScaleRansacLineFit(samplePoints, [1.0, 0.5, 2.0], 100, 5.0);
   if (ransacResult && ransacResult.inliers >= samplePoints.length * 0.3) {
-    bestLine = {
-      slope: ransacResult.slope,
-      intercept: ransacResult.intercept,
-      inliers: ransacResult.inliers,
-      method: 'ransac'
-    };
+    const centerY = viewHeight / 2;
+    const horizonY = ransacResult.intercept + ransacResult.slope * (viewWidth / 2);
+    const pixelOffset = horizonY - centerY;
+    const vFov = cameraParams.vFov || 90;
+    const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
+    const pitchOffset = Math.max(-30, Math.min(30, -angleOffset));
+    const confidence = Math.min(1.0, ransacResult.inliers / samplePoints.length);
+    
+    if (Math.abs(ransacResult.slope) <= 0.1) {
+      methods.push({ pitchOffset, confidence, method: 'ransac' });
+    }
   }
   
+  // Try Hough transform
+  const houghResult = houghLineFit(samplePoints, viewWidth, viewHeight);
   if (houghResult && houghResult.votes >= samplePoints.length * 0.3) {
-    if (!bestLine || houghResult.votes > bestLine.inliers) {
-      bestLine = {
-        slope: houghResult.slope,
-        intercept: houghResult.intercept,
-        inliers: houghResult.votes,
-        method: 'hough'
-      };
+    const centerY = viewHeight / 2;
+    const horizonY = houghResult.intercept + houghResult.slope * (viewWidth / 2);
+    const pixelOffset = horizonY - centerY;
+    const vFov = cameraParams.vFov || 90;
+    const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
+    const pitchOffset = Math.max(-30, Math.min(30, -angleOffset));
+    const confidence = Math.min(1.0, houghResult.votes / samplePoints.length);
+    
+    if (Math.abs(houghResult.slope) <= 0.1) {
+      methods.push({ pitchOffset, confidence, method: 'hough' });
     }
   }
 
-  if (!bestLine) {
+  // Try gradient-based detection if available
+  if (onnxDepthMap) {
+    const gradientResult = detectHorizonFromGradient(onnxDepthMap, viewWidth, viewHeight);
+    if (gradientResult) {
+      const centerY = viewHeight / 2;
+      const pixelOffset = gradientResult.horizonY - centerY;
+      const vFov = cameraParams.vFov || 90;
+      const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
+      const pitchOffset = Math.max(-30, Math.min(30, -angleOffset));
+      methods.push({ pitchOffset, confidence: gradientResult.confidence * 0.8, method: 'gradient' });
+    }
+  }
+
+  if (methods.length === 0) {
     return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
   }
 
-  // Validate line is roughly horizontal (slope close to 0)
-  const MAX_HORIZONTAL_SLOPE = 0.1; // ~6 degrees
-  if (Math.abs(bestLine.slope) > MAX_HORIZONTAL_SLOPE) {
-    return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
+  // Fuse methods using confidence-weighted average
+  let totalWeight = 0;
+  let weightedSum = 0;
+  let bestMethod: 'ransac' | 'hough' | 'gradient' | 'fallback' = 'fallback';
+  let maxConfidence = 0;
+
+  for (const method of methods) {
+    const weight = method.confidence * method.confidence; // Square for stronger weighting
+    totalWeight += weight;
+    weightedSum += method.pitchOffset * weight;
+    if (method.confidence > maxConfidence) {
+      maxConfidence = method.confidence;
+      bestMethod = method.method;
+    }
   }
 
-  // Calculate pitch offset from the detected horizon line
-  const centerY = viewHeight / 2;
-  const horizonY = bestLine.intercept + bestLine.slope * (viewWidth / 2);
-  const pixelOffset = horizonY - centerY;
+  const fusedPitchOffset = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  const fusedConfidence = Math.min(1.0, maxConfidence * (methods.length / 2)); // Boost with multiple methods
 
-  // Convert pixel offset to angle
-  const vFov = cameraParams.vFov || 90;
-  const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
-
-  const confidence = Math.min(1.0, bestLine.inliers / samplePoints.length);
-  
-  // Clamp pitch offset to reasonable range
-  const clampedPitchOffset = Math.max(-30, Math.min(30, -angleOffset));
-
-  return {
-    pitchOffset: clampedPitchOffset,
-    confidence,
-    method: bestLine.method === 'ransac' ? 'depth' : 'hough',
-    detected: confidence > 0.3
+  const result: HorizonDetectionResult = {
+    pitchOffset: fusedPitchOffset,
+    confidence: fusedConfidence,
+    method: bestMethod === 'ransac' || bestMethod === 'hough' ? 'depth' : bestMethod,
+    detected: true
   };
+
+  // Apply temporal smoothing
+  if (useTemporalSmoothing && result.detected) {
+    horizonTracker.add(result.pitchOffset, result.confidence);
+    const smoothed = horizonTracker.getSmoothed();
+    if (smoothed) {
+      return { ...result, pitchOffset: smoothed.pitchOffset, confidence: smoothed.confidence };
+    }
+  }
+
+  return result;
 }
 
 // RANSAC line fitting for horizon detection
@@ -847,7 +1212,8 @@ export function clearGeometryCaches(): void {
   calculationCache.clear();
   fovCache.clear();
   trigCache.clear();
-  depthDataSignatureCache.clear();
+  // WeakMap doesn't need explicit clearing - entries are GC'd automatically
+  // depthDataSignatureCache entries will be garbage collected when depthData objects are GC'd
 }
 
 export function getGeometryCacheStats(): {
@@ -860,7 +1226,7 @@ export function getGeometryCacheStats(): {
     calculationCacheSize: calculationCache.size,
     fovCacheSize: fovCache.size,
     trigCacheSize: trigCache.size,
-    depthSignatureCacheSize: depthDataSignatureCache.size,
+    depthSignatureCacheSize: -1, // WeakMap doesn't expose size - entries are GC'd automatically
   };
 }
 

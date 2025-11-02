@@ -7,7 +7,8 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta http-equiv="X-Frame-Options" content="DENY" />
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
-    <!-- CSP for development (allows HMR) -->
+    <!-- CSP: Development allows HMR, Production is strict -->
+    <!-- Production CSP (will be replaced by Vite HTML plugin in production) -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://streetviewpixels.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com 'unsafe-inline' 'unsafe-eval'; connect-src 'self' http://127.0.0.1:5173 ws://127.0.0.1:5173 https://maps.googleapis.com https://streetviewpixels.googleapis.com https://maps.gstatic.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'self' blob:">    
     <title>PoleCheck Desktop</title>
     

@@ -19,6 +19,35 @@ import { pushNotification } from '../stores/notificationStore';
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
+// Height calculation cache (shared across renders)
+interface HeightCacheEntry {
+  text: string;
+  x: number;
+  y: number;
+}
+
+class HeightCalculationCache {
+  private cache = new Map<string, HeightCacheEntry>();
+  private lastStartPoint: Point | null = null;
+  private readonly maxSize = 50;
+
+  get(key: string, currentStartPoint: Point | null): HeightCacheEntry | null {
+    if (currentStartPoint !== this.lastStartPoint) {
+      this.cache.clear();
+      this.lastStartPoint = currentStartPoint;
+    }
+    return this.cache.get(key) || null;
+  }
+
+  set(key: string, value: HeightCacheEntry): void {
+    this.cache.set(key, value);
+    if (this.cache.size > this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+  }
+}
+
 // Memoized canvas drawing component
 const MeasurementCanvas = React.memo<{
   measurements: Measurement[];
@@ -43,16 +72,25 @@ const MeasurementCanvas = React.memo<{
   canvasRef,
   overlayRef
 }) => {
+  const heightCacheRef = useRef(new HeightCalculationCache());
+
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    const context = canvas?.getContext('2d');
+    const context = canvas?.getContext('2d', { alpha: false, desynchronized: true });
     const overlay = overlayRef.current;
 
     if (!context || !canvas || !overlay) return;
 
-    canvas.width = overlay.offsetWidth;
-    canvas.height = overlay.offsetHeight;
+    const newWidth = overlay.offsetWidth;
+    const newHeight = overlay.offsetHeight;
+    
+    // Only resize if dimensions changed
+    if (canvas.width !== newWidth || canvas.height !== newHeight) {
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+    }
 
+    // Use willReadFrequently: false for better performance
     context.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw existing measurements
@@ -63,35 +101,51 @@ const MeasurementCanvas = React.memo<{
     context.textAlign = 'center';
     context.textBaseline = 'bottom';
 
+    // Batch draw operations for better performance
+    context.save();
+    
+    // Draw all measurement lines first
+    context.strokeStyle = '#ff00ff';
+    context.lineWidth = 2;
+    context.beginPath();
     measurements.forEach(m => {
-      if (m.kind !== 'distance') return;
-      if (!m.startPoint || !m.endPoint) return;
+      if (m.kind !== 'distance' || !m.startPoint || !m.endPoint) return;
+      context.moveTo(m.startPoint.x, m.startPoint.y);
+      context.lineTo(m.endPoint.x, m.endPoint.y);
+    });
+    context.stroke();
 
+    // Draw all measurement points
+    context.fillStyle = '#ff00ff';
+    measurements.forEach(m => {
+      if (m.kind !== 'distance' || !m.startPoint || !m.endPoint) return;
       context.beginPath();
       context.arc(m.startPoint.x, m.startPoint.y, 5, 0, 2 * Math.PI);
       context.fill();
-
       context.beginPath();
       context.arc(m.endPoint.x, m.endPoint.y, 5, 0, 2 * Math.PI);
       context.fill();
+    });
 
-      context.beginPath();
-      context.moveTo(m.startPoint.x, m.startPoint.y);
-      context.lineTo(m.endPoint.x, m.endPoint.y);
-      context.stroke();
-
+    // Draw all labels
+    context.fillStyle = 'white';
+    context.shadowColor = 'black';
+    context.shadowBlur = 4;
+    context.font = '12px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'bottom';
+    
+    measurements.forEach(m => {
+      if (m.kind !== 'distance' || !m.startPoint || !m.endPoint) return;
       const midX = (m.startPoint.x + m.endPoint.x) / 2;
       const midY = (m.startPoint.y + m.endPoint.y) / 2;
-      context.fillStyle = 'white';
-      context.shadowColor = 'black';
-      context.shadowBlur = 4;
-      
       const unitLabel = m.unit === 'metric' ? 'm' : 'ft';
       const distanceText = m.distance !== undefined ? m.distance.toFixed(2) : 'N/A';
       context.fillText(`${m.label}: ${distanceText}${unitLabel}`, midX + 10, midY);
-      context.shadowBlur = 0;
-      context.fillStyle = '#ff00ff';
     });
+    
+    context.shadowBlur = 0;
+    context.restore();
 
     // Draw current measurement
     context.strokeStyle = '#00ffff';
@@ -147,12 +201,17 @@ const MeasurementCanvas = React.memo<{
       context.arc(currentMousePos.x, currentMousePos.y, pointRadius - 1, 0, Math.PI * 2);
       context.fill();
 
-      // Provisional height estimation
+      // Provisional height estimation (memoized to avoid recalculation on every frame)
       const viewWidth = overlay.offsetWidth;
       const viewHeight = overlay.offsetHeight;
-      let distanceToBase: number | null = null;
+      
+      // Use a simple cache key based on mouse position (rounded to avoid excessive recalculation)
+      const cacheKey = `${Math.round(currentMousePos.x / 5)}_${Math.round(currentMousePos.y / 5)}_${startPoint.x}_${startPoint.y}`;
+      let cachedHeight = heightCacheRef.current.get(cacheKey, startPoint);
 
-      if (cameraParams) {
+      if (!cachedHeight && cameraParams) {
+        let distanceToBase: number | null = null;
+
         if (onnxDepthMap) {
           distanceToBase = estimateDistanceToPoint(
             startPoint.x,
@@ -186,36 +245,40 @@ const MeasurementCanvas = React.memo<{
           const { value: finalDistance, unitLabel } = convertLengthToDisplay(estimatedHeight, defaultUnit as 'metric' | 'imperial');
 
           if (finalDistance !== undefined) {
-            // Draw background rectangle for better readability
             const text = `${finalDistance.toFixed(2)}${unitLabel}`;
-            const textMetrics = context.measureText(text);
-            const padding = 8;
-
-            context.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            context.fillRect(
-              currentMousePos.x + 15,
-              currentMousePos.y - 25,
-              textMetrics.width + padding * 2,
-              20
-            );
-
-            // Draw text with better styling
-            context.fillStyle = 'white';
-            context.font = 'bold 14px Arial';
-            context.shadowColor = 'black';
-            context.shadowBlur = 2;
-            context.fillText(
-              text,
-              currentMousePos.x + 15 + padding,
-              currentMousePos.y - 10
-            );
-
-            // Reset styling
-            context.shadowBlur = 0;
-            context.fillStyle = '#00ffff';
-            context.font = '12px Arial';
+            cachedHeight = { text, x: currentMousePos.x, y: currentMousePos.y };
+            heightCacheRef.current.set(cacheKey, cachedHeight);
           }
         }
+      }
+
+      if (cachedHeight) {
+        const textMetrics = context.measureText(cachedHeight.text);
+        const padding = 8;
+
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillRect(
+          cachedHeight.x + 15,
+          cachedHeight.y - 25,
+          textMetrics.width + padding * 2,
+          20
+        );
+
+        // Draw text with better styling
+        context.fillStyle = 'white';
+        context.font = 'bold 14px Arial';
+        context.shadowColor = 'black';
+        context.shadowBlur = 2;
+        context.fillText(
+          cachedHeight.text,
+          cachedHeight.x + 15 + padding,
+          cachedHeight.y - 10
+        );
+
+        // Reset styling
+        context.shadowBlur = 0;
+        context.fillStyle = '#00ffff';
+        context.font = '12px Arial';
       }
     }
   }, [
@@ -231,9 +294,68 @@ const MeasurementCanvas = React.memo<{
     overlayRef,
   ]);
 
+  // Optimize canvas redraws with RAF and debouncing
+  const drawCanvasRef = useRef<() => void>(drawCanvas);
+  drawCanvasRef.current = drawCanvas;
+
   useEffect(() => {
-    drawCanvas();
-  }, [drawCanvas]);
+    let rafId: number | null = null;
+    let lastDrawTime = 0;
+    const minDrawInterval = 16; // ~60fps max
+
+    const scheduleDraw = () => {
+      const now = performance.now();
+      const timeSinceLastDraw = now - lastDrawTime;
+
+      if (timeSinceLastDraw >= minDrawInterval) {
+        // Draw immediately if enough time has passed
+        drawCanvasRef.current();
+        lastDrawTime = now;
+      } else {
+        // Schedule for next frame
+        if (rafId === null) {
+          rafId = requestAnimationFrame(() => {
+            drawCanvasRef.current();
+            lastDrawTime = performance.now();
+            rafId = null;
+          });
+        }
+      }
+    };
+
+    // Initial draw
+    scheduleDraw();
+
+    // Listen for resize events with debouncing
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        scheduleDraw();
+        resizeTimeout = null;
+      }, 150);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const context = canvas.getContext('2d');
+        if (context) {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+      }
+    };
+  }, [measurements, phase, startPoint, currentMousePos, cameraParams, onnxDepthMap, depthData, defaultUnit]);
 
   return <canvas ref={canvasRef} className={styles['measurementCanvas']} />;
 });

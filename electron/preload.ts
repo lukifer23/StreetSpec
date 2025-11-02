@@ -42,7 +42,7 @@ if (!ipcRenderer) {
   throw new Error('ipcRenderer is not available');
 }
 
-// Define valid channels
+// Define valid channels (whitelist approach)
 const validChannels = {
   invoke: [
     'fetch-depth-data',
@@ -55,34 +55,79 @@ const validChannels = {
     'delete-project',
     'get-settings',
     'save-settings',
+    'set-use-gpu',
     'clear-data',
-    'log-error'
+    'log-error',
+    'log-telemetry'
   ],
   send: ['message'],
   receive: ['main-process-message']
-};
+} as const;
+
+// Input sanitization utilities
+function sanitizeString(input: unknown, maxLength: number = 10000): string | null {
+  if (typeof input !== 'string') return null;
+  if (input.length > maxLength) return null;
+  // Remove control characters except newlines and tabs
+  return input.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+}
+
+function sanitizeObject(input: unknown, maxDepth: number = 10): unknown {
+  if (maxDepth <= 0) return null;
+  if (input === null || input === undefined) return input;
+  if (typeof input === 'string') return sanitizeString(input);
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null;
+  if (typeof input === 'boolean') return input;
+  if (Array.isArray(input)) {
+    return input.slice(0, 1000).map(item => sanitizeObject(item, maxDepth - 1));
+  }
+  if (typeof input === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    const entries = Object.entries(input).slice(0, 100);
+    for (const [key, value] of entries) {
+      const sanitizedKey = sanitizeString(key, 200);
+      if (sanitizedKey) {
+        sanitized[sanitizedKey] = sanitizeObject(value, maxDepth - 1);
+      }
+    }
+    return sanitized;
+  }
+  return null;
+}
 
 // Create the electronAPI object
 const electronAPI = {
   invoke: async (channel: string, data?: any) => {
-    if (!validChannels.invoke.includes(channel)) {
+    // Validate channel
+    if (typeof channel !== 'string' || !(validChannels.invoke as readonly string[]).includes(channel)) {
       throw new Error(`Invalid invoke channel: ${channel}`);
     }
+    
+    // Sanitize input data
+    const sanitizedData = data !== undefined ? sanitizeObject(data) : undefined;
+    
     try {
-      const result = await ipcRenderer.invoke(channel, data);
+      const result = await ipcRenderer.invoke(channel, sanitizedData);
       return result;
     } catch (error) {
+      console.error(`[preload] IPC invoke error for channel ${channel}:`, error);
       throw error;
     }
   },
 
   sendMessage: (channel: string, data: any) => {
-    if (!validChannels.send.includes(channel)) {
+    // Validate channel
+    if (typeof channel !== 'string' || !(validChannels.send as readonly string[]).includes(channel)) {
       throw new Error(`Invalid send channel: ${channel}`);
     }
+    
+    // Sanitize input data
+    const sanitizedData = sanitizeObject(data);
+    
     try {
-      ipcRenderer.send(channel, data);
+      ipcRenderer.send(channel, sanitizedData);
     } catch (error) {
+      console.error(`[preload] IPC send error for channel ${channel}:`, error);
       throw error;
     }
   },
@@ -98,7 +143,13 @@ const electronAPI = {
     }
 
     const listener = (_event: IpcRendererEvent, data: any) => {
-      callback(data);
+      try {
+        // Sanitize received data before passing to callback
+        const sanitizedData = sanitizeObject(data);
+        callback(sanitizedData);
+      } catch (error) {
+        console.error('[preload] Error in main process message callback:', error);
+      }
     };
 
     ipcRenderer.on(channel, listener);

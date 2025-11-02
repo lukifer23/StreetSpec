@@ -57,6 +57,8 @@ export interface DepthGenerationOptions {
   imageHeight?: number;
   quality?: 'low' | 'medium' | 'high';
   enableCache?: boolean;
+  progressive?: boolean; // Start with low quality, upgrade if needed
+  onProgress?: (progress: { stage: 'fetching' | 'processing' | 'complete'; quality?: 'low' | 'medium' | 'high' }) => void;
 }
 
 const QUALITY_SETTINGS = {
@@ -82,49 +84,98 @@ export async function generateDepthMap(
     }
   }
 
-  // Determine image dimensions based on quality setting
-  const quality = options.quality || 'high';
-  const dimensions = QUALITY_SETTINGS[quality];
-  const imgWidth = options.imageWidth || dimensions.width;
-  const imgHeight = options.imageHeight || dimensions.height;
-
-  const rawFov = cameraParams.fov ?? 90;
-  const clampedFov = Math.min(Math.max(rawFov, 1), 120);
-
-  if (clampedFov !== rawFov) {
-    console.warn(`[DepthGeneration] Clamping FOV from ${rawFov} to ${clampedFov}`);
+  // Progressive loading: start with lower quality if requested
+  const targetQuality = options.quality || 'high';
+  let currentQuality: 'low' | 'medium' | 'high' = targetQuality;
+  
+  if (options.progressive && targetQuality !== 'low') {
+    // Start with medium quality for faster initial load
+    currentQuality = targetQuality === 'high' ? 'medium' : 'low';
+    options.onProgress?.({ stage: 'fetching', quality: currentQuality });
+  } else {
+    options.onProgress?.({ stage: 'fetching', quality: currentQuality });
   }
 
-  const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
-    `size=${imgWidth}x${imgHeight}&` +
-    (cameraParams.panoId
-      ? `pano=${cameraParams.panoId}&`
-      : `location=${cameraParams.lat},${cameraParams.lng}&`) +
-    `heading=${cameraParams.heading ?? 0}&` +
-    `pitch=${cameraParams.pitch ?? 0}&` +
-    `fov=${clampedFov}&` +
-    `key=${apiKey}`;
+  // Generate initial depth map
+  let result: OnnxDepthMap | null = null;
+  let attempts = 0;
+  const maxAttempts = options.progressive && targetQuality === 'high' ? 2 : 1;
 
-  const response = await deps.fetchImage(apiUrl);
+  while (attempts < maxAttempts && (!result || (options.progressive && currentQuality !== targetQuality))) {
+    const dimensions = QUALITY_SETTINGS[currentQuality];
+    const imgWidth = options.imageWidth || dimensions.width;
+    const imgHeight = options.imageHeight || dimensions.height;
 
-  if (!response.ok) {
-    throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
+    const rawFov = cameraParams.fov ?? 90;
+    const clampedFov = Math.min(Math.max(rawFov, 1), 120);
+
+    if (clampedFov !== rawFov) {
+      console.warn(`[DepthGeneration] Clamping FOV from ${rawFov} to ${clampedFov}`);
+    }
+
+    const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
+      `size=${imgWidth}x${imgHeight}&` +
+      (cameraParams.panoId
+        ? `pano=${cameraParams.panoId}&`
+        : `location=${cameraParams.lat},${cameraParams.lng}&`) +
+      `heading=${cameraParams.heading ?? 0}&` +
+      `pitch=${cameraParams.pitch ?? 0}&` +
+      `fov=${clampedFov}&` +
+      `key=${apiKey}`;
+
+    try {
+      options.onProgress?.({ stage: 'fetching', quality: currentQuality });
+      const response = await deps.fetchImage(apiUrl);
+
+      if (!response.ok) {
+        throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const imageBlob = await response.blob();
+      const base64data = await blobToDataUrl(imageBlob);
+
+      options.onProgress?.({ stage: 'processing', quality: currentQuality });
+      const inferenceResult = await deps.invokeDepth(base64data);
+
+      if (!inferenceResult?.data || !inferenceResult?.width || !inferenceResult?.height) {
+        throw new Error('Main process failed to return valid depth map data.');
+      }
+
+      result = inferenceResult;
+
+      // If progressive and we got a lower quality result, upgrade to target quality
+      if (options.progressive && currentQuality !== targetQuality && attempts === 0) {
+        // Cache the lower quality result for quick access
+        if (options.enableCache !== false) {
+          await setCache(cameraParams, result);
+        }
+        
+        // Upgrade to target quality
+        currentQuality = targetQuality;
+        attempts++;
+        // Continue loop to generate high quality version
+      } else {
+        // Done - cache final result
+        if (options.enableCache !== false) {
+          await setCache(cameraParams, result);
+        }
+        break;
+      }
+    } catch (error) {
+      // If progressive loading fails on upgrade, return lower quality result
+      if (options.progressive && result && attempts > 0) {
+        console.warn('[DepthGeneration] Progressive upgrade failed, using lower quality result:', error);
+        break;
+      }
+      throw error;
+    }
   }
 
-  const imageBlob = await response.blob();
-  const base64data = await blobToDataUrl(imageBlob);
-
-  const result = await deps.invokeDepth(base64data);
-
-  if (!result?.data || !result?.width || !result?.height) {
-    throw new Error('Main process failed to return valid depth map data.');
+  if (!result) {
+    throw new Error('Failed to generate depth map');
   }
 
-  // Only cache if enabled and quality is not explicitly set to avoid cache fragmentation
-  if (options.enableCache !== false) {
-    await setCache(cameraParams, result);
-  }
-
+  options.onProgress?.({ stage: 'complete', quality: currentQuality });
   return { depthMap: result, fromCache: false };
 }
 
@@ -139,35 +190,102 @@ export async function generateBatchDepthMaps(
   deps: DepthGenerationDeps,
   options: DepthGenerationOptions & { concurrency?: number } = {}
 ): Promise<DepthGenerationResult[]> {
-  const concurrency = options.concurrency || 3; // Process up to 3 at a time
-  const results: DepthGenerationResult[] = [];
+  // Adaptive concurrency based on available resources
+  const getConcurrency = (): number => {
+    if (options.concurrency) {
+      return options.concurrency;
+    }
+    // Check if we're in a worker or main thread with limited resources
+    if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
+      // Use 1/4 of available cores, minimum 2, maximum 4
+      return Math.max(2, Math.min(4, Math.floor(navigator.hardwareConcurrency / 4)));
+    }
+    return 3; // Default fallback
+  };
 
-  // Process in batches to avoid overwhelming the system
-  for (let i = 0; i < cameraParamsList.length; i += concurrency) {
-    const batch = cameraParamsList.slice(i, i + concurrency);
+  const concurrency = getConcurrency();
+  const results: DepthGenerationResult[] = [];
+  const errors: Array<{ panoId?: string; error: unknown }> = [];
+
+  // Pre-check cache for all params to avoid unnecessary processing
+  const getCache = deps.getCachedDepthMap ?? getCachedDepthMap;
+  const cacheChecks = await Promise.allSettled(
+    cameraParamsList.map(async (params) => {
+      if (options.enableCache !== false) {
+        const cached = await getCache(params);
+        if (cached) {
+          return { params, cached: true, result: { depthMap: cached, fromCache: true } };
+        }
+      }
+      return { params, cached: false };
+    })
+  );
+
+  // Separate cached and uncached items
+  const cachedResults: DepthGenerationResult[] = [];
+  const uncachedParams: CameraParams[] = [];
+
+  cacheChecks.forEach((check, index) => {
+    if (check.status === 'fulfilled' && check.value.cached) {
+      cachedResults.push(check.value.result);
+    } else {
+      uncachedParams.push(cameraParamsList[index]!);
+    }
+  });
+
+  results.push(...cachedResults);
+
+  // Process uncached items in batches with progress tracking
+  const totalUncached = uncachedParams.length;
+  let processedCount = 0;
+
+  for (let i = 0; i < uncachedParams.length; i += concurrency) {
+    const batch = uncachedParams.slice(i, i + concurrency);
+    
+    // Selective quality: use lower quality for batch processing unless explicitly requested
+    const batchOptions: DepthGenerationOptions = {
+      ...options,
+      quality: options.quality || 'medium', // Default to medium for batch
+      progressive: options.progressive ?? false,
+      onProgress: options.onProgress ? (progress) => {
+        // Report progress with batch context
+        options.onProgress?.({
+          ...progress,
+          // Could add batch metadata here if needed
+        });
+      } : undefined
+    };
 
     const batchPromises = batch.map(async (cameraParams) => {
       try {
-        return await generateDepthMap(cameraParams, apiKey, deps, options);
+        return await generateDepthMap(cameraParams, apiKey, deps, batchOptions);
       } catch (error) {
-        console.warn(`Failed to generate depth map for pano ${cameraParams.panoId}:`, error);
+        errors.push({ panoId: cameraParams.panoId, error });
+        console.error(`[batch] Failed to generate depth map for pano ${cameraParams.panoId}:`, error);
         return null;
       }
     });
-
+    
     const batchResults = await Promise.allSettled(batchPromises);
     const successfulResults = batchResults
-      .filter((result): result is PromiseFulfilledResult<DepthGenerationResult> =>
+      .filter((result): result is PromiseFulfilledResult<DepthGenerationResult | null> => 
         result.status === 'fulfilled' && result.value !== null
       )
-      .map(result => result.value);
-
+      .map(result => result.value!);
+    
     results.push(...successfulResults);
+    processedCount += batch.length;
 
-    // Small delay between batches to prevent overwhelming
-    if (i + concurrency < cameraParamsList.length) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+    // Adaptive delay between batches: shorter if success rate is high
+    if (i + concurrency < uncachedParams.length) {
+      const successRate = successfulResults.length / batch.length;
+      const delay = successRate > 0.8 ? 50 : successRate > 0.5 ? 100 : 200; // Faster if mostly successful
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
+  }
+
+  if (errors.length > 0) {
+    console.warn(`[batch] Completed with ${errors.length} error(s) out of ${cameraParamsList.length} total`);
   }
 
   return results;

@@ -207,6 +207,62 @@ class DepthPrefetchService {
   }
 
   /**
+   * Warm cache by prefetching common panoramas or panoramas from a route
+   */
+  async warmCache(
+    panoIds: string[],
+    cameraParams: CameraParams,
+    options: PrefetchOptions & { priority?: 'high' | 'medium' | 'low' } = {}
+  ): Promise<void> {
+    if (!this.deps || !this.apiKey) {
+      console.warn('[DepthPrefetch] Service not initialized');
+      return;
+    }
+
+    const { maxConcurrent = this.maxConcurrent, enableCache = true, quality = 'medium', priority = 'medium' } = options;
+    
+    // Prioritize based on priority level
+    const priorityPanoIds = priority === 'high' 
+      ? panoIds.slice(0, Math.min(5, panoIds.length))
+      : panoIds;
+
+    // Check cache first
+    const uncachedPanos: string[] = [];
+    for (const panoId of priorityPanoIds) {
+      if (this.activeTasks.has(panoId)) continue;
+      
+      const checkParams: CameraParams = { ...cameraParams, panoId };
+      const cached = await getCachedDepthMap(checkParams);
+      if (!cached) {
+        uncachedPanos.push(panoId);
+      }
+    }
+
+    if (uncachedPanos.length === 0) {
+      console.log('[DepthPrefetch] Cache warm - all panoramas already cached');
+      return;
+    }
+
+    console.log(`[DepthPrefetch] Warming cache for ${uncachedPanos.length} panoramas`);
+    
+    // Process in batches with adaptive concurrency
+    const concurrencyBudget = this.getConcurrencyBudget(maxConcurrent);
+    for (let i = 0; i < uncachedPanos.length; i += concurrencyBudget) {
+      const batch = uncachedPanos.slice(i, i + concurrencyBudget);
+      await Promise.allSettled(
+        batch.map(panoId => 
+          this.startPrefetchTask(panoId, cameraParams, { enableCache, quality }).promise
+        )
+      );
+      
+      // Small delay between batches to avoid overwhelming the system
+      if (i + concurrencyBudget < uncachedPanos.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+  }
+
+  /**
    * Cancel all active prefetch tasks
    */
   cancelAll(): void {
