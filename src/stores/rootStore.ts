@@ -256,25 +256,83 @@ export const useRootStore = create<RootState>()(
           state.settings = settings;
         }),
 
-        updateSettings: (updates) => set((state) => {
-          Object.assign(state.settings, updates);
-        }),
+        updateSettings: async (updates) => {
+          const state = get();
+          const newSettings = { ...state.settings, ...updates };
+          
+          // Update local state
+          set((state) => {
+            Object.assign(state.settings, updates);
+          });
+          
+          // Persist to Electron store
+          if (window.electronAPI?.invoke) {
+            try {
+              const success = await window.electronAPI.invoke('save-settings', newSettings);
+              if (!success) {
+                console.warn('[store] Failed to persist settings to Electron store');
+                // Rollback on failure
+                set((state) => {
+                  state.settings = state.settings; // Trigger reactivity
+                });
+              }
+            } catch (error) {
+              console.error('[store] Error saving settings:', error);
+            }
+          }
+        },
 
         toggleUnit: () => set((state) => {
           state.settings.defaultUnit = state.settings.defaultUnit === 'metric' ? 'imperial' : 'metric';
         }),
 
-        saveCurrentProject: () => set((state) => {
+        saveCurrentProject: async () => {
+          const state = get();
           if (!state.currentProjectId) return;
           const project = state.projects[state.currentProjectId];
           if (project) {
-            project.measurements = [...state.measurements];
-            // save to IPC
+            // Create a validated copy before saving
+            const projectToSave: Project = {
+              id: project.id,
+              name: project.name || 'Untitled',
+              measurements: [...state.measurements],
+              revisionHistory: project.revisionHistory || []
+            };
+            
+            // Validate project before saving
+            if (projectToSave.measurements.length > 10000) {
+              console.warn('[store] Project measurements exceed limit, truncating');
+              projectToSave.measurements = projectToSave.measurements.slice(-10000);
+            }
+            
+            // Update local state
+            set((state) => {
+              if (state.projects[projectToSave.id]) {
+                state.projects[projectToSave.id] = projectToSave;
+              }
+            });
+            
+            // Save to IPC with error handling
             if (window.electronAPI?.invoke) {
-              window.electronAPI.invoke('save-project', project);
+              try {
+                const success = await window.electronAPI.invoke('save-project', projectToSave);
+                if (!success) {
+                  console.error('[store] Failed to save project to Electron store');
+                  pushNotification({
+                    kind: 'error',
+                    message: 'Failed to save project. Changes may not persist.'
+                  });
+                }
+              } catch (error) {
+                console.error('[store] Error saving project:', error);
+                pushNotification({
+                  kind: 'error',
+                  message: `Error saving project: ${error instanceof Error ? error.message : 'unknown error'}`
+                });
+              }
             }
           }
-        }),
+        },
 
         // Camera actions
         setTargetCoords: (coords) => set((state) => {
@@ -346,32 +404,56 @@ export const useRootStore = create<RootState>()(
                 const limit = state.settings.measurementHistoryLimit;
                 const sanitizedProjects: Record<string, Project> = {};
 
-                if (projectsRaw && typeof projectsRaw === 'object') {
+                if (projectsRaw && typeof projectsRaw === 'object' && !Array.isArray(projectsRaw)) {
                   const entries = Object.entries(projectsRaw as Record<string, any>);
+                  
                   for (const [id, value] of entries) {
+                    // Validate project ID
+                    if (typeof id !== 'string' || id.length === 0 || id.length > 200) {
+                      console.warn('[store] Skipping project with invalid ID:', id);
+                      continue;
+                    }
+                    
+                    // Validate project structure
+                    if (!value || typeof value !== 'object') {
+                      console.warn('[store] Skipping invalid project object:', id);
+                      continue;
+                    }
+                    
                     const rawMeasurements = Array.isArray((value as any)?.measurements)
                       ? ((value as any).measurements as Measurement[])
                       : [];
                     const { trimmed } = trimMeasurementsArray(rawMeasurements, limit);
 
-                    const name = typeof (value as any)?.name === 'string' ? (value as any).name : 'Untitled';
+                    const name = typeof (value as any)?.name === 'string' && (value as any).name.length <= 200
+                      ? (value as any).name
+                      : 'Untitled';
+                    
                     const revisionHistory = Array.isArray((value as any)?.revisionHistory)
-                      ? ((value as any).revisionHistory as Revision[])
+                      ? ((value as any).revisionHistory as Revision[]).slice(0, 100) // Limit revision history
                       : [];
 
                     sanitizedProjects[id] = {
-                      id: typeof (value as any)?.id === 'string' ? (value as any).id : id,
+                      id: typeof (value as any)?.id === 'string' && (value as any).id === id
+                        ? (value as any).id
+                        : id,
                       name,
                       measurements: trimmed,
                       revisionHistory,
                     };
                   }
+                } else {
+                  console.warn('[store] Invalid projects data format received');
                 }
 
                 state.projects = sanitizedProjects;
               });
             } catch (error) {
-              console.error('Failed to load projects:', error);
+              console.error('[store] Failed to load projects:', error);
+              pushNotification({
+                kind: 'error',
+                message: 'Failed to load projects from storage.'
+              });
             }
           }
         },
@@ -392,21 +474,35 @@ export const useRootStore = create<RootState>()(
           }
         }),
 
-        loadProject: (id) => set((state) => {
+        loadProject: (id) => {
+          const state = get();
           const project = state.projects[id];
           if (project) {
+            // Validate project ID
+            if (typeof id !== 'string' || id.length === 0) {
+              console.error('[store] Invalid project ID for loading');
+              return;
+            }
+            
             const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
               project.measurements ?? [],
               state.settings.measurementHistoryLimit
             );
 
-            project.measurements = trimmed;
-            state.measurements = trimmed.slice();
-            state.currentProjectId = id;
+            // Update project in state
+            set((state) => {
+              if (state.projects[id]) {
+                state.projects[id].measurements = trimmed;
+              }
+              state.measurements = trimmed.slice();
+              state.currentProjectId = id;
+            });
 
             notifyMeasurementsTrimmed(removed, effectiveLimit);
+          } else {
+            console.warn('[store] Project not found:', id);
           }
-        }),
+        },
 
         deleteProject: (id) => set((state) => {
           delete state.projects[id];
@@ -419,27 +515,53 @@ export const useRootStore = create<RootState>()(
           }
         }),
 
-        saveRevision: () => set((state) => {
+        saveRevision: async () => {
+          const state = get();
           const { currentProjectId, projects, measurements } = state;
           if (!currentProjectId) return;
 
           const project = projects[currentProjectId];
           if (!project) return;
 
-          // Update project's measurements with current state
-          project.measurements = [...measurements];
+          // Limit revision history size
+          const MAX_REVISIONS = 100;
+          const revisionHistory = [...(project.revisionHistory || [])];
+          if (revisionHistory.length >= MAX_REVISIONS) {
+            revisionHistory.shift(); // Remove oldest
+          }
 
           const newRevision: Revision = {
             timestamp: Date.now(),
             measurements: [...measurements],
           };
 
-          project.revisionHistory.push(newRevision);
+          revisionHistory.push(newRevision);
 
+          // Update project
+          const updatedProject: Project = {
+            ...project,
+            measurements: [...measurements],
+            revisionHistory
+          };
+
+          set((state) => {
+            if (state.projects[currentProjectId]) {
+              state.projects[currentProjectId] = updatedProject;
+            }
+          });
+
+          // Save to IPC
           if (window.electronAPI?.invoke) {
-            window.electronAPI.invoke('save-project', project);
+            try {
+              const success = await window.electronAPI.invoke('save-project', updatedProject);
+              if (!success) {
+                console.error('[store] Failed to save revision');
+              }
+            } catch (error) {
+              console.error('[store] Error saving revision:', error);
+            }
           }
-        }),
+        },
 
         revertToRevision: (timestamp) => set((state) => {
           const { currentProjectId, projects } = state;

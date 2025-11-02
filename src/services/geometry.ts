@@ -528,12 +528,115 @@ export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-// Automatic horizon detection using RANSAC line fitting
+// Automatic horizon detection using multi-scale RANSAC and Hough transform
 export interface HorizonDetectionResult {
   pitchOffset: number;
   confidence: number;
-  method: 'depth' | 'gradient' | 'fallback';
+  method: 'depth' | 'gradient' | 'hough' | 'fallback';
   detected: boolean;
+}
+
+/**
+ * Multi-scale RANSAC with adaptive thresholding for robust horizon detection
+ */
+function multiScaleRansacLineFit(
+  points: Array<{ x: number; y: number; depth: number }>,
+  scales: number[] = [1.0, 0.5, 2.0],
+  baseIterations: number = 50,
+  baseThreshold: number = 5.0
+): { slope: number; intercept: number; inliers: number; scale: number } | null {
+  let bestResult: { slope: number; intercept: number; inliers: number; scale: number } | null = null;
+
+  for (const scale of scales) {
+    // Scale points for this iteration
+    const scaledPoints = points.map(p => ({
+      x: p.x * scale,
+      y: p.y,
+      depth: p.depth
+    }));
+
+    const threshold = baseThreshold * scale;
+    const iterations = Math.floor(baseIterations / scale);
+    
+    const result = ransacLineFit(scaledPoints, iterations, threshold);
+    
+    if (result && (!bestResult || result.inliers > bestResult.inliers)) {
+      bestResult = {
+        slope: result.slope / scale, // Unscale slope
+        intercept: result.intercept,
+        inliers: result.inliers,
+        scale
+      };
+    }
+  }
+
+  return bestResult;
+}
+
+/**
+ * Hough transform for robust line detection (alternative to RANSAC)
+ */
+function houghLineFit(
+  points: Array<{ x: number; y: number; depth: number }>,
+  viewWidth: number,
+  viewHeight: number
+): { slope: number; intercept: number; votes: number } | null {
+  // Hough space: (rho, theta) where rho is distance from origin, theta is angle
+  const NUM_THETA = 180; // 1 degree resolution
+  const NUM_RHO = Math.ceil(Math.sqrt(viewWidth * viewWidth + viewHeight * viewHeight));
+  
+  const accumulator: number[][] = [];
+  for (let i = 0; i < NUM_RHO; i++) {
+    accumulator[i] = new Array(NUM_THETA).fill(0);
+  }
+
+  const maxRho = Math.sqrt(viewWidth * viewWidth + viewHeight * viewHeight);
+  
+  // Vote for lines
+  for (const point of points) {
+    for (let thetaIdx = 0; thetaIdx < NUM_THETA; thetaIdx++) {
+      const theta = (thetaIdx * Math.PI) / NUM_THETA;
+      const rho = point.x * Math.cos(theta) + point.y * Math.sin(theta);
+      const rhoIdx = Math.floor((rho + maxRho) / (2 * maxRho) * NUM_RHO);
+      
+      if (rhoIdx >= 0 && rhoIdx < NUM_RHO) {
+        accumulator[rhoIdx]![thetaIdx]++;
+      }
+    }
+  }
+
+  // Find peak
+  let maxVotes = 0;
+  let bestRhoIdx = 0;
+  let bestThetaIdx = 0;
+  
+  for (let rhoIdx = 0; rhoIdx < NUM_RHO; rhoIdx++) {
+    for (let thetaIdx = 0; thetaIdx < NUM_THETA; thetaIdx++) {
+      const votes = accumulator[rhoIdx]![thetaIdx];
+      if (votes > maxVotes) {
+        maxVotes = votes;
+        bestRhoIdx = rhoIdx;
+        bestThetaIdx = thetaIdx;
+      }
+    }
+  }
+
+  if (maxVotes < points.length * 0.2) {
+    return null; // Not enough votes
+  }
+
+  const theta = (bestThetaIdx * Math.PI) / NUM_THETA;
+  const rho = ((bestRhoIdx / NUM_RHO) * 2 * maxRho) - maxRho;
+
+  // Convert (rho, theta) to (slope, intercept)
+  if (Math.abs(Math.sin(theta)) < 1e-6) {
+    return null; // Vertical line, not useful for horizon
+  }
+
+  const slope = -Math.cos(theta) / Math.sin(theta);
+  const intercept = rho / Math.sin(theta);
+
+  return { slope, intercept, votes: maxVotes };
 }
 
 export function detectHorizonFromDepth(
@@ -546,29 +649,78 @@ export function detectHorizonFromDepth(
     return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
   }
 
-  // Sample points along the bottom half of the image
+  // Sample points along the bottom 60% of the image (horizon typically in lower portion)
   const samplePoints: Array<{ x: number; y: number; depth: number }> = [];
-  const bottomHalfStart = Math.floor(viewHeight * 0.6);
+  const bottomStart = Math.floor(viewHeight * 0.4);
+  const bottomEnd = Math.floor(viewHeight * 0.95);
 
-  for (let y = bottomHalfStart; y < viewHeight; y += 2) {
+  // Adaptive sampling: denser near expected horizon
+  const expectedHorizonY = viewHeight * 0.6; // Rough estimate
+  const horizonBand = viewHeight * 0.15; // Band around expected horizon
+  
+  for (let y = bottomStart; y < bottomEnd; y++) {
+    // Adaptive step size: smaller near expected horizon
+    const distanceFromExpected = Math.abs(y - expectedHorizonY);
+    const stepSize = distanceFromExpected < horizonBand ? 1 : 2;
+    
+    if ((y - bottomStart) % stepSize !== 0) continue;
+    
     for (let x = 0; x < viewWidth; x += 4) {
-      const depth = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
-      if (depth) {
-        // Convert 3D point back to screen space to find horizon candidates
-        const distance = Math.sqrt(depth.x * depth.x + depth.y * depth.y + depth.z * depth.z);
-        samplePoints.push({ x, y, depth: distance });
+      try {
+        const depth = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
+        if (depth) {
+          const distance = Math.sqrt(depth.x * depth.x + depth.y * depth.y + depth.z * depth.z);
+          // Filter out invalid depths
+          if (distance > 0.1 && distance < 1e4 && Number.isFinite(distance)) {
+            samplePoints.push({ x, y, depth: distance });
+          }
+        }
+      } catch {
+        // Skip invalid points
       }
     }
   }
 
-  if (samplePoints.length < 10) {
+  if (samplePoints.length < 20) {
     return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
   }
 
-  // Use RANSAC to find the best horizontal line (horizon)
-  const bestLine = ransacLineFit(samplePoints, 50, 5.0); // 50 iterations, 5px threshold
+  // Try multi-scale RANSAC first
+  const ransacResult = multiScaleRansacLineFit(samplePoints, [1.0, 0.5, 2.0], 100, 5.0);
+  
+  // Try Hough transform as alternative
+  const houghResult = houghLineFit(samplePoints, viewWidth, viewHeight);
+
+  // Select best method based on inlier count/votes
+  let bestLine: { slope: number; intercept: number; inliers: number; method: 'ransac' | 'hough' } | null = null;
+  
+  if (ransacResult && ransacResult.inliers >= samplePoints.length * 0.3) {
+    bestLine = {
+      slope: ransacResult.slope,
+      intercept: ransacResult.intercept,
+      inliers: ransacResult.inliers,
+      method: 'ransac'
+    };
+  }
+  
+  if (houghResult && houghResult.votes >= samplePoints.length * 0.3) {
+    if (!bestLine || houghResult.votes > bestLine.inliers) {
+      bestLine = {
+        slope: houghResult.slope,
+        intercept: houghResult.intercept,
+        inliers: houghResult.votes,
+        method: 'hough'
+      };
+    }
+  }
 
   if (!bestLine) {
+    return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
+  }
+
+  // Validate line is roughly horizontal (slope close to 0)
+  const MAX_HORIZONTAL_SLOPE = 0.1; // ~6 degrees
+  if (Math.abs(bestLine.slope) > MAX_HORIZONTAL_SLOPE) {
     return { pitchOffset: 0, confidence: 0, method: 'fallback', detected: false };
   }
 
@@ -582,11 +734,14 @@ export function detectHorizonFromDepth(
   const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
 
   const confidence = Math.min(1.0, bestLine.inliers / samplePoints.length);
+  
+  // Clamp pitch offset to reasonable range
+  const clampedPitchOffset = Math.max(-30, Math.min(30, -angleOffset));
 
   return {
-    pitchOffset: -angleOffset, // Negative because we want to rotate the camera
+    pitchOffset: clampedPitchOffset,
     confidence,
-    method: 'depth',
+    method: bestLine.method === 'ransac' ? 'depth' : 'hough',
     detected: confidence > 0.3
   };
 }

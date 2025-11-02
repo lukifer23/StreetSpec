@@ -292,8 +292,133 @@ export function calculateEstimatedHeight(
 }
 
 /**
- * Fused world conversion using Street View planes when available, else estimating
- * with ONNX depth (distance) and ground-plane geometry as a last resort.
+ * Computes confidence score for ONNX depth based on Sobel gradients and depth consistency
+ */
+function computeOnnxDepthConfidence(
+  point: Point,
+  viewportWidth: number,
+  viewportHeight: number,
+  onnxDepthMap: OnnxDepthMap | null,
+  onnxDistanceMeters: number | null,
+  settings?: Pick<AppSettings, 'depthKernelSize' | 'depthUseBilinear' | 'depthEdgeRejectThreshold'>
+): number {
+  if (!onnxDepthMap || !onnxDistanceMeters || !Number.isFinite(onnxDistanceMeters) || onnxDistanceMeters <= 0) {
+    return 0;
+  }
+
+  // Map point to depth map coordinates
+  const mappedX = (point.x / viewportWidth) * onnxDepthMap.width;
+  const mappedY = (point.y / viewportHeight) * onnxDepthMap.height;
+  const clampedX = Math.max(0, Math.min(onnxDepthMap.width - 1, Math.round(mappedX)));
+  const clampedY = Math.max(0, Math.min(onnxDepthMap.height - 1, Math.round(mappedY)));
+
+  // Compute gradient-based confidence
+  const gradient = computeNormalizedSobelGradient(clampedX, clampedY, onnxDepthMap);
+  const edgeRejectThreshold = settings?.depthEdgeRejectThreshold ?? DEFAULT_EDGE_REJECT_THRESHOLD;
+  
+  // Lower confidence near edges (high gradients)
+  let gradientConfidence = 1.0;
+  if (gradient !== null) {
+    gradientConfidence = Math.max(0.3, 1.0 - (gradient / edgeRejectThreshold));
+  }
+
+  // Check depth consistency in local neighborhood
+  const kernelSize = (settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE) as 3 | 5 | 7 | 9;
+  const half = Math.floor(kernelSize / 2);
+  const depths: number[] = [];
+  
+  for (let dy = -half; dy <= half; dy++) {
+    const yy = clampedY + dy;
+    if (yy < 0 || yy >= onnxDepthMap.height) continue;
+    for (let dx = -half; dx <= half; dx++) {
+      const xx = clampedX + dx;
+      if (xx < 0 || xx >= onnxDepthMap.width) continue;
+      const idx = yy * onnxDepthMap.width + xx;
+      const v = onnxDepthMap.data[idx];
+      if (v && v > 0 && Number.isFinite(v)) {
+        depths.push(v);
+      }
+    }
+  }
+
+  // Compute consistency as inverse of coefficient of variation
+  let consistencyConfidence = 0.5; // Default moderate confidence
+  if (depths.length >= 3) {
+    const mean = depths.reduce((a, b) => a + b, 0) / depths.length;
+    const variance = depths.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) / depths.length;
+    const stdDev = Math.sqrt(variance);
+    const coefficientOfVariation = mean > 0 ? stdDev / mean : Infinity;
+    
+    // Lower CV = higher consistency = higher confidence
+    consistencyConfidence = Math.max(0.2, Math.min(1.0, 1.0 / (1.0 + coefficientOfVariation * 2)));
+  }
+
+  // Combine confidences (geometric mean for conservative estimate)
+  const combinedConfidence = Math.sqrt(gradientConfidence * consistencyConfidence);
+  
+  // Scale by distance reasonableness
+  const distanceConfidence = onnxDistanceMeters > 0.5 && onnxDistanceMeters < 200 ? 1.0 : 0.7;
+  
+  return combinedConfidence * distanceConfidence * 0.6; // Base ONNX confidence is 0.6 max
+}
+
+/**
+ * Computes confidence score for plane-based depth based on plane boundary proximity
+ */
+function computePlaneDepthConfidence(
+  point: Point,
+  viewportWidth: number,
+  viewportHeight: number,
+  depthData: DecodedDepthData,
+  worldPoint: Vector3
+): number {
+  // Check distance from plane boundaries
+  const mappedX = (point.x / viewportWidth) * depthData.width;
+  const mappedY = (point.y / viewportHeight) * depthData.height;
+  const clampedX = Math.max(0, Math.min(depthData.width - 1, Math.round(mappedX)));
+  const clampedY = Math.max(0, Math.min(depthData.height - 1, Math.round(mappedY)));
+  
+  const idx = clampedY * depthData.width + clampedX;
+  const planeIndex = depthData.indices[idx];
+  
+  if (planeIndex === undefined || planeIndex === 255 || planeIndex >= depthData.planes.length) {
+    return 0.3; // Low confidence for invalid plane index
+  }
+
+  // Check consistency of plane index in neighborhood
+  const NEIGHBORHOOD_SIZE = 3;
+  const half = Math.floor(NEIGHBORHOOD_SIZE / 2);
+  let samePlaneCount = 0;
+  let totalCount = 0;
+  
+  for (let dy = -half; dy <= half; dy++) {
+    const yy = clampedY + dy;
+    if (yy < 0 || yy >= depthData.height) continue;
+    for (let dx = -half; dx <= half; dx++) {
+      const xx = clampedX + dx;
+      if (xx < 0 || xx >= depthData.width) continue;
+      const neighborIdx = yy * depthData.width + xx;
+      const neighborPlane = depthData.indices[neighborIdx];
+      totalCount++;
+      if (neighborPlane === planeIndex) {
+        samePlaneCount++;
+      }
+    }
+  }
+
+  const planeConsistency = totalCount > 0 ? samePlaneCount / totalCount : 0.5;
+  
+  // Validate world point distance
+  const dist = Math.sqrt(worldPoint.x * worldPoint.x + worldPoint.y * worldPoint.y + worldPoint.z * worldPoint.z);
+  const distanceConfidence = dist > 0.1 && dist < 1e4 ? 1.0 : 0.5;
+  
+  // Base plane confidence is high, scaled by consistency
+  return 0.9 * planeConsistency * distanceConfidence;
+}
+
+/**
+ * Enhanced fused world conversion using weighted fusion based on confidence scores.
+ * Combines Street View planes, ONNX depth, and ground-plane geometry with proper weighting.
  */
 export function fusedWorldPoint(
   point: Point,
@@ -301,29 +426,98 @@ export function fusedWorldPoint(
   viewportHeight: number,
   cameraParams: CameraParams | null,
   depthData: DecodedDepthData | null,
-  onnxDistanceMeters: number | null
+  onnxDistanceMeters: number | null,
+  onnxDepthMap: OnnxDepthMap | null = null,
+  settings?: Pick<AppSettings, 'depthKernelSize' | 'depthUseBilinear' | 'depthEdgeRejectThreshold'>
 ): { world: { x: number; y: number; z: number } | null; method: 'planes' | 'onnx' | 'ground'; confidence: number } {
   if (!cameraParams) {
     return { world: null, method: 'ground', confidence: 0 };
   }
-  // Prefer planes when available
+
+  const candidates: Array<{ world: Vector3; method: 'planes' | 'onnx' | 'ground'; confidence: number }> = [];
+
+  // Try plane-based depth (highest accuracy when available)
   if (depthData) {
-    const world = screenToWorldWithDepth(point, cameraParams, viewportWidth, viewportHeight, depthData);
-    if (world) {
-      return { world, method: 'planes', confidence: 0.9 };
+    try {
+      const world = screenToWorldWithDepth(point, cameraParams, viewportWidth, viewportHeight, depthData);
+      if (world) {
+        const dist = Math.sqrt(world.x * world.x + world.y * world.y + world.z * world.z);
+        if (dist > 0.1 && dist < 1e4 && Number.isFinite(dist)) {
+          const confidence = computePlaneDepthConfidence(point, viewportWidth, viewportHeight, depthData, world);
+          candidates.push({ world, method: 'planes', confidence });
+        }
+      }
+    } catch (err) {
+      // Plane calculation failed, continue with other methods
     }
   }
-  // ONNX distance: project along ray
-  if (onnxDistanceMeters && Number.isFinite(onnxDistanceMeters) && onnxDistanceMeters > 0) {
-    const dir = screenToWorld(point, cameraParams, viewportWidth, viewportHeight);
-    const world = { x: dir.x * onnxDistanceMeters, y: dir.y * onnxDistanceMeters, z: dir.z * onnxDistanceMeters };
-    return { world, method: 'onnx', confidence: 0.6 };
+
+  // Try ONNX depth with confidence scoring
+  if (onnxDistanceMeters && Number.isFinite(onnxDistanceMeters) && onnxDistanceMeters > 0 && onnxDepthMap) {
+    try {
+      const dir = screenToWorld(point, cameraParams, viewportWidth, viewportHeight);
+      const world = { x: dir.x * onnxDistanceMeters, y: dir.y * onnxDistanceMeters, z: dir.z * onnxDistanceMeters };
+      const confidence = computeOnnxDepthConfidence(point, viewportWidth, viewportHeight, onnxDepthMap, onnxDistanceMeters, settings);
+      if (confidence > 0.1) {
+        candidates.push({ world, method: 'onnx', confidence });
+      }
+    } catch (err) {
+      // ONNX calculation failed, continue with fallback
+    }
   }
+
   // Ground plane fallback
-  {
+  try {
     const dir = screenToWorld(point, cameraParams, viewportWidth, viewportHeight);
     const world = estimateGroundPlaneIntersection(dir, cameraParams);
-    if (world) return { world, method: 'ground', confidence: 0.4 };
+    if (world) {
+      const dist = Math.sqrt(world.x * world.x + world.y * world.y + world.z * world.z);
+      if (dist > 0.1 && dist < 1e4 && Number.isFinite(dist)) {
+        // Ground plane confidence based on angle
+        const horizontalComponent = Math.sqrt(dir.x * dir.x + dir.z * dir.z);
+        const verticalComponent = Math.abs(dir.y);
+        const angleConfidence = Math.min(1.0, (verticalComponent / (horizontalComponent + 1e-6)) * 0.5);
+        candidates.push({ world, method: 'ground', confidence: Math.max(0.2, angleConfidence) * 0.4 });
+      }
+    }
+  } catch (err) {
+    // Ground plane calculation failed
   }
-  return { world: null, method: 'ground', confidence: 0 };
+
+  // Select best candidate based on confidence
+  if (candidates.length === 0) {
+    return { world: null, method: 'ground', confidence: 0 };
+  }
+
+  // Sort by confidence (highest first)
+  candidates.sort((a, b) => b.confidence - a.confidence);
+  const best = candidates[0]!;
+
+  // If we have multiple candidates with similar confidence, consider weighted fusion
+  if (candidates.length > 1 && best.confidence > 0.5) {
+    const secondBest = candidates[1]!;
+    const confidenceDiff = best.confidence - secondBest.confidence;
+    
+    // If confidences are close and both are reasonably high, use weighted average
+    if (confidenceDiff < 0.2 && secondBest.confidence > 0.4) {
+      const totalConfidence = best.confidence + secondBest.confidence;
+      const weight1 = best.confidence / totalConfidence;
+      const weight2 = secondBest.confidence / totalConfidence;
+      
+      const fusedWorld: Vector3 = {
+        x: best.world.x * weight1 + secondBest.world.x * weight2,
+        y: best.world.y * weight1 + secondBest.world.y * weight2,
+        z: best.world.z * weight1 + secondBest.world.z * weight2
+      };
+      
+      // Use the method of the highest confidence candidate
+      return {
+        world: fusedWorld,
+        method: best.method,
+        confidence: Math.min(1.0, totalConfidence / 2) // Average confidence
+      };
+    }
+  }
+
+  return best;
 }

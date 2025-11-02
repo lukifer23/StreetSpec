@@ -1099,6 +1099,25 @@ async function createWindow() {
   ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, imageDataUrl: string) => {
     console.log('[infer-depth] request received');
     
+    // Validate input
+    if (typeof imageDataUrl !== 'string' || imageDataUrl.length === 0) {
+      event.sender.send('main-process-message', { type: 'error', message: 'Invalid image data URL provided.' });
+      return null;
+    }
+
+    // Validate data URL format and size
+    if (!imageDataUrl.startsWith('data:image/')) {
+      event.sender.send('main-process-message', { type: 'error', message: 'Invalid image data URL format.' });
+      return null;
+    }
+
+    // Check size limit (50MB for base64 encoded image)
+    const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
+    if (imageDataUrl.length > MAX_IMAGE_SIZE) {
+      event.sender.send('main-process-message', { type: 'error', message: 'Image data URL exceeds maximum size.' });
+      return null;
+    }
+    
     if (!depthSession) {
       console.warn('[infer-depth] No depth session available, attempting reload...');
       const reloadSuccess = await reloadModelSession();
@@ -1237,9 +1256,21 @@ async function createWindow() {
     }
   });
 
-  // CSV export handler
+  // CSV export handler with validation
   ipcMain.handle('csv-export', async (event: IpcMainInvokeEvent, csvContent: string) => {
     if (!win) return null;
+
+    // Validate input
+    if (typeof csvContent !== 'string') {
+      return null;
+    }
+
+    // Size limit check (10MB)
+    const MAX_CSV_SIZE = 10 * 1024 * 1024;
+    if (csvContent.length > MAX_CSV_SIZE) {
+      event.sender.send('main-process-message', { type: 'error', message: 'CSV content exceeds maximum size.' });
+      return null;
+    }
 
     try {
       const { canceled, filePath } = await dialog.showSaveDialog(win, {
@@ -1260,15 +1291,59 @@ async function createWindow() {
     }
   });
 
-  // Depth data fetch handler
+  // Depth data fetch handler with validation
   ipcMain.handle('fetch-depth-data', async (_event: IpcMainInvokeEvent, payload: string | { panoId: string; maxRetries?: number; retryDelayMs?: number }) => {
-    const request = typeof payload === 'string' ? { panoId: payload } : payload ?? { panoId: '' };
-
-    if (!request.panoId) {
+    // Validate input
+    if (typeof payload !== 'string' && (typeof payload !== 'object' || payload === null)) {
       const invalidRequest: DepthDataFetchResult = {
         status: 'error',
         code: 'INVALID_RESPONSE',
-        message: 'Panorama ID is required to fetch Street View depth data.',
+        message: 'Invalid payload type for depth data fetch.',
+        attempts: 0
+      };
+      return invalidRequest;
+    }
+
+    const request = typeof payload === 'string' ? { panoId: payload } : payload ?? { panoId: '' };
+
+    // Validate panorama ID
+    if (!request.panoId || typeof request.panoId !== 'string' || request.panoId.length === 0 || request.panoId.length > 200) {
+      const invalidRequest: DepthDataFetchResult = {
+        status: 'error',
+        code: 'INVALID_RESPONSE',
+        message: 'Panorama ID is required and must be a valid string (1-200 characters).',
+        attempts: 0
+      };
+      return invalidRequest;
+    }
+
+    // Validate panorama ID format (alphanumeric with some special chars)
+    if (!/^[A-Za-z0-9_-]+$/.test(request.panoId)) {
+      const invalidRequest: DepthDataFetchResult = {
+        status: 'error',
+        code: 'INVALID_RESPONSE',
+        message: 'Invalid panorama ID format.',
+        attempts: 0
+      };
+      return invalidRequest;
+    }
+
+    // Validate retry parameters if provided
+    if (request.maxRetries !== undefined && (!Number.isFinite(request.maxRetries) || request.maxRetries < 1 || request.maxRetries > 10)) {
+      const invalidRequest: DepthDataFetchResult = {
+        status: 'error',
+        code: 'INVALID_RESPONSE',
+        message: 'maxRetries must be between 1 and 10.',
+        attempts: 0
+      };
+      return invalidRequest;
+    }
+
+    if (request.retryDelayMs !== undefined && (!Number.isFinite(request.retryDelayMs) || request.retryDelayMs < 0 || request.retryDelayMs > 60000)) {
+      const invalidRequest: DepthDataFetchResult = {
+        status: 'error',
+        code: 'INVALID_RESPONSE',
+        message: 'retryDelayMs must be between 0 and 60000.',
         attempts: 0
       };
       return invalidRequest;
@@ -1317,6 +1392,31 @@ async function createWindow() {
 
   ipcMain.handle('save-measurements', async (_event: IpcMainInvokeEvent, measurements: any[]) => {
     try {
+      // Validate input
+      if (!Array.isArray(measurements)) {
+        console.error('[ipc] Invalid measurements array');
+        return false;
+      }
+
+      // Limit array size
+      const MAX_MEASUREMENTS = 10000;
+      if (measurements.length > MAX_MEASUREMENTS) {
+        console.error('[ipc] Measurements array too large:', measurements.length);
+        return false;
+      }
+
+      // Basic validation of measurement structure
+      for (const m of measurements) {
+        if (!m || typeof m !== 'object') {
+          console.error('[ipc] Invalid measurement object');
+          return false;
+        }
+        if (typeof m.id !== 'string' || m.id.length === 0) {
+          console.error('[ipc] Invalid measurement ID');
+          return false;
+        }
+      }
+
       (getStore() as any).set('measurements', measurements);
       return true;
     } catch (_error) {
@@ -1326,6 +1426,27 @@ async function createWindow() {
 
   ipcMain.handle('save-project', async (event: IpcMainInvokeEvent, project: any) => {
     try {
+      // Validate input
+      if (!project || typeof project !== 'object') {
+        console.error('[ipc] Invalid project object');
+        return false;
+      }
+
+      if (typeof project.id !== 'string' || project.id.length === 0 || project.id.length > 200) {
+        console.error('[ipc] Invalid project ID');
+        return false;
+      }
+
+      if (typeof project.name !== 'string' || project.name.length > 200) {
+        console.error('[ipc] Invalid project name');
+        return false;
+      }
+
+      if (Array.isArray(project.measurements) && project.measurements.length > 10000) {
+        console.error('[ipc] Project measurements array too large');
+        return false;
+      }
+
       const projects = (getStore() as any).get('projects', {});
       projects[project.id] = project;
       (getStore() as any).set('projects', projects);
@@ -1337,6 +1458,12 @@ async function createWindow() {
 
   ipcMain.handle('delete-project', async (event: IpcMainInvokeEvent, projectId: string) => {
     try {
+      // Validate input
+      if (typeof projectId !== 'string' || projectId.length === 0 || projectId.length > 200) {
+        console.error('[ipc] Invalid project ID for deletion');
+        return false;
+      }
+
       const projects = (getStore() as any).get('projects', {});
       delete projects[projectId];
       (getStore() as any).set('projects', projects);
@@ -1382,6 +1509,34 @@ async function createWindow() {
 
   ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: any) => {
     try {
+      // Validate input
+      if (!settings || typeof settings !== 'object') {
+        console.error('[ipc] Invalid settings object');
+        return false;
+      }
+
+      // Validate critical settings
+      if (settings.defaultUnit && !['metric', 'imperial'].includes(settings.defaultUnit)) {
+        console.error('[ipc] Invalid defaultUnit');
+        return false;
+      }
+
+      if (settings.measurementHistoryLimit !== undefined) {
+        const limit = Number(settings.measurementHistoryLimit);
+        if (!Number.isFinite(limit) || limit < 1 || limit > 10000) {
+          console.error('[ipc] Invalid measurementHistoryLimit');
+          return false;
+        }
+      }
+
+      if (settings.depthApiMaxRetries !== undefined) {
+        const retries = Number(settings.depthApiMaxRetries);
+        if (!Number.isFinite(retries) || retries < 1 || retries > 10) {
+          console.error('[ipc] Invalid depthApiMaxRetries');
+          return false;
+        }
+      }
+
       (getStore() as any).set('settings', settings);
       return true;
     } catch (_error) {

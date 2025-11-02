@@ -109,11 +109,33 @@ export const useAppLogic = (apiKey: string) => {
     setIsCalibrated,
   } = store;
 
+  // Initialize store from Electron persistence on mount
   useEffect(() => {
-    if (loadProjects) {
-      void loadProjects();
-    }
-  }, [loadProjects]);
+    const initializeStore = async () => {
+      if (!window.electronAPI?.invoke) return;
+
+      try {
+        // Load settings from Electron store
+        const persistedSettings = await window.electronAPI.invoke('get-settings');
+        if (persistedSettings && typeof persistedSettings === 'object') {
+          setSettings(persistedSettings as typeof settings);
+        }
+
+        // Load projects
+        if (loadProjects) {
+          await loadProjects();
+        }
+      } catch (error) {
+        console.error('[app] Failed to initialize store from Electron:', error);
+        pushNotification({
+          kind: 'error',
+          message: 'Failed to load saved data. Some settings may be reset.'
+        });
+      }
+    };
+
+    void initializeStore();
+  }, [loadProjects, setSettings]);
 
 
   // Load Google Maps API
