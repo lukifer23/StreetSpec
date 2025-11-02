@@ -1,7 +1,7 @@
-# Street Spec Desktop - Development Roadmap 2025
+# PoleCheck Desktop - Development Roadmap 2025
 
 ## Vision
-Street Spec aims to be a reliable desktop application for accurate measurements in Google Street View imagery, with an emphasis on precision, usability, and robust tooling.
+PoleCheck aims to be a reliable desktop application for accurate measurements in Google Street View imagery, with an emphasis on precision, usability, and robust tooling.
 
 ---
 

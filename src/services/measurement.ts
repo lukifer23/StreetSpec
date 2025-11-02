@@ -33,13 +33,49 @@ export function createMeasurement(
   depthData: DecodedDepthData | null,
   unit: 'metric' | 'imperial' = 'metric'
 ): Measurement {
-  let errorMessage: string | undefined = undefined; // To store potential errors/warnings
-  let confidence = 0; // Overall measurement confidence
+  let errorMessage: string | undefined = undefined;
+  let confidence = 0;
   let startSource: Measurement['source'] | 'unknown' = 'unknown';
   let endSource: Measurement['source'] | 'unknown' = 'unknown';
 
+  // Input validation
   if (!cameraParams || cameraParams.vFov === undefined) {
       throw new Error("Camera parameters with vertical FOV are required for measurement.");
+  }
+
+  if (!startPoint || !endPoint || typeof startPoint.x !== 'number' || typeof startPoint.y !== 'number' ||
+      typeof endPoint.x !== 'number' || typeof endPoint.y !== 'number') {
+      throw new Error("Invalid point coordinates provided.");
+  }
+
+  if (!Number.isFinite(viewWidth) || !Number.isFinite(viewHeight) || viewWidth <= 0 || viewHeight <= 0) {
+      throw new Error("Invalid viewport dimensions.");
+  }
+
+  // Validate point coordinates are within viewport bounds
+  const EPSILON_BOUNDS = 1e-6;
+  if (startPoint.x < -EPSILON_BOUNDS || startPoint.x > viewWidth + EPSILON_BOUNDS ||
+      startPoint.y < -EPSILON_BOUNDS || startPoint.y > viewHeight + EPSILON_BOUNDS ||
+      endPoint.x < -EPSILON_BOUNDS || endPoint.x > viewWidth + EPSILON_BOUNDS ||
+      endPoint.y < -EPSILON_BOUNDS || endPoint.y > viewHeight + EPSILON_BOUNDS) {
+      errorMessage = "Measurement points are outside viewport bounds. ";
+  }
+
+  // Check for near-horizon measurements (points too close horizontally)
+  const horizontalDistance = Math.abs(endPoint.x - startPoint.x);
+  const verticalDistance = Math.abs(endPoint.y - startPoint.y);
+  const MIN_HORIZONTAL_SEPARATION = 2; // pixels
+  const MIN_VERTICAL_SEPARATION = 2; // pixels
+  
+  if (horizontalDistance < MIN_HORIZONTAL_SEPARATION && verticalDistance < MIN_VERTICAL_SEPARATION) {
+      errorMessage = (errorMessage || "") + "Measurement points are too close together. ";
+  }
+
+  // Check for extreme camera angles that may affect accuracy
+  const pitch = Math.abs(cameraParams.pitch || 0);
+  const MAX_RELIABLE_PITCH = 75; // degrees
+  if (pitch > MAX_RELIABLE_PITCH) {
+      errorMessage = (errorMessage || "") + `Extreme camera pitch (${pitch.toFixed(1)}°) may significantly affect accuracy. `;
   }
 
   // 1. Estimate World Points with confidence scoring
@@ -50,54 +86,107 @@ export function createMeasurement(
 
   // Try depth-based intersection first (highest accuracy)
   if (depthData) {
-    worldPoint1 = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
-    worldPoint2 = screenToWorldWithDepth(endPoint, cameraParams, viewWidth, viewHeight, depthData);
-
-    if (worldPoint1) {
-      point1Confidence = 0.9; // High confidence for depth-based
-      startSource = 'planes';
-    } else {
-      errorMessage = "Depth intersection failed for start point. ";
+    try {
+      worldPoint1 = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
+      if (worldPoint1) {
+        // Validate world point is reasonable
+        const dist1 = Math.sqrt(worldPoint1.x * worldPoint1.x + worldPoint1.y * worldPoint1.y + worldPoint1.z * worldPoint1.z);
+        if (dist1 > 0.1 && dist1 < 1e4 && Number.isFinite(dist1)) {
+          point1Confidence = 0.9;
+          startSource = 'planes';
+        } else {
+          worldPoint1 = null;
+          errorMessage = (errorMessage || "") + "Start point depth intersection produced invalid result. ";
+        }
+      } else {
+        errorMessage = (errorMessage || "") + "Depth intersection failed for start point. ";
+      }
+    } catch (err) {
+      worldPoint1 = null;
+      errorMessage = (errorMessage || "") + `Error computing start point depth: ${err instanceof Error ? err.message : 'unknown'}. `;
     }
 
-    if (worldPoint2) {
-      point2Confidence = 0.9; // High confidence for depth-based
-      endSource = 'planes';
-    } else {
-      errorMessage = (errorMessage || "") + "Depth intersection failed for end point.";
+    try {
+      worldPoint2 = screenToWorldWithDepth(endPoint, cameraParams, viewWidth, viewHeight, depthData);
+      if (worldPoint2) {
+        // Validate world point is reasonable
+        const dist2 = Math.sqrt(worldPoint2.x * worldPoint2.x + worldPoint2.y * worldPoint2.y + worldPoint2.z * worldPoint2.z);
+        if (dist2 > 0.1 && dist2 < 1e4 && Number.isFinite(dist2)) {
+          point2Confidence = 0.9;
+          endSource = 'planes';
+        } else {
+          worldPoint2 = null;
+          errorMessage = (errorMessage || "") + "End point depth intersection produced invalid result. ";
+        }
+      } else {
+        errorMessage = (errorMessage || "") + "Depth intersection failed for end point. ";
+      }
+    } catch (err) {
+      worldPoint2 = null;
+      errorMessage = (errorMessage || "") + `Error computing end point depth: ${err instanceof Error ? err.message : 'unknown'}. `;
     }
   }
 
   // Fallback to enhanced ground plane intersection with confidence
   if (!worldPoint1) {
-    const directionVec1 = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
-    const result1: GroundPlaneResult = estimateGroundPlaneIntersectionWithConfidence(
-      directionVec1, cameraParams, depthData, viewWidth, viewHeight
-    );
-    worldPoint1 = result1.point;
-    point1Confidence = result1.confidence;
-    if (result1.point) {
-      startSource = result1.method;
-    }
-
-    if (!worldPoint1) {
-      errorMessage = (errorMessage || "") + "Ground plane intersection failed for start point. ";
+    try {
+      const directionVec1 = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
+      // Check if direction vector is near-horizon (may cause unreliable intersection)
+      const HORIZON_THRESHOLD = 0.01;
+      if (Math.abs(directionVec1.y) < HORIZON_THRESHOLD) {
+        errorMessage = (errorMessage || "") + "Start point is too close to horizon for reliable measurement. ";
+      }
+      
+      const result1: GroundPlaneResult = estimateGroundPlaneIntersectionWithConfidence(
+        directionVec1, cameraParams, depthData, viewWidth, viewHeight
+      );
+      if (result1.point) {
+        // Validate ground plane intersection result
+        const dist1 = Math.sqrt(result1.point.x * result1.point.x + result1.point.y * result1.point.y + result1.point.z * result1.point.z);
+        if (dist1 > 0.1 && dist1 < 1e4 && Number.isFinite(dist1)) {
+          worldPoint1 = result1.point;
+          point1Confidence = result1.confidence;
+          startSource = result1.method;
+        } else {
+          errorMessage = (errorMessage || "") + "Ground plane intersection produced invalid result for start point. ";
+        }
+      } else {
+        errorMessage = (errorMessage || "") + "Ground plane intersection failed for start point. ";
+      }
+    } catch (err) {
+      errorMessage = (errorMessage || "") + `Error computing start point ground intersection: ${err instanceof Error ? err.message : 'unknown'}. `;
     }
   }
 
   if (!worldPoint2) {
-    const directionVec2 = screenToWorld(endPoint, cameraParams, viewWidth, viewHeight);
-    const result2: GroundPlaneResult = estimateGroundPlaneIntersectionWithConfidence(
-      directionVec2, cameraParams, depthData, viewWidth, viewHeight
-    );
-    worldPoint2 = result2.point;
-    point2Confidence = result2.confidence;
-    if (result2.point && endSource === 'unknown') {
-      endSource = result2.method;
-    }
-
-    if (!worldPoint2) {
-      errorMessage = (errorMessage || "") + "Ground plane intersection failed for end point. ";
+    try {
+      const directionVec2 = screenToWorld(endPoint, cameraParams, viewWidth, viewHeight);
+      // Check if direction vector is near-horizon
+      const HORIZON_THRESHOLD = 0.01;
+      if (Math.abs(directionVec2.y) < HORIZON_THRESHOLD) {
+        errorMessage = (errorMessage || "") + "End point is too close to horizon for reliable measurement. ";
+      }
+      
+      const result2: GroundPlaneResult = estimateGroundPlaneIntersectionWithConfidence(
+        directionVec2, cameraParams, depthData, viewWidth, viewHeight
+      );
+      if (result2.point) {
+        // Validate ground plane intersection result
+        const dist2 = Math.sqrt(result2.point.x * result2.point.x + result2.point.y * result2.point.y + result2.point.z * result2.point.z);
+        if (dist2 > 0.1 && dist2 < 1e4 && Number.isFinite(dist2)) {
+          worldPoint2 = result2.point;
+          point2Confidence = result2.confidence;
+          if (endSource === 'unknown') {
+            endSource = result2.method;
+          }
+        } else {
+          errorMessage = (errorMessage || "") + "Ground plane intersection produced invalid result for end point. ";
+        }
+      } else {
+        errorMessage = (errorMessage || "") + "Ground plane intersection failed for end point. ";
+      }
+    } catch (err) {
+      errorMessage = (errorMessage || "") + `Error computing end point ground intersection: ${err instanceof Error ? err.message : 'unknown'}. `;
     }
   }
 
@@ -132,10 +221,41 @@ export function createMeasurement(
   }
 
   // 2. Calculate 3D distance between world points
-  const distanceMeters = calculateDistance3D(worldPoint1, worldPoint2);
+  let distanceMeters: number;
+  try {
+    distanceMeters = calculateDistance3D(worldPoint1, worldPoint2);
+    
+    // Validate distance is finite and reasonable
+    if (!Number.isFinite(distanceMeters) || distanceMeters < 0) {
+      throw new Error("Calculated distance is invalid.");
+    }
+  } catch (err) {
+    return {
+      id: uuidv4(),
+      kind: 'distance',
+      label: "Measurement Failed",
+      startPoint,
+      endPoint,
+      distanceMeters: 0,
+      distance: 0,
+      unit,
+      timestamp: Date.now(),
+      panoId: cameraParams.panoId ?? cameraParams.pano,
+      cameraParams: cameraParams,
+      confidence: 0,
+      source: undefined,
+      error: (errorMessage || "") + `Distance calculation failed: ${err instanceof Error ? err.message : 'unknown'}`
+    };
+  }
+
   const displayDistance = unit === 'imperial'
     ? UNIT_CONVERSIONS.metersToFeet(distanceMeters)
     : distanceMeters;
+
+  // Validate display distance is finite
+  if (!Number.isFinite(displayDistance)) {
+    errorMessage = (errorMessage || "") + "Unit conversion produced invalid result. ";
+  }
 
   // 3. Validate measurement plausibility
   const validationResult = validateMeasurement(distanceMeters, worldPoint1, worldPoint2, cameraParams);

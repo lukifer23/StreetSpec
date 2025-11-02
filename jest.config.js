@@ -31,4 +31,5 @@ module.exports = {
     '<rootDir>/dist-electron/',
     '<rootDir>/src/tests/e2e/',
   ],
+  extensionsToTreatAsEsm: ['.ts', '.tsx'],
 };

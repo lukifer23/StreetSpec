@@ -12,6 +12,8 @@ interface PolylinePoint extends Point {
   worldSource?: 'planes' | 'ground' | 'onnx';
 }
 
+type ValidPolylinePoint = PolylinePoint & { worldPoint: NonNullable<PolylinePoint['worldPoint']> };
+
 const PolylineTool: React.FC = () => {
   const cameraParams = useRootStore((state) => state.currentCameraParams);
   const isPolylineToolActive = useRootStore((state) => state.isPolylineToolActive);
@@ -97,7 +99,9 @@ const PolylineTool: React.FC = () => {
     }
 
     // Filter out points without worldPoint
-    const validPoints = points.filter(p => p.worldPoint != null);
+    const validPoints = points.filter((p): p is ValidPolylinePoint =>
+      p.worldPoint != null
+    ) as ValidPolylinePoint[];
     if (validPoints.length < 2) {
       setTotalDistance(0);
       setSegmentDistances([]);
@@ -108,9 +112,12 @@ const PolylineTool: React.FC = () => {
     let total = 0;
 
     for (let i = 1; i < validPoints.length; i++) {
-      const prevWorldPoint = validPoints[i - 1].worldPoint!;
-      const currentWorldPoint = validPoints[i].worldPoint!;
-      const distance = calculateDistance3D(prevWorldPoint, currentWorldPoint);
+      // validPoints is filtered to only include points with worldPoint != null
+      const prevPoint = validPoints[i - 1];
+      const currentPoint = validPoints[i];
+      // TypeScript strict mode requires bounds and null checks
+      if (!prevPoint?.worldPoint || !currentPoint?.worldPoint) continue;
+      const distance = calculateDistance3D(prevPoint.worldPoint, currentPoint.worldPoint);
       distances.push(distance);
       total += distance;
     }

@@ -1,4 +1,4 @@
-import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData, OnnxDepthMap, AppSettings } from '../types/common';
+import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData } from '../types/common';
 
 const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');
 type CalibratedVector3 = Vector3 & { [calibrationAppliedSymbol]?: boolean };

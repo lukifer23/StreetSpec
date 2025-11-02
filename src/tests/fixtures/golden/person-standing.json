@@ -1,0 +1,23 @@
+{
+  "name": "Person standing at 10m distance",
+  "cameraParams": {
+    "heading": 0,
+    "pitch": -5,
+    "vFov": 60
+  },
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "basePoint": {
+    "x": 640,
+    "y": 500
+  },
+  "topPoint": {
+    "x": 640,
+    "y": 350
+  },
+  "baseDistanceMeters": 10,
+  "expectedHeightMeters": 1.75,
+  "tolerancePercent": 5
+}

@@ -27,17 +27,16 @@ Object.defineProperty(window, 'google', {
   writable: true,
 });
 
-// Mock environment variables
-Object.defineProperty(global, 'import', {
-  value: {
-    meta: {
-      env: {
-        VITE_GOOGLE_MAPS_API_KEY: 'test-api-key',
-      },
+// Mock import.meta for Jest (Vite environment variables)
+(global as any).import = {
+  meta: {
+    env: {
+      DEV: false,
+      PROD: true,
+      VITE_GOOGLE_MAPS_API_KEY: 'test-api-key',
     },
   },
-  writable: true,
-});
+};
 
 // Suppress console warnings during tests
 const originalWarn = console.warn;

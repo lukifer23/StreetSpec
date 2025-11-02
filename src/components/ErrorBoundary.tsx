@@ -67,7 +67,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </h2>
 
           <p style={{ margin: '0 0 12px 0', lineHeight: 1.5 }}>
-            An unexpected error occurred in Street Spec Desktop. This might be due to:
+            An unexpected error occurred in PoleCheck Desktop. This might be due to:
           </p>
 
           <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px' }}>

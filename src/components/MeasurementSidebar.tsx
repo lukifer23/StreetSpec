@@ -5,6 +5,7 @@ import type { Measurement } from '../types/common';
 import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
 import type { UnitSystem } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
+import { FixedSizeList } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
 
 const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string => {
@@ -28,6 +29,48 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
   if (measurement.kind === 'polyline' && measurement.points) {
     parts.push(`${measurement.points.length} points`);
   }
+
+interface MeasurementItemProps {
+  measurement: Measurement;
+  defaultUnit: UnitSystem;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+}
+
+const MeasurementItem: React.FC<MeasurementItemProps> = ({
+  measurement,
+  defaultUnit,
+  onRename,
+  onDelete
+}) => {
+  const secondary = formatSecondaryLine(measurement, defaultUnit);
+
+  return (
+    <li className={styles['measurementItem']}>
+      <input
+        type="text"
+        placeholder="Add Name..."
+        value={measurement.name || ''}
+        onChange={(event) => onRename(measurement.id, event.target.value)}
+        className={styles['nameInput']}
+        title="Rename Measurement"
+      />
+      <div className={styles['measurementSummary']}>
+        <div className={styles['measurementValue']}>
+          {formatPrimaryLine(measurement, defaultUnit)}
+        </div>
+        {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
+      </div>
+      <button
+        onClick={() => onDelete(measurement.id)}
+        className={styles['deleteButton']}
+        title="Delete Measurement"
+      >
+        Delete
+      </button>
+    </li>
+  );
+};
 
   if (measurement.kind === 'area' && Number.isFinite(measurement.perimeterMeters)) {
     const display = getLengthDisplay(measurement, defaultUnit, measurement.perimeterMeters);
@@ -229,41 +272,35 @@ const MeasurementSidebar: React.FC = () => {
           No measurements yet.
         </div>
       ) : (
-        <ul className={styles['measurementList']}>
-          {measurements.map((measurement) => {
-            const secondary = formatSecondaryLine(measurement, settings.defaultUnit);
-
-            return (
-              <li key={measurement.id} className={styles['measurementItem']}>
-                <input
-                  type="text"
-                  placeholder="Add Name..."
-                  value={measurement.name || ''}
-                  onChange={(event) => renameMeasurement(measurement.id, event.target.value)}
-                  className={styles['nameInput']}
-                  title="Rename Measurement"
+        <div className={styles['measurementList']}>
+          <FixedSizeList
+            height={400}
+            itemCount={measurements.length}
+            itemSize={80}
+            itemData={{
+              measurements,
+              defaultUnit: settings.defaultUnit,
+              onRename: renameMeasurement,
+              onDelete: deleteMeasurement
+            }}
+            className={styles['virtualizedList']}
+          >
+            {({ index, style, data }) => (
+              <div style={style}>
+                <MeasurementItem
+                  measurement={data.measurements[index]}
+                  defaultUnit={data.defaultUnit}
+                  onRename={data.onRename}
+                  onDelete={data.onDelete}
                 />
-                <div className={styles['measurementSummary']}>
-                  <div className={styles['measurementValue']}>
-                    {formatPrimaryLine(measurement, settings.defaultUnit)}
-                  </div>
-                  {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
-                </div>
-                <button
-                  onClick={() => deleteMeasurement(measurement.id)}
-                  className={styles['deleteButton']}
-                  title="Delete Measurement"
-                >
-                  Delete
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+              </div>
+            )}
+          </FixedSizeList>
+        </div>
       )}
       
       <div className={styles['sidebarFooter']}>
-        <div>Street Spec Desktop v0.0.1</div>
+        <div>PoleCheck Desktop v0.0.1</div>
         <div className={styles['shortcuts']}>
           <span title="Start height measurement (M key)">M: Measure</span>
           <span title="Toggle measurement units (U key)">U: Units</span>

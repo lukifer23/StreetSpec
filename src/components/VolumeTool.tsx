@@ -11,7 +11,7 @@ import styles from './VolumeTool.module.css';
 interface VolumePoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
-  worldSource?: 'planes' | 'ground';
+  worldSource?: 'planes' | 'ground' | 'onnx';
 }
 
 const VolumeTool: React.FC = () => {

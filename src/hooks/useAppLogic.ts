@@ -315,8 +315,10 @@ export const useAppLogic = (apiKey: string) => {
             let sum = 0;
             for (let x = 1; x < w; x += 2) {
               const i = y * w + x;
-              const left = data[i - 1] ?? data[i];
-              const dx = data[i] - left;
+              if (i >= data.length) continue;
+              const current = data[i]!;
+              const left = i > 0 ? data[i - 1]! : current;
+              const dx = current - left;
               sum += Math.abs(dx);
             }
             if (sum < bestScore) {

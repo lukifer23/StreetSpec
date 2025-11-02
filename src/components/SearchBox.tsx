@@ -60,7 +60,7 @@ const SearchBox: React.FC<SearchBoxProps> = ({ onPlaceSelected, onCoordsEntered 
             setShowResults(true);
             setErrorMsg(null);
             const best = results[0];
-            const loc = best.geometry?.location;
+            const loc = best?.geometry?.location;
             if (loc) {
               const coords = {
                 lat: typeof (loc as any).lat === 'function' ? (loc as any).lat() : (loc as any).lat,

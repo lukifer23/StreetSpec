@@ -1,0 +1,23 @@
+{
+  "name": "Two-story building at 50m distance",
+  "cameraParams": {
+    "heading": 90,
+    "pitch": -15,
+    "vFov": 40
+  },
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "basePoint": {
+    "x": 600,
+    "y": 550
+  },
+  "topPoint": {
+    "x": 610,
+    "y": 400
+  },
+  "baseDistanceMeters": 50,
+  "expectedHeightMeters": 7.5,
+  "tolerancePercent": 4
+}

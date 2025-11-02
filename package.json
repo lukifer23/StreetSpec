@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
-  "author": "Street Spec Team <support@streetspec.app>",
+  "author": "PoleCheck Team <support@polecheck.app>",
   "type": "commonjs",
   "main": "dist-electron/main.js",
   "scripts": {

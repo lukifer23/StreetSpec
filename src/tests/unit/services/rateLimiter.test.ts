@@ -20,7 +20,7 @@ describe('rateLimiter.executeWithRateLimit', () => {
   });
 
   afterEach(() => {
-    rateLimiter.clearQueue();
+    // Don't clear queue for this test as it tests queue behavior
     resetRateLimit(TEST_CATEGORY);
     jest.clearAllTimers();
     jest.useRealTimers();
@@ -36,8 +36,7 @@ describe('rateLimiter.executeWithRateLimit', () => {
       })
     );
 
-    const allPromise = Promise.all(operations);
-
+    // Wait for initial processing to complete
     await Promise.resolve();
     expect(executionTimes).toHaveLength(testConfig.maxRequests);
 

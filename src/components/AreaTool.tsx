@@ -9,7 +9,7 @@ import styles from './AreaTool.module.css';
 interface AreaPoint extends Point {
   id: string;
   worldPoint?: { x: number; y: number; z: number };
-  worldSource?: 'planes' | 'ground';
+  worldSource?: 'planes' | 'ground' | 'onnx';
 }
 
 // Calculate polygon area using the shoelace formula

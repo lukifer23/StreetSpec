@@ -134,7 +134,7 @@ const defaultSettings: AppSettings = {
 };
 
 const isDevEnvironment =
-  (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') ||
+  (typeof process !== 'undefined' && process.env?.['NODE_ENV'] !== 'production') ||
   (typeof window !== 'undefined' && Boolean((window as { __STREETSPEC_DEV__?: boolean }).__STREETSPEC_DEV__));
 
 interface TrimResult {

@@ -11,7 +11,7 @@ echo.
 
 REM Verify project root
 if not exist "package.json" (
-    echo ERROR: package.json not found. Please run this script from the Street Spec Desktop project root.
+    echo ERROR: package.json not found. Please run this script from the PoleCheck Desktop project root.
     pause
     exit /b 1
 )

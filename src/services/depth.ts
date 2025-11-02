@@ -86,19 +86,45 @@ function normalizeNumericParam(value: number | undefined | null): string | null 
 }
 
 // Generate cache key from camera parameters
-function generateCacheKey(params: CameraParams): string {
+function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transform']): string {
   if (!params.panoId) {
     return '';
   }
 
-  const normalizedHeading = normalizeNumericParam(params.heading);
-  const normalizedPitch = normalizeNumericParam(params.pitch);
-  const normalizedFov = normalizeNumericParam(params.fov);
-  const normalizedVFov = normalizeNumericParam(params.vFov);
-  const normalizedZoom = normalizeNumericParam(params.zoom);
+  // Use defaults for missing parameters to prevent collisions
+  const DEFAULT_HEADING = 0;
+  const DEFAULT_PITCH = 0;
+  const DEFAULT_FOV = 90;
+  const DEFAULT_VFOV = 90;
+  const DEFAULT_ZOOM = 1;
 
-  if (!normalizedHeading || !normalizedPitch || !normalizedFov) {
+  const normalizedHeading = normalizeNumericParam(params.heading ?? DEFAULT_HEADING);
+  const normalizedPitch = normalizeNumericParam(params.pitch ?? DEFAULT_PITCH);
+  const normalizedFov = normalizeNumericParam(params.fov ?? DEFAULT_FOV);
+  const normalizedVFov = normalizeNumericParam(params.vFov ?? DEFAULT_VFOV);
+  const normalizedZoom = normalizeNumericParam(params.zoom ?? DEFAULT_ZOOM);
+  const normalizedCalibrationOffset = normalizeNumericParam(params.calibrationPitchOffsetDeg ?? 0);
+
+  // All parameters should be valid now with defaults
+  if (!normalizedHeading || !normalizedPitch || !normalizedFov || !normalizedVFov || !normalizedZoom) {
+    console.warn('[cache] Invalid normalized parameters in cache key generation');
     return '';
+  }
+
+  // Include transform signature if available to prevent collisions from different image processing
+  let transformSignature = 'not';
+  if (transform) {
+    const transformParts = [
+      transform.originalWidth,
+      transform.originalHeight,
+      transform.resizedWidth,
+      transform.resizedHeight,
+      transform.scaleX.toFixed(4),
+      transform.scaleY.toFixed(4),
+      transform.offsetX.toFixed(2),
+      transform.offsetY.toFixed(2)
+    ];
+    transformSignature = transformParts.join('_');
   }
 
   // Include optional parameters when present to better scope cache entries
@@ -107,8 +133,10 @@ function generateCacheKey(params: CameraParams): string {
     normalizedHeading,
     normalizedPitch,
     normalizedFov,
-    normalizedVFov ?? 'nv',
-    normalizedZoom ?? 'nz'
+    normalizedVFov,
+    normalizedZoom,
+    normalizedCalibrationOffset ?? '0.000000',
+    transformSignature
   ];
 
   return pieces.join('_');
@@ -156,9 +184,9 @@ function decompressDepthData(data: number[] | string, isCompressed: boolean): nu
 }
 
 // Check if depth map is cached
-export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepthMap | null> {
+export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDepthMap['transform']): Promise<OnnxDepthMap | null> {
   try {
-    const cacheKey = generateCacheKey(params);
+    const cacheKey = generateCacheKey(params, transform);
     if (!cacheKey) return null;
 
     const cached = (await get(cacheKey)) as CachedDepthMap | undefined;
@@ -204,7 +232,7 @@ export async function getCachedDepthMap(params: CameraParams): Promise<OnnxDepth
 // Cache depth map
 export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap): Promise<void> {
   try {
-    const cacheKey = generateCacheKey(params);
+    const cacheKey = generateCacheKey(params, depthMap.transform);
     if (!cacheKey) return;
 
     // Compress data if beneficial

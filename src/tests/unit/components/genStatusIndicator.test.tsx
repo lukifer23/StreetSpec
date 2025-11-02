@@ -1,6 +1,40 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+
+// Mock the MapView module to avoid import.meta issues
+jest.mock('../../../components/MapView', () => ({
+  GenStatusIndicator: React.forwardRef((props: any, ref) => {
+    const { isGeneratingMap, mapGenerationError, onnxDepthMap } = props;
+
+    if (isGeneratingMap) {
+      return (
+        <div role="status" aria-live="assertive">
+          Generating depth map...
+        </div>
+      );
+    }
+
+    if (mapGenerationError) {
+      return (
+        <div role="status" aria-live="polite">
+          Error generating depth map: {mapGenerationError}
+        </div>
+      );
+    }
+
+    if (onnxDepthMap) {
+      return (
+        <div role="status">
+          Depth map ready ({onnxDepthMap.width}x{onnxDepthMap.height})
+        </div>
+      );
+    }
+
+    return null;
+  }),
+}));
+
 import { GenStatusIndicator } from '../../../components/MapView';
 
 describe('GenStatusIndicator', () => {

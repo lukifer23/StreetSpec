@@ -226,12 +226,16 @@ async function cleanupModelSession(): Promise<void> {
   if (depthSession) {
     try {
       console.log('[model] Cleaning up ONNX session...');
-      await depthSession.release();
-      depthSession = null;
+      const sessionToRelease = depthSession;
+      depthSession = null; // Clear reference immediately to prevent reuse
+      await sessionToRelease.release();
       sessionLoadAttempts = 0;
       logMemoryUsage('After session cleanup');
     } catch (error) {
       console.error('[model] Error during session cleanup:', error);
+      // Force clear reference even if release fails
+      depthSession = null;
+      sessionLoadAttempts = 0;
     }
   }
 }
@@ -1030,7 +1034,7 @@ async function createWindow() {
   }
 
   win = new BrowserWindow({
-    title: 'Street Spec Desktop',
+    title: 'PoleCheck Desktop',
     width: 1200,
     height: 800,
     webPreferences: {
@@ -1104,6 +1108,14 @@ async function createWindow() {
       }
     }
 
+    // Verify session is still valid before use
+    if (!depthSession) {
+      event.sender.send('main-process-message', { type: 'error', message: 'Depth model session is not available.'});
+      return null;
+    }
+
+    const sessionRef = depthSession; // Capture reference for safe cleanup
+
     try {
       console.time('[infer-depth] preprocess');
       logMemoryUsage('Before inference');
@@ -1140,13 +1152,23 @@ async function createWindow() {
       // Create tensor from the processed float data
       const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape);
       const feeds: Record<string, ort.Tensor> = {};
-      feeds[depthSession!.inputNames[0]] = inputTensor;
+      
+      // Verify session is still valid
+      if (!sessionRef || sessionRef !== depthSession) {
+        inputTensor.dispose();
+        throw new Error('Session was invalidated during inference preparation');
+      }
+      
+      feeds[sessionRef.inputNames[0]] = inputTensor;
       
       console.time('[infer-depth] inference');
-      const results = await depthSession!.run(feeds);
+      const results = await sessionRef.run(feeds);
       console.timeEnd('[infer-depth] inference');
+      
+      // Clean up input tensor immediately after inference
+      inputTensor.dispose();
 
-      const outputTensor = results[depthSession!.outputNames[0]];
+      const outputTensor = results[sessionRef.outputNames[0]];
       console.log('[infer-depth] output dims', outputTensor.dims, 'dataLen', (outputTensor.data as Float32Array).length);
 
       let h: number | undefined;
@@ -1181,9 +1203,15 @@ async function createWindow() {
       const bias = (settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0) as number;
       // calibrationBiasByZoom is persisted for horizon pitch; kept for future mapping refinements
       
+      // Extract data before disposing tensor
+      const outputData = Array.from(outputTensor.data as Float32Array, (v) => v * scale + bias);
+      
+      // Dispose output tensor to free memory
+      outputTensor.dispose();
+      
       logMemoryUsage('After inference');
       return {
-        data: Array.from(outputTensor.data as Float32Array, (v) => v * scale + bias),
+        data: outputData,
         width: w,
         height: h,
         transform
@@ -1193,9 +1221,15 @@ async function createWindow() {
       logMemoryUsage('After inference failure');
       
       // Attempt to recover from session errors
-      if (error instanceof Error && error.message.includes('session')) {
-        console.warn('[infer-depth] Session error detected, attempting reload...');
-        await reloadModelSession();
+      if (error instanceof Error && (error.message.includes('session') || error.message.includes('Session'))) {
+        console.warn('[infer-depth] Session error detected, attempting cleanup and reload...');
+        await cleanupModelSession();
+        // Don't immediately reload - let next request trigger reload
+      }
+      
+      // Ensure session is marked as potentially invalid
+      if (error instanceof Error && (error.message.includes('disposed') || error.message.includes('released'))) {
+        depthSession = null;
       }
       
       event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });

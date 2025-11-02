@@ -1,0 +1,23 @@
+{
+  "name": "Utility pole at 25m distance",
+  "cameraParams": {
+    "heading": 45,
+    "pitch": -10,
+    "vFov": 45
+  },
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "basePoint": {
+    "x": 800,
+    "y": 650
+  },
+  "topPoint": {
+    "x": 820,
+    "y": 450
+  },
+  "baseDistanceMeters": 25,
+  "expectedHeightMeters": 12,
+  "tolerancePercent": 3
+}

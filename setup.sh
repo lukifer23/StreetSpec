@@ -1,10 +1,10 @@
 #!/bin/bash
 
 echo "========================================"
-echo "Street Spec Desktop - Auto Setup Script"
+echo "PoleCheck Desktop - Auto Setup Script"
 echo "========================================"
 echo ""
-echo "This script will automatically set up Street Spec Desktop"
+echo "This script will automatically set up PoleCheck Desktop"
 echo "for development and launch the application."
 echo ""
 
@@ -146,7 +146,7 @@ echo "========================================"
 echo "Setup completed successfully!"
 echo "========================================"
 echo ""
-echo "Starting Street Spec Desktop..."
+echo "Starting PoleCheck Desktop..."
 echo ""
 echo "If the app doesn't start automatically, you can run:"
 echo "npm run dev"
