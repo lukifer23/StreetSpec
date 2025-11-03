@@ -138,8 +138,13 @@ class DepthPrefetchService {
     panoId: string,
     baseCameraParams: CameraParams,
     options: { enableCache: boolean; quality: 'low' | 'medium' | 'high' }
-  ): void {
-    if (!this.deps) return;
+  ): PrefetchTask | undefined {
+    if (!this.deps) return this.activeTasks.get(panoId);
+
+    const existingTask = this.activeTasks.get(panoId);
+    if (existingTask) {
+      return existingTask;
+    }
 
     const taskCameraParams: CameraParams = {
       ...baseCameraParams,
@@ -164,6 +169,8 @@ class DepthPrefetchService {
         this.activeTasks.delete(panoId);
       }, 5000); // Keep task reference for 5 seconds to avoid duplicate prefetches
     });
+
+    return task;
   }
 
   /**
@@ -249,11 +256,11 @@ class DepthPrefetchService {
     const concurrencyBudget = this.getConcurrencyBudget(maxConcurrent);
     for (let i = 0; i < uncachedPanos.length; i += concurrencyBudget) {
       const batch = uncachedPanos.slice(i, i + concurrencyBudget);
-      await Promise.allSettled(
-        batch.map(panoId => 
-          this.startPrefetchTask(panoId, cameraParams, { enableCache, quality }).promise
-        )
-      );
+      const batchTasks = batch
+        .map(panoId => this.startPrefetchTask(panoId, cameraParams, { enableCache, quality }))
+        .filter((task): task is PrefetchTask => Boolean(task?.promise));
+
+      await Promise.allSettled(batchTasks.map(task => task.promise));
       
       // Small delay between batches to avoid overwhelming the system
       if (i + concurrencyBudget < uncachedPanos.length) {
