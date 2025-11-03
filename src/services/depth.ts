@@ -86,9 +86,9 @@ function normalizeNumericParam(value: number | undefined | null): string | null 
 }
 
 // Generate cache key from camera parameters
-function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transform']): string {
+function buildCacheKeyBaseParts(params: CameraParams): string[] | null {
   if (!params.panoId) {
-    return '';
+    return null;
   }
 
   // Use defaults for missing parameters to prevent collisions
@@ -105,41 +105,56 @@ function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transf
   const normalizedZoom = normalizeNumericParam(params.zoom ?? DEFAULT_ZOOM);
   const normalizedCalibrationOffset = normalizeNumericParam(params.calibrationPitchOffsetDeg ?? 0);
 
-  // All parameters should be valid now with defaults
   if (!normalizedHeading || !normalizedPitch || !normalizedFov || !normalizedVFov || !normalizedZoom) {
     console.warn('[cache] Invalid normalized parameters in cache key generation');
-    return '';
+    return null;
   }
 
-  // Include transform signature if available to prevent collisions from different image processing
-  let transformSignature = 'not';
-  if (transform) {
-    const transformParts = [
-      transform.originalWidth,
-      transform.originalHeight,
-      transform.resizedWidth,
-      transform.resizedHeight,
-      transform.scaleX.toFixed(4),
-      transform.scaleY.toFixed(4),
-      transform.offsetX.toFixed(2),
-      transform.offsetY.toFixed(2)
-    ];
-    transformSignature = transformParts.join('_');
-  }
-
-  // Include optional parameters when present to better scope cache entries
-  const pieces = [
+  return [
     `${CACHE_PREFIX}${params.panoId}`,
     normalizedHeading,
     normalizedPitch,
     normalizedFov,
     normalizedVFov,
     normalizedZoom,
-    normalizedCalibrationOffset ?? '0.000000',
-    transformSignature
+    normalizedCalibrationOffset ?? '0.000000'
   ];
+}
 
-  return pieces.join('_');
+function createTransformSignature(transform?: OnnxDepthMap['transform']): string {
+  if (!transform) {
+    return 'not';
+  }
+
+  const transformParts = [
+    transform.originalWidth,
+    transform.originalHeight,
+    transform.resizedWidth,
+    transform.resizedHeight,
+    transform.scaleX.toFixed(4),
+    transform.scaleY.toFixed(4),
+    transform.offsetX.toFixed(2),
+    transform.offsetY.toFixed(2)
+  ];
+  return transformParts.join('_');
+}
+
+function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transform']): string {
+  const baseParts = buildCacheKeyBaseParts(params);
+  if (!baseParts) {
+    return '';
+  }
+
+  const transformSignature = createTransformSignature(transform);
+  return [...baseParts, transformSignature].join('_');
+}
+
+function getBaseCacheKeyPrefix(params: CameraParams): string {
+  const baseParts = buildCacheKeyBaseParts(params);
+  if (!baseParts) {
+    return '';
+  }
+  return `${baseParts.join('_')}_`;
 }
 
 // Compress depth data if needed
@@ -183,43 +198,94 @@ function decompressDepthData(data: number[] | string, isCompressed: boolean): nu
   return JSON.parse(data);
 }
 
+async function loadCachedDepthMapEntry(
+  cacheKey: string,
+  cachedEntry?: CachedDepthMap
+): Promise<OnnxDepthMap | null> {
+  const cached = cachedEntry ?? ((await get(cacheKey)) as CachedDepthMap | undefined);
+  if (!cached || !cached.data || !cached.width || !cached.height) {
+    return null;
+  }
+
+  let data: number[];
+  try {
+    data = decompressDepthData(cached.data, cached.compressed);
+  } catch (error) {
+    console.warn('[cache] Failed to decompress cached data, removing:', error);
+    await del(cacheKey);
+    return null;
+  }
+
+  const now = Date.now();
+  const compressedData = compressDepthData(data);
+  const toStore: CachedDepthMap = {
+    ...cached,
+    data: compressedData.payload,
+    compressed: compressedData.isCompressed,
+    sizeBytes: compressedData.sizeBytes,
+    lastUsed: now
+  };
+  await set(cacheKey, toStore);
+
+  return {
+    data,
+    width: cached.width,
+    height: cached.height,
+    transform: cached.transform
+  };
+}
+
+async function findCachedEntryWithAnyTransform(
+  params: CameraParams
+): Promise<{ key: string; cached: CachedDepthMap } | null> {
+  const basePrefix = getBaseCacheKeyPrefix(params);
+  if (!basePrefix) {
+    return null;
+  }
+
+  const allKeys = await keys();
+  const candidates: { key: string; cached: CachedDepthMap }[] = [];
+
+  for (const key of allKeys) {
+    if (typeof key !== 'string' || !key.startsWith(basePrefix)) {
+      continue;
+    }
+
+    const cached = (await get(key)) as CachedDepthMap | undefined;
+    if (cached && cached.data && cached.width && cached.height) {
+      candidates.push({ key, cached });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  candidates.sort((a, b) => (b.cached.lastUsed ?? 0) - (a.cached.lastUsed ?? 0));
+  return candidates[0];
+}
+
 // Check if depth map is cached
 export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDepthMap['transform']): Promise<OnnxDepthMap | null> {
   try {
     const cacheKey = generateCacheKey(params, transform);
     if (!cacheKey) return null;
 
-    const cached = (await get(cacheKey)) as CachedDepthMap | undefined;
-    if (cached && cached.data && cached.width && cached.height) {
+    const directHit = await loadCachedDepthMapEntry(cacheKey);
+    if (directHit) {
       console.log('[cache] Hit for key:', cacheKey);
+      return directHit;
+    }
 
-      // Decompress data if needed
-      let data: number[];
-      try {
-        data = decompressDepthData(cached.data, cached.compressed);
-      } catch (error) {
-        console.warn('[cache] Failed to decompress cached data, removing:', error);
-        await del(cacheKey);
-        return null;
+    if (!transform) {
+      const fallback = await findCachedEntryWithAnyTransform(params);
+      if (fallback) {
+        const fallbackHit = await loadCachedDepthMapEntry(fallback.key, fallback.cached);
+        if (fallbackHit) {
+          console.log('[cache] Hit for key:', fallback.key, '(transform fallback)');
+          return fallbackHit;
+        }
       }
-
-      // Update last used timestamp
-      cached.lastUsed = Date.now();
-      const compressedData = compressDepthData(data);
-      const toStore = {
-        ...cached,
-        data: compressedData.payload,
-        compressed: compressedData.isCompressed,
-        sizeBytes: compressedData.sizeBytes
-      };
-      await set(cacheKey, toStore);
-
-      return {
-        data,
-        width: cached.width,
-        height: cached.height,
-        transform: cached.transform
-      };
     }
 
     return null;
@@ -232,24 +298,41 @@ export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDe
 // Cache depth map
 export async function cacheDepthMap(params: CameraParams, depthMap: OnnxDepthMap): Promise<void> {
   try {
-    const cacheKey = generateCacheKey(params, depthMap.transform);
-    if (!cacheKey) return;
+    const primaryKey = generateCacheKey(params, depthMap.transform);
+    if (!primaryKey) return;
+
+    const baseParts = buildCacheKeyBaseParts(params);
+    if (!baseParts) return;
+
+    const now = Date.now();
 
     // Compress data if beneficial
     const { payload, isCompressed, sizeBytes } = compressDepthData(depthMap.data);
 
-    const toStore: CachedDepthMap = {
+    const baseEntry: CachedDepthMap = {
       data: payload,
       width: depthMap.width,
       height: depthMap.height,
       transform: depthMap.transform,
-      lastUsed: Date.now(),
+      lastUsed: now,
       compressed: isCompressed,
       sizeBytes
     };
 
-    await set(cacheKey, toStore);
-    console.log('[cache] Stored depth map for key:', cacheKey, isCompressed ? '(compressed)' : '(raw)', `~${(sizeBytes / 1024).toFixed(1)}KB`);
+    await set(primaryKey, baseEntry);
+    console.log('[cache] Stored depth map for key:', primaryKey, isCompressed ? '(compressed)' : '(raw)', `~${(sizeBytes / 1024).toFixed(1)}KB`);
+
+    if (depthMap.transform) {
+      const transformAgnosticKey = [...baseParts, createTransformSignature(undefined)].join('_');
+      if (transformAgnosticKey !== primaryKey) {
+        const agnosticEntry: CachedDepthMap = {
+          ...baseEntry,
+          lastUsed: now
+        };
+        await set(transformAgnosticKey, agnosticEntry);
+        console.log('[cache] Stored transform-agnostic depth map for key:', transformAgnosticKey);
+      }
+    }
 
     // Implement LRU by limiting cache size and memory usage
     await enforceCacheSizeLimit();

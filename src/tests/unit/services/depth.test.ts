@@ -7,7 +7,7 @@ import {
 } from '../../../services/depth';
 import { estimateDistanceToPoint } from '../../../services/measurementLogic';
 import { CameraParams, OnnxDepthMap } from '../../../types/common';
-import { clear } from 'idb-keyval';
+import { clear, del, keys } from 'idb-keyval';
 
 describe('Depth Service with fake-indexeddb', () => {
   let mockCameraParams: CameraParams;
@@ -49,6 +49,43 @@ describe('Depth Service with fake-indexeddb', () => {
       expect(result?.data).toEqual(mockDepthMap.data);
       expect(result?.width).toBe(mockDepthMap.width);
       expect(result?.height).toBe(mockDepthMap.height);
+    });
+
+    it('retrieves cached depth maps that include transform metadata', async () => {
+      const depthMapWithTransform: OnnxDepthMap = {
+        ...mockDepthMap,
+        transform: {
+          originalWidth: 1024,
+          originalHeight: 768,
+          resizedWidth: 640,
+          resizedHeight: 480,
+          scaleX: 0.625,
+          scaleY: 0.625,
+          offsetX: 12.34,
+          offsetY: -5.67,
+        }
+      };
+
+      await cacheDepthMap(mockCameraParams, depthMapWithTransform);
+
+      const withoutTransform = await getCachedDepthMap(mockCameraParams);
+      expect(withoutTransform).not.toBeNull();
+      expect(withoutTransform?.transform).toEqual(depthMapWithTransform.transform);
+
+      const allKeys = await keys();
+      const agnosticKey = allKeys.find((key): key is string => typeof key === 'string' && key.endsWith('_not'));
+      if (agnosticKey) {
+        await del(agnosticKey);
+      }
+
+      const fallbackResult = await getCachedDepthMap(mockCameraParams);
+      expect(fallbackResult).not.toBeNull();
+      expect(fallbackResult?.transform).toEqual(depthMapWithTransform.transform);
+
+      const withTransform = await getCachedDepthMap(mockCameraParams, depthMapWithTransform.transform);
+      expect(withTransform).not.toBeNull();
+      expect(withTransform?.transform).toEqual(depthMapWithTransform.transform);
+      expect(withTransform?.data).toEqual(depthMapWithTransform.data);
     });
 
     it('should cache and retrieve depth maps with zero heading and pitch', async () => {
