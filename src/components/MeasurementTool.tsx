@@ -9,7 +9,8 @@ import type {
 } from '../types/common';
 import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
 import { calibrationManager } from '../services/depthCalibration';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
+import { distance3D } from '../utils/math';
 import { ErrorBoundary } from './ErrorBoundary';
 import { convertLengthToDisplay } from '../utils/units';
 import styles from './MeasurementTool.module.css';
@@ -19,6 +20,8 @@ import { pushNotification } from '../stores/notificationStore';
 
 type MeasurementPhase = 'idle' | 'placingStart' | 'placingEnd';
 
+import { UnifiedCache, cacheRegistry } from '../utils/cacheManager';
+
 // Height calculation cache (shared across renders)
 interface HeightCacheEntry {
   text: string;
@@ -27,24 +30,27 @@ interface HeightCacheEntry {
 }
 
 class HeightCalculationCache {
-  private cache = new Map<string, HeightCacheEntry>();
+  private cache = new UnifiedCache<HeightCacheEntry>({
+    name: 'measurement-height',
+    maxSize: 50,
+    evictionStrategy: 'lru'
+  });
   private lastStartPoint: Point | null = null;
-  private readonly maxSize = 50;
+
+  constructor() {
+    cacheRegistry.register('measurement-height', this.cache);
+  }
 
   get(key: string, currentStartPoint: Point | null): HeightCacheEntry | null {
     if (currentStartPoint !== this.lastStartPoint) {
       this.cache.clear();
       this.lastStartPoint = currentStartPoint;
     }
-    return this.cache.get(key) || null;
+    return this.cache.get(key);
   }
 
   set(key: string, value: HeightCacheEntry): void {
     this.cache.set(key, value);
-    if (this.cache.size > this.maxSize) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
-    }
   }
 }
 
@@ -227,7 +233,7 @@ const MeasurementCanvas = React.memo<{
           const dir = screenToWorld(startPoint, cameraParams, viewWidth, viewHeight);
           const wp = estimateGroundPlaneIntersection(dir, cameraParams);
           if (wp) {
-            distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, wp);
+            distanceToBase = distance3D({ x: 0, y: 0, z: 0 }, wp);
           }
         }
 
@@ -303,6 +309,9 @@ const MeasurementCanvas = React.memo<{
     let lastDrawTime = 0;
     const minDrawInterval = 16; // ~60fps max
 
+    // Capture canvas element reference to avoid stale closure in cleanup
+    const canvasElement = canvasRef.current;
+
     const scheduleDraw = () => {
       const now = performance.now();
       const timeSinceLastDraw = now - lastDrawTime;
@@ -345,17 +354,17 @@ const MeasurementCanvas = React.memo<{
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const context = canvas.getContext('2d');
+      // Use captured canvas element reference
+      if (canvasElement) {
+        const context = canvasElement.getContext('2d');
         if (context) {
-          context.clearRect(0, 0, canvas.width, canvas.height);
-          canvas.width = 0;
-          canvas.height = 0;
+          context.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          canvasElement.width = 0;
+          canvasElement.height = 0;
         }
       }
     };
-  }, [measurements, phase, startPoint, currentMousePos, cameraParams, onnxDepthMap, depthData, defaultUnit]);
+  }, [measurements, phase, startPoint, currentMousePos, cameraParams, onnxDepthMap, depthData, defaultUnit, canvasRef]);
 
   return <canvas ref={canvasRef} className={styles['measurementCanvas']} />;
 });
@@ -615,7 +624,7 @@ const MeasurementTool: React.FC = () => {
       if (worldStart && worldEnd) {
         // Use vertical component of world coordinates for height
         planeHeight = Math.abs(worldEnd.y - worldStart.y);
-        distanceToBase = calculateDistance3D({ x: 0, y: 0, z: 0 }, worldStart);
+        distanceToBase = distance3D({ x: 0, y: 0, z: 0 }, worldStart);
         console.log('[measure] plane vertical height:', planeHeight, 'base distance from planes:', distanceToBase);
         source = 'planes';
         // Higher confidence when planes succeed and distance is reasonable
@@ -696,7 +705,7 @@ const MeasurementTool: React.FC = () => {
         const dirBase = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
         const wpBase = estimateGroundPlaneIntersection(dirBase, currentCameraParams);
         if (wpBase) {
-          const gpDist = calculateDistance3D({ x: 0, y: 0, z: 0 }, wpBase);
+          const gpDist = distance3D({ x: 0, y: 0, z: 0 }, wpBase);
           // Use ground-plane distance if primary estimate is missing or clearly unreasonable
           if (distanceToBase === null || !Number.isFinite(distanceToBase) || distanceToBase <= 0.1) {
             distanceToBase = gpDist;
@@ -710,7 +719,7 @@ const MeasurementTool: React.FC = () => {
       const dir = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
       const wp = estimateGroundPlaneIntersection(dir, currentCameraParams);
       if (wp) {
-        distanceToBase = calculateDistance3D({x:0,y:0,z:0}, wp);
+        distanceToBase = distance3D({x:0,y:0,z:0}, wp);
         console.log('[measure] fallback ground-plane distance', distanceToBase);
         source = 'ground';
         confidence = Math.max(confidence, 0.3);

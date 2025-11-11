@@ -24,6 +24,11 @@ module.exports = {
       useESM: true,
     }],
   },
+  globals: {
+    'ts-jest': {
+      useESM: true,
+    },
+  },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   testPathIgnorePatterns: [
     '<rootDir>/node_modules/',
@@ -32,4 +37,8 @@ module.exports = {
     '<rootDir>/src/tests/e2e/',
   ],
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
+  // Transform specific files that use import.meta
+  transformIgnorePatterns: [
+    'node_modules/(?!(@protobufjs|@googlemaps)/)',
+  ],
 };

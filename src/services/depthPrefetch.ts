@@ -1,7 +1,9 @@
 import type { CameraParams } from '../types/common';
 import { generateDepthMap, createDepthMapFetcher, type DepthGenerationDeps } from './depthGeneration';
-import { getCachedDepthMap, cacheDepthMap } from './depth';
+import { getCachedDepthMap, cacheDepthMap, prefetchDepthMap, clearExpiredPredictiveCache } from './depth';
 import { getRateLimitStatus } from './rateLimiter';
+import { createAppError } from '../utils/errorUtils';
+import { ErrorSeverity, ErrorCategory } from '../types/common';
 
 /**
  * Depth map prefetching service for predictive loading
@@ -28,6 +30,7 @@ class DepthPrefetchService {
   private deps: DepthGenerationDeps | null = null;
   private lastPrefetchTimestamp = 0;
   private readonly prefetchCooldownMs = 3000;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Initialize the prefetch service
@@ -40,11 +43,28 @@ class DepthPrefetchService {
       cacheDepthMap,
       invokeDepth: async (base64data: string) => {
         if (!window.electronAPI?.invoke) {
-          throw new Error('Electron IPC not available');
+          throw createAppError(
+            'SYSTEM_RESOURCE_UNAVAILABLE',
+            'Electron IPC not available',
+            'Application communication channel is not available. Please restart the application.',
+            ErrorSeverity.HIGH,
+            ErrorCategory.SYSTEM,
+            { hasElectronAPI: !!window.electronAPI }
+          );
         }
         return await window.electronAPI.invoke('infer-depth', base64data);
       }
     };
+
+    // Start periodic cleanup of expired predictive cache entries
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+    this.cleanupInterval = setInterval(() => {
+      clearExpiredPredictiveCache().catch(err => {
+        console.warn('[DepthPrefetch] Error during predictive cache cleanup:', err);
+      });
+    }, 60000); // Clean up every minute
   }
 
   private getConcurrencyBudget(maxConcurrent: number): number {
@@ -197,10 +217,15 @@ class DepthPrefetchService {
 
       // Generate depth map in background
       console.log(`[DepthPrefetch] Starting prefetch for ${panoId}`);
-      await generateDepthMap(cameraParams, this.apiKey, this.deps, {
+      const result = await generateDepthMap(cameraParams, this.apiKey, this.deps, {
         enableCache: options.enableCache,
         quality: options.quality
       });
+
+      // Cache as predictive entry if generation was successful and not already cached
+      if (result.depthMap && !result.fromCache) {
+        await prefetchDepthMap(cameraParams, result.depthMap);
+      }
 
       const task = this.activeTasks.get(panoId);
       if (task) task.status = 'complete';
@@ -275,6 +300,17 @@ class DepthPrefetchService {
   cancelAll(): void {
     console.log('[DepthPrefetch] Cancelling all active prefetch tasks');
     this.activeTasks.clear();
+  }
+
+  /**
+   * Cleanup resources
+   */
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.cancelAll();
   }
 
   /**

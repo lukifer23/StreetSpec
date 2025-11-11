@@ -4,7 +4,7 @@ import '@testing-library/jest-dom';
 
 // Mock the MapView module to avoid import.meta issues
 jest.mock('../../../components/MapView', () => ({
-  GenStatusIndicator: React.forwardRef((props: any, ref) => {
+  GenStatusIndicator: React.forwardRef((props: any, _ref) => {
     const { isGeneratingMap, mapGenerationError, onnxDepthMap } = props;
 
     if (isGeneratingMap) {

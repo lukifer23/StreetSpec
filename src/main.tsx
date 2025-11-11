@@ -21,7 +21,7 @@ const handleError = (error: Error, errorInfo: React.ErrorInfo) => {
   console.error('Application error caught by ErrorBoundary:', error, errorInfo);
 
   // In production, you might want to send this to an error tracking service
-  if (!import.meta.env.DEV) {
+  if (process.env.NODE_ENV === 'production') {
     // Example: errorTracker.captureException(error, { extra: errorInfo });
   }
 };

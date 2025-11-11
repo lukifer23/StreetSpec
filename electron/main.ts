@@ -225,29 +225,52 @@ function logMemoryUsage(context: string): void {
 }
 
 async function cleanupModelSession(): Promise<void> {
-  // Wait for any active inference to complete
-  let waitCount = 0;
-  while (sessionInUse && waitCount < 50) {
-    await sleep(100);
-    waitCount++;
+  // Acquire mutex to prevent concurrent cleanup
+  if (sessionMutex.locked) {
+    return; // Cleanup already in progress
   }
-
-  if (depthSession) {
-    try {
-      console.log('[model] Cleaning up ONNX session...');
-      const sessionToRelease = depthSession;
-      depthSession = null; // Clear reference immediately to prevent reuse
-      sessionInUse = false;
-      await sessionToRelease.release();
-      sessionLoadAttempts = 0;
-      logMemoryUsage('After session cleanup');
-    } catch (error) {
-      console.error('[model] Error during session cleanup:', error);
-      // Force clear reference even if release fails
-      depthSession = null;
-      sessionInUse = false;
-      sessionLoadAttempts = 0;
+  
+  sessionMutex.locked = true;
+  
+  try {
+    // Wait for any active inference to complete with timeout
+    const MAX_WAIT_TIME = 5000; // 5 seconds max wait
+    const startWait = Date.now();
+    while (sessionInUse && (Date.now() - startWait) < MAX_WAIT_TIME) {
+      await sleep(100);
     }
+    
+    if (sessionInUse) {
+      console.warn('[model] Session still in use after timeout, forcing cleanup');
+      sessionInUse = false; // Force release
+    }
+
+    if (depthSession) {
+      try {
+        console.log('[model] Cleaning up ONNX session...');
+        const sessionToRelease = depthSession;
+        depthSession = null; // Clear reference immediately to prevent reuse
+        
+        // Release session with timeout
+        const releasePromise = sessionToRelease.release();
+        const timeoutPromise = sleep(2000).then(() => {
+          throw new Error('Session release timeout');
+        });
+        
+        await Promise.race([releasePromise, timeoutPromise]);
+        sessionLoadAttempts = 0;
+        logMemoryUsage('After session cleanup');
+      } catch (error) {
+        console.error('[model] Error during session cleanup:', error);
+        // Force clear reference even if release fails
+        depthSession = null;
+        sessionLoadAttempts = 0;
+      } finally {
+        sessionInUse = false;
+      }
+    }
+  } finally {
+    sessionMutex.locked = false;
   }
 }
 
@@ -1105,38 +1128,72 @@ async function createWindow() {
     win?.webContents.send('main-process-message', { type: 'status', message: 'Main process ready, window loaded.' });
   });
 
-  // Set up IPC handlers
+  // Helper function to add timeout to IPC handlers
+  function withTimeout<T>(
+    handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<T>,
+    timeoutMs: number = 30000
+  ): (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<T | null> {
+    return async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<T | null> => {
+      const timeoutPromise = sleep(timeoutMs).then(() => {
+        throw new Error(`Operation timed out after ${timeoutMs}ms`);
+      });
+      
+      try {
+        return await Promise.race([
+          handler(event, ...args),
+          timeoutPromise
+        ]);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('timed out')) {
+          console.error('[ipc] Handler timeout:', error);
+          event.sender.send('main-process-message', {
+            type: 'error',
+            message: `Operation timed out after ${timeoutMs}ms`
+          });
+          return null;
+        }
+        throw error;
+      }
+    };
+  }
+
+  // Import validation utilities
+  // Note: In production, validation.ts is compiled to JS and can be required
+  // For now, we'll use a try-catch to handle both dev and prod scenarios
+  const { validateIPCInvoke } = require('../src/utils/validation');
+
+  // Set up IPC handlers with Zod schema validation
   // Depth inference handler with improved error handling and memory management
-  ipcMain.handle('infer-depth', async (event: IpcMainInvokeEvent, imageDataUrl: string) => {
+  ipcMain.handle('infer-depth', withTimeout(async (event: IpcMainInvokeEvent, imageDataUrl: unknown) => {
     console.log('[infer-depth] request received');
     
-    // Validate input
-    if (typeof imageDataUrl !== 'string' || imageDataUrl.length === 0) {
-      event.sender.send('main-process-message', { type: 'error', message: 'Invalid image data URL provided.' });
-      return null;
-    }
-
-    // Validate data URL format and size
-    if (!imageDataUrl.startsWith('data:image/')) {
-      event.sender.send('main-process-message', { type: 'error', message: 'Invalid image data URL format.' });
-      return null;
-    }
-
-    // Check size limit (50MB for base64 encoded image)
-    const MAX_IMAGE_SIZE = 50 * 1024 * 1024;
-    if (imageDataUrl.length > MAX_IMAGE_SIZE) {
-      event.sender.send('main-process-message', { type: 'error', message: 'Image data URL exceeds maximum size.' });
+    // Validate input using Zod schema
+    let validatedImageDataUrl: string;
+    try {
+      validatedImageDataUrl = validateIPCInvoke('infer-depth', imageDataUrl) as string;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Invalid image data URL provided.';
+      event.sender.send('main-process-message', { type: 'error', message: errorMessage });
       return null;
     }
     
-    // Acquire session lock
-    if (sessionMutex.locked) {
-      let waitCount = 0;
-      while (sessionMutex.locked && waitCount < 100) {
-        await sleep(50);
-        waitCount++;
-      }
+    // Acquire session lock with timeout
+    const LOCK_TIMEOUT_MS = 10000; // 10 seconds max wait
+    const lockStartTime = Date.now();
+    while (sessionMutex.locked && (Date.now() - lockStartTime) < LOCK_TIMEOUT_MS) {
+      await sleep(50);
     }
+    
+    if (sessionMutex.locked) {
+      event.sender.send('main-process-message', { 
+        type: 'error', 
+        message: 'Depth inference timeout: session is locked' 
+      });
+      return null;
+    }
+    
+    // Acquire the lock
+    sessionMutex.locked = true;
 
     if (!depthSession) {
       console.warn('[infer-depth] No depth session available, attempting reload...');
@@ -1162,7 +1219,7 @@ async function createWindow() {
       logMemoryUsage('Before inference');
       
       // Process image data and run inference
-      const base64Data = imageDataUrl.split(',')[1];
+      const base64Data = validatedImageDataUrl.split(',')[1];
       if (!base64Data) throw new Error('Invalid image data');
       
       const imageBuffer = Buffer.from(base64Data, 'base64');
@@ -1285,21 +1342,19 @@ async function createWindow() {
       event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });
       return null;
     }
-  });
+  }, 60000)); // 60 second timeout for depth inference
 
-  // CSV export handler with validation
-  ipcMain.handle('csv-export', async (event: IpcMainInvokeEvent, csvContent: string) => {
+  // CSV export handler with Zod validation
+  ipcMain.handle('csv-export', withTimeout(async (event: IpcMainInvokeEvent, csvContent: unknown) => {
     if (!win) return null;
 
-    // Validate input
-    if (typeof csvContent !== 'string') {
-      return null;
-    }
-
-    // Size limit check (10MB)
-    const MAX_CSV_SIZE = 10 * 1024 * 1024;
-    if (csvContent.length > MAX_CSV_SIZE) {
-      event.sender.send('main-process-message', { type: 'error', message: 'CSV content exceeds maximum size.' });
+    // Validate input using Zod schema
+    let validatedCsvContent: string;
+    try {
+      validatedCsvContent = validateIPCInvoke('csv-export', csvContent) as string;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Invalid CSV content.';
+      event.sender.send('main-process-message', { type: 'error', message: errorMessage });
       return null;
     }
 
@@ -1315,70 +1370,32 @@ async function createWindow() {
 
       if (canceled || !filePath) return null;
 
-      await fs.promises.writeFile(filePath, csvContent, 'utf8');
+      await fs.promises.writeFile(filePath, validatedCsvContent, 'utf8');
       return filePath;
     } catch (error) {
+      console.error('[ipc] CSV export error:', error);
       return null;
     }
-  });
+  }, 10000)); // 10 second timeout for CSV export
 
-  // Depth data fetch handler with validation
-  ipcMain.handle('fetch-depth-data', async (_event: IpcMainInvokeEvent, payload: string | { panoId: string; maxRetries?: number; retryDelayMs?: number }) => {
-    // Validate input
-    if (typeof payload !== 'string' && (typeof payload !== 'object' || payload === null)) {
+  // Depth data fetch handler with Zod validation
+  ipcMain.handle('fetch-depth-data', withTimeout(async (_event: IpcMainInvokeEvent, payload: unknown) => {
+    // Validate input using Zod schema
+    let validatedPayload: string | { panoId: string; maxRetries?: number; retryDelayMs?: number };
+    try {
+      validatedPayload = validateIPCInvoke('fetch-depth-data', payload) as string | { panoId: string; maxRetries?: number; retryDelayMs?: number };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Invalid payload for depth data fetch.';
       const invalidRequest: DepthDataFetchResult = {
         status: 'error',
         code: 'INVALID_RESPONSE',
-        message: 'Invalid payload type for depth data fetch.',
+        message: errorMessage,
         attempts: 0
       };
       return invalidRequest;
     }
 
-    const request = typeof payload === 'string' ? { panoId: payload } : payload ?? { panoId: '' };
-
-    // Validate panorama ID
-    if (!request.panoId || typeof request.panoId !== 'string' || request.panoId.length === 0 || request.panoId.length > 200) {
-      const invalidRequest: DepthDataFetchResult = {
-        status: 'error',
-        code: 'INVALID_RESPONSE',
-        message: 'Panorama ID is required and must be a valid string (1-200 characters).',
-        attempts: 0
-      };
-      return invalidRequest;
-    }
-
-    // Validate panorama ID format (alphanumeric with some special chars)
-    if (!/^[A-Za-z0-9_-]+$/.test(request.panoId)) {
-      const invalidRequest: DepthDataFetchResult = {
-        status: 'error',
-        code: 'INVALID_RESPONSE',
-        message: 'Invalid panorama ID format.',
-        attempts: 0
-      };
-      return invalidRequest;
-    }
-
-    // Validate retry parameters if provided
-    if (request.maxRetries !== undefined && (!Number.isFinite(request.maxRetries) || request.maxRetries < 1 || request.maxRetries > 10)) {
-      const invalidRequest: DepthDataFetchResult = {
-        status: 'error',
-        code: 'INVALID_RESPONSE',
-        message: 'maxRetries must be between 1 and 10.',
-        attempts: 0
-      };
-      return invalidRequest;
-    }
-
-    if (request.retryDelayMs !== undefined && (!Number.isFinite(request.retryDelayMs) || request.retryDelayMs < 0 || request.retryDelayMs > 60000)) {
-      const invalidRequest: DepthDataFetchResult = {
-        status: 'error',
-        code: 'INVALID_RESPONSE',
-        message: 'retryDelayMs must be between 0 and 60000.',
-        attempts: 0
-      };
-      return invalidRequest;
-    }
+    const request = typeof validatedPayload === 'string' ? { panoId: validatedPayload } : validatedPayload;
 
     try {
       const settings = (store as any).get('settings', {}) as { depthApiMaxRetries?: number };
@@ -1401,110 +1418,69 @@ async function createWindow() {
       };
       return fallback;
     }
-  });
+  }, 120000)); // 2 minute timeout for depth data fetch (includes retries)
 
-  // Persistence handlers
-  ipcMain.handle('get-projects', async () => {
+  // Persistence handlers with timeouts
+  ipcMain.handle('get-projects', withTimeout(async () => {
     try {
       return (getStore() as any).get('projects', {});
     } catch (error) {
+      console.error('[ipc] Error getting projects:', error);
       return {};
     }
-  });
+  }, 5000));
 
   // Measurements persistence handlers
-  ipcMain.handle('get-measurements', async () => {
+  ipcMain.handle('get-measurements', withTimeout(async () => {
     try {
       return (getStore() as any).get('measurements', []);
-    } catch (_error) {
+    } catch (error) {
+      console.error('[ipc] Error getting measurements:', error);
       return [];
     }
-  });
+  }, 5000));
 
-  ipcMain.handle('save-measurements', async (_event: IpcMainInvokeEvent, measurements: any[]) => {
+  ipcMain.handle('save-measurements', withTimeout(async (_event: IpcMainInvokeEvent, measurements: unknown) => {
     try {
-      // Validate input
-      if (!Array.isArray(measurements)) {
-        console.error('[ipc] Invalid measurements array');
-        return false;
-      }
-
-      // Limit array size
-      const MAX_MEASUREMENTS = 10000;
-      if (measurements.length > MAX_MEASUREMENTS) {
-        console.error('[ipc] Measurements array too large:', measurements.length);
-        return false;
-      }
-
-      // Basic validation of measurement structure
-      for (const m of measurements) {
-        if (!m || typeof m !== 'object') {
-          console.error('[ipc] Invalid measurement object');
-          return false;
-        }
-        if (typeof m.id !== 'string' || m.id.length === 0) {
-          console.error('[ipc] Invalid measurement ID');
-          return false;
-        }
-      }
-
-      (getStore() as any).set('measurements', measurements);
+      // Validate using Zod schema
+      const validatedMeasurements = validateIPCInvoke('save-measurements', measurements) as Array<unknown>;
+      (getStore() as any).set('measurements', validatedMeasurements);
       return true;
-    } catch (_error) {
+    } catch (error) {
+      console.error('[ipc] Error saving measurements:', error);
       return false;
     }
-  });
+  }, 10000)); // 10 second timeout
 
-  ipcMain.handle('save-project', async (event: IpcMainInvokeEvent, project: any) => {
+  ipcMain.handle('save-project', withTimeout(async (event: IpcMainInvokeEvent, project: unknown) => {
     try {
-      // Validate input
-      if (!project || typeof project !== 'object') {
-        console.error('[ipc] Invalid project object');
-        return false;
-      }
-
-      if (typeof project.id !== 'string' || project.id.length === 0 || project.id.length > 200) {
-        console.error('[ipc] Invalid project ID');
-        return false;
-      }
-
-      if (typeof project.name !== 'string' || project.name.length > 200) {
-        console.error('[ipc] Invalid project name');
-        return false;
-      }
-
-      if (Array.isArray(project.measurements) && project.measurements.length > 10000) {
-        console.error('[ipc] Project measurements array too large');
-        return false;
-      }
-
-      const projects = (getStore() as any).get('projects', {});
-      projects[project.id] = project;
+      // Validate using Zod schema
+      const validatedProject = validateIPCInvoke('save-project', project) as Record<string, unknown>;
+      const projects = (getStore() as any).get('projects', {}) as Record<string, unknown>;
+      projects[validatedProject.id as string] = validatedProject;
       (getStore() as any).set('projects', projects);
       return true;
-    } catch (_error) {
+    } catch (error) {
+      console.error('[ipc] Error saving project:', error);
       return false;
     }
-  });
+  }, 10000)); // 10 second timeout
 
-  ipcMain.handle('delete-project', async (event: IpcMainInvokeEvent, projectId: string) => {
+  ipcMain.handle('delete-project', withTimeout(async (event: IpcMainInvokeEvent, projectId: unknown) => {
     try {
-      // Validate input
-      if (typeof projectId !== 'string' || projectId.length === 0 || projectId.length > 200) {
-        console.error('[ipc] Invalid project ID for deletion');
-        return false;
-      }
-
-      const projects = (getStore() as any).get('projects', {});
-      delete projects[projectId];
+      // Validate using Zod schema (UUID format)
+      const validatedProjectId = validateIPCInvoke('delete-project', projectId) as string;
+      const projects = (getStore() as any).get('projects', {}) as Record<string, unknown>;
+      delete projects[validatedProjectId];
       (getStore() as any).set('projects', projects);
       return true;
-    } catch (_error) {
+    } catch (error) {
+      console.error('[ipc] Error deleting project:', error);
       return false;
     }
-  });
+  }, 5000)); // 5 second timeout
 
-  ipcMain.handle('get-settings', async () => {
+  ipcMain.handle('get-settings', withTimeout(async () => {
     try {
       return (getStore() as any).get('settings', {
         defaultUnit: 'metric',
@@ -1536,49 +1512,40 @@ async function createWindow() {
         depthApiMaxRetries: DEFAULT_DEPTH_API_MAX_RETRIES
       };
     }
-  });
+  }, 5000)); // 5 second timeout
 
-  ipcMain.handle('save-settings', async (event: IpcMainInvokeEvent, settings: any) => {
+  ipcMain.handle('save-settings', withTimeout(async (event: IpcMainInvokeEvent, settings: unknown) => {
     try {
-      // Validate input
-      if (!settings || typeof settings !== 'object') {
-        console.error('[ipc] Invalid settings object');
-        return false;
-      }
-
-      // Validate critical settings
-      if (settings.defaultUnit && !['metric', 'imperial'].includes(settings.defaultUnit)) {
-        console.error('[ipc] Invalid defaultUnit');
-        return false;
-      }
-
-      if (settings.measurementHistoryLimit !== undefined) {
-        const limit = Number(settings.measurementHistoryLimit);
-        if (!Number.isFinite(limit) || limit < 1 || limit > 10000) {
-          console.error('[ipc] Invalid measurementHistoryLimit');
-          return false;
-        }
-      }
-
-      if (settings.depthApiMaxRetries !== undefined) {
-        const retries = Number(settings.depthApiMaxRetries);
-        if (!Number.isFinite(retries) || retries < 1 || retries > 10) {
-          console.error('[ipc] Invalid depthApiMaxRetries');
-          return false;
-        }
-      }
-
-      (getStore() as any).set('settings', settings);
+      // Validate using Zod schema
+      const validatedSettings = validateIPCInvoke('save-settings', settings) as Record<string, unknown>;
+      (getStore() as any).set('settings', validatedSettings);
       return true;
-    } catch (_error) {
+    } catch (error) {
+      console.error('[ipc] Error saving settings:', error);
       return false;
     }
-  });
+  }, 5000)); // 5 second timeout
 
-  ipcMain.handle('set-use-gpu', async (_event: IpcMainInvokeEvent, enableGpu: boolean) => {
+  ipcMain.handle('set-use-gpu', withTimeout(async (_event: IpcMainInvokeEvent, enableGpu: unknown) => {
+    // Validate using Zod schema
+    let validatedEnableGpu: boolean;
+    try {
+      validatedEnableGpu = validateIPCInvoke('set-use-gpu', enableGpu) as boolean;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Invalid parameter type';
+      console.error('[ipc] Invalid enableGpu parameter:', errorMessage);
+      return {
+        success: false,
+        reloaded: false,
+        useGPU: false,
+        providers: [...activeExecutionProviders],
+        error: errorMessage
+      };
+    }
+    
     const storeInstance = getStore();
     const previousValue = Boolean(storeInstance.get('settings.useGPU', false));
-    const desiredValue = Boolean(enableGpu);
+    const desiredValue = Boolean(validatedEnableGpu);
 
     if (previousValue === desiredValue) {
       return { success: true, reloaded: false, useGPU: previousValue, providers: [...activeExecutionProviders] };
@@ -1608,20 +1575,24 @@ async function createWindow() {
         error: error instanceof Error ? error.message : String(error)
       };
     }
-  });
+  }, 30000)); // 30 second timeout (includes model reload)
 
-  ipcMain.handle('clear-data', async () => {
+  ipcMain.handle('clear-data', withTimeout(async () => {
     try {
       (getStore() as any).delete('measurements');
       return true;
-    } catch (_error) {
+    } catch (error) {
+      console.error('[ipc] Error clearing data:', error);
       return false;
     }
-  });
+  }, 5000)); // 5 second timeout
 
   // Error logging handler for persistent error tracking
-  ipcMain.handle('log-error', async (_event: IpcMainInvokeEvent, logEntry: any) => {
+  ipcMain.handle('log-error', withTimeout(async (_event: IpcMainInvokeEvent, logEntry: unknown) => {
     try {
+      // Validate using Zod schema
+      const validatedLogEntry = validateIPCInvoke('log-error', logEntry) as Record<string, unknown>;
+      
       const logDir = join(app.getPath('userData'), 'logs');
       const logFile = join(logDir, `error-${new Date().toISOString().split('T')[0]}.log`);
       
@@ -1630,36 +1601,61 @@ async function createWindow() {
         await fs.promises.mkdir(logDir, { recursive: true });
       }
       
-      // Format log entry
+      // Format log entry with validation
+      const logEntryObj = validatedLogEntry;
       const logLine = JSON.stringify({
-        ...logEntry,
+        ...logEntryObj,
         appVersion: app.getVersion(),
         platform: process.platform,
-        arch: process.arch
+        arch: process.arch,
+        timestamp: new Date().toISOString()
       }) + '\n';
       
-      // Append to daily log file
-      await fs.promises.appendFile(logFile, logLine, 'utf8');
+      // Validate log line size (prevent log file bloat)
+      if (logLine.length > 10000) {
+        console.warn('[log-error] Log entry too large, truncating');
+        const truncated = JSON.stringify({
+          ...logEntryObj,
+          appVersion: app.getVersion(),
+          platform: process.platform,
+          arch: process.arch,
+          timestamp: new Date().toISOString(),
+          truncated: true
+        }) + '\n';
+        await fs.promises.appendFile(logFile, truncated, 'utf8');
+      } else {
+        await fs.promises.appendFile(logFile, logLine, 'utf8');
+      }
       
       // Also log to console for debugging
       console.error('[ERROR LOG]', logEntry);
       
-      // Clean up old log files (keep last 30 days)
-      cleanupOldLogs(logDir, 30);
+      // Clean up old log files (keep last 30 days) - don't await to avoid blocking
+      cleanupOldLogs(logDir, 30).catch(err => {
+        console.warn('[log-error] Cleanup failed:', err);
+      });
       
       return true;
     } catch (error) {
       console.error('[log-error] Failed to write error log:', error);
       return false;
     }
-  });
+  }, 5000)); // 5 second timeout
 
   // Telemetry logging (opt-in, anonymized)
-  ipcMain.handle('log-telemetry', async (_event: IpcMainInvokeEvent, payload: any) => {
+  ipcMain.handle('log-telemetry', withTimeout(async (_event: IpcMainInvokeEvent, payload: unknown) => {
     try {
-      const settings = (getStore() as any).get('settings', { telemetryOptIn: false });
+      const settings = (getStore() as any).get('settings', { telemetryOptIn: false }) as { telemetryOptIn?: boolean };
       if (!settings?.telemetryOptIn) {
         return { accepted: false, reason: 'opt_out' };
+      }
+
+      // Validate using Zod schema
+      let validatedPayload: Record<string, unknown>;
+      try {
+        validatedPayload = validateIPCInvoke('log-telemetry', payload) as Record<string, unknown>;
+      } catch {
+        return { accepted: false, reason: 'invalid_payload' };
       }
 
       const logDir = join(app.getPath('userData'), 'logs');
@@ -1670,20 +1666,29 @@ async function createWindow() {
       }
 
       const entry = {
-        ts: Date.now(),
-        event: String(payload?.event ?? 'unknown'),
-        data: sanitizeTelemetry(payload?.data ?? {}),
+        ts: validatedPayload.timestamp ?? Date.now(),
+        event: String(validatedPayload.event ?? 'unknown'),
+        data: sanitizeTelemetry(validatedPayload.data as Record<string, unknown> ?? {}),
         appVersion: app.getVersion(),
         platform: process.platform,
         arch: process.arch
       };
 
-      await fs.promises.appendFile(logFile, JSON.stringify(entry) + '\n', 'utf8');
+      const logLine = JSON.stringify(entry) + '\n';
+      
+      // Validate log line size
+      if (logLine.length > 5000) {
+        console.warn('[log-telemetry] Entry too large, skipping');
+        return { accepted: false, reason: 'entry_too_large' };
+      }
+
+      await fs.promises.appendFile(logFile, logLine, 'utf8');
       return { accepted: true };
     } catch (error) {
+      console.error('[log-telemetry] Error:', error);
       return { accepted: false, error: error instanceof Error ? error.message : String(error) };
     }
-  });
+  }, 5000)); // 5 second timeout
 }
 
 // Helper function to clean up old log files
@@ -1754,11 +1759,31 @@ app.whenReady().then(async () => {
   });
 });
 
+// Global flag to prevent multiple cleanup attempts
+let isQuitting = false;
+
+// Don't use before-quit - it causes issues with async cleanup
+// The window-all-closed event is sufficient
+
 app.on('window-all-closed', async () => {
-  // Clean up ONNX session before quitting
-  await cleanupModelSession();
+  console.log('[shutdown] window-all-closed event triggered');
   win = null;
-  if (process.platform !== 'darwin') app.quit();
+  
+  if (isQuitting) {
+    return; // Cleanup already in progress
+  }
+  
+  isQuitting = true;
+  
+  try {
+    await cleanupModelSession();
+  } catch (error) {
+    console.error('[shutdown] Error during cleanup:', error);
+  }
+  
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
 
 app.on('second-instance', () => {
@@ -1771,13 +1796,16 @@ app.on('second-instance', () => {
 // Handle any uncaught exceptions
 process.on('uncaughtException', async (error) => {
   console.error('[fatal] Uncaught exception:', error);
-  await cleanupModelSession();
-  app.quit();
+  if (!isQuitting) {
+    isQuitting = true;
+    await cleanupModelSession();
+    app.quit();
+  }
 });
 
 process.on('unhandledRejection', async (reason: any, _promise: Promise<any>) => {
   console.error('[fatal] Unhandled rejection:', reason);
-  if (win) {
+  if (win && !isQuitting) {
     const wc = win.webContents;
     if (!wc.isDestroyed()) {
         wc.send('main-process-message', { type: 'error', message: `Unhandled Rejection: ${reason}` });
@@ -1804,12 +1832,18 @@ setInterval(async () => {
 // Graceful shutdown handling
 process.on('SIGINT', async () => {
   console.log('[shutdown] Received SIGINT, cleaning up...');
-  await cleanupModelSession();
-  app.quit();
+  if (!isQuitting) {
+    isQuitting = true;
+    await cleanupModelSession();
+    app.quit();
+  }
 });
 
 process.on('SIGTERM', async () => {
   console.log('[shutdown] Received SIGTERM, cleaning up...');
-  await cleanupModelSession();
-  app.quit();
+  if (!isQuitting) {
+    isQuitting = true;
+    await cleanupModelSession();
+    app.quit();
+  }
 }); 

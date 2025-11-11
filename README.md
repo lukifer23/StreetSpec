@@ -239,22 +239,29 @@ PoleCheck Desktop uses multiple data sources and validation techniques for highl
 *   `electron/`: Electron main process and preload scripts
 *   `src/`: React frontend source code
     *   `components/`: UI components (MapView, MeasurementTool, SearchBox, SettingsPanel, etc.)
-    *   `stores/`: Zustand state management (rootStore.ts, settingsStore.ts)
+    *   `stores/`: Zustand state management (rootStore.ts, notificationStore.ts)
     *   `services/`: Business logic (geometry, measurement, depth, error handling)
     *   `types/`: TypeScript type definitions
     *   `utils/`: Utility functions
+    *   `hooks/`: React custom hooks
     *   `tests/`: Test files (unit, integration, e2e)
     *   `assets/models/`: ONNX model files
 *   `docs/`: Documentation files
+    *   `ARCHITECTURE.md`: Technical architecture and design patterns
+    *   `API.md`: API documentation for services and IPC
+    *   `roadmap.md`: Development roadmap and priorities
+    *   `manual-qa.md`: Manual QA testing procedures
 *   `dist/`: Vite build output
 *   `dist-electron/`: Electron build output
 *   `release/`: Packaged application builds
+
+For detailed architecture and API documentation, see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) and [docs/API.md](./docs/API.md).
 
 ## Development
 
 ### Code Quality
 - **ESLint**: Zero errors enforced with `npm run lint`
-- **TypeScript**: Type checking with `npm run typecheck`
+- **TypeScript**: Strict type checking with `npm run typecheck:strict`
 - **Prettier**: Code formatting (configured in ESLint)
 
 ### Testing
@@ -262,12 +269,23 @@ PoleCheck Desktop uses multiple data sources and validation techniques for highl
 Run tests using these commands:
 
 ```bash
-npm run test:unit        # Unit tests
-npm run test:integration # Integration tests
-npm run test:e2e         # End-to-end tests
+npm run test             # Run all tests
+npm run test:unit        # Unit tests only
+npm run test:integration # Integration tests only
+npm run test:performance # Performance tests
+npm run test:e2e         # End-to-end tests (Playwright)
 npm run test:all         # All test suites
+npm run test:coverage    # Coverage report
 npm run validate         # Type checking, linting, and tests
 ```
+
+### Documentation
+
+- **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)**: Technical architecture, design patterns, and code organization
+- **[API.md](./docs/API.md)**: API documentation for services and IPC channels
+- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)**: Development guide, coding standards, and common patterns
+- **[roadmap.md](./docs/roadmap.md)**: Development roadmap and priorities
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)**: Contribution guidelines
 
 ## Troubleshooting
 
@@ -293,11 +311,15 @@ npm run validate         # Type checking, linting, and tests
 
 ## Contributing
 
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed contribution guidelines.
+
+Quick checklist:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run `npm run lint` and `npm run typecheck`
-5. Submit a pull request
+4. Run `npm run validate` (type checking, linting, and tests)
+5. Update documentation if needed
+6. Submit a pull request
 
 ## License
 

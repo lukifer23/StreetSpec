@@ -1,99 +1,120 @@
 import type { CameraParams, Point, Vector3, DistortionCoefficients, DecodedDepthData, OnnxDepthMap } from '../types/common';
+import { dotProduct3D, normalizeVector3D, degreesToRadians, distance3D, magnitude3D } from '../utils/math';
 
 const calibrationAppliedSymbol: unique symbol = Symbol('calibrationApplied');
 type CalibratedVector3 = Vector3 & { [calibrationAppliedSymbol]?: boolean };
 
-// Helper function to calculate the dot product of two vectors
-const dotProduct = (v1: Vector3, v2: Vector3): number => {
-    return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
-};
+// Helper function to convert degrees to radians with validation (wraps unified version)
+const degreesToRadiansValidated = (degrees: number): number => {
+  // Validate input
+  if (!Number.isFinite(degrees)) {
+    return 0;
+  }
+  
+  // Normalize to [-360, 360] range to prevent overflow
+  const normalized = degrees % 360;
+  
+  return degreesToRadians(normalized);
+}
 
-// Helper function to convert degrees to radians
-const degreesToRadians = (degrees: number): number => {
-  return degrees * Math.PI / 180;
-};
+// Use unified math functions
+const dotProduct = dotProduct3D;
 
-// Helper function to normalize a 3D vector
-const normalizeVector = (vec: Vector3): Vector3 => {
-    const length = Math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z);
-    if (length === 0) return { x: 0, y: 0, z: 0 }; // Avoid division by zero
-    return {
-        x: vec.x / length,
-        y: vec.y / length,
-        z: vec.z / length,
-    };
-};
+import { UnifiedCache, cacheRegistry } from '../utils/cacheManager';
 
-type CachedEntry<T> = {
-  value: T;
-  timestamp: number;
-};
+// Unified caches with consistent management
+const calculationCache = new UnifiedCache<unknown>({
+  name: 'geometry-calculations',
+  maxSize: 1000,
+  ttl: 5 * 60 * 1000, // 5 minutes
+  evictionStrategy: 'lru'
+});
 
-const calculationCache = new Map<string, CachedEntry<unknown>>();
-const CACHE_SIZE_LIMIT = 1000;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const CACHE_MISS = Symbol('CACHE_MISS');
+const fovCache = new UnifiedCache<{ hFov: number; vFov: number }>({
+  name: 'geometry-fov',
+  maxSize: 100,
+  ttl: undefined, // No expiration for FOV cache
+  evictionStrategy: 'lru'
+});
 
-const fovCache = new Map<string, { hFov: number; vFov: number }>();
-const FOV_CACHE_LIMIT = 100;
+const trigCache = new UnifiedCache<{ cos: number; sin: number }>({
+  name: 'geometry-trig',
+  maxSize: 1000,
+  ttl: undefined, // No expiration for trig cache
+  evictionStrategy: 'lru'
+});
 
-const trigCache = new Map<number, { cos: number; sin: number }>();
-const TRIG_CACHE_LIMIT = 1000;
+// Register caches for statistics
+cacheRegistry.register('geometry-calculations', calculationCache);
+cacheRegistry.register('geometry-fov', fovCache);
+cacheRegistry.register('geometry-trig', trigCache);
 
 // Use WeakMap to prevent memory leaks - automatically garbage collected when depthData is GC'd
 const depthDataSignatureCache = new WeakMap<DecodedDepthData, string>();
 
+const CACHE_MISS = Symbol('CACHE_MISS');
+
+/**
+ * Normalize numeric value for cache key generation to prevent floating-point collisions
+ */
+// Use unified math function for consistency
+
 function getCacheKey(operation: string, params: unknown): string {
-  return `${operation}_${JSON.stringify(params)}`;
+  if (params && typeof params === 'object' && !Array.isArray(params)) {
+    return UnifiedCache.generateKey(operation, params as Record<string, unknown>);
+  }
+  return UnifiedCache.generateKey(operation, { value: params });
 }
 
 function getCachedResult<T>(key: string): T | typeof CACHE_MISS {
-  const cached = calculationCache.get(key) as CachedEntry<T> | undefined;
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.value;
-  }
-  if (cached) {
-    calculationCache.delete(key);
+  const cached = calculationCache.get(key) as T | null;
+  if (cached !== null) {
+    return cached;
   }
   return CACHE_MISS;
 }
 
 function setCachedResult<T>(key: string, value: T): void {
-  if (calculationCache.size >= CACHE_SIZE_LIMIT) {
-    const firstKey = calculationCache.keys().next().value;
-    if (firstKey) {
-      calculationCache.delete(firstKey);
-    }
-  }
-
-  calculationCache.set(key, {
-    value,
-    timestamp: Date.now(),
-  });
+  calculationCache.set(key, value);
 }
 
 function getTrigValues(angleDegrees: number): { cos: number; sin: number } {
+  // Validate input
+  if (!Number.isFinite(angleDegrees)) {
+    return { cos: 1, sin: 0 }; // Default to 0 degrees
+  }
+  
+  // Normalize angle to [-360, 360] range
   const normalizedAngle = angleDegrees % 360;
-  const cacheKey = Math.round(normalizedAngle * 100) / 100; // Round to 2 decimal places
+  const cacheKey = UnifiedCache.generateKey('trig', { angle: normalizedAngle }, 2);
 
-  let cached = trigCache.get(cacheKey);
-  if (!cached) {
-    const radians = degreesToRadians(normalizedAngle);
-    cached = {
-      cos: Math.cos(radians),
-      sin: Math.sin(radians),
-    };
-    trigCache.set(cacheKey, cached);
-
-    if (trigCache.size > TRIG_CACHE_LIMIT) {
-      const firstKey = trigCache.keys().next().value;
-      if (firstKey) {
-        trigCache.delete(firstKey);
-      }
-    }
+  const cached = trigCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
-  return cached;
+  const radians = degreesToRadiansValidated(normalizedAngle);
+  
+  // Validate radians
+  if (!Number.isFinite(radians)) {
+    return { cos: 1, sin: 0 };
+  }
+  
+  const cosValue = Math.cos(radians);
+  const sinValue = Math.sin(radians);
+  
+  // Validate results
+  if (!Number.isFinite(cosValue) || !Number.isFinite(sinValue)) {
+    return { cos: 1, sin: 0 };
+  }
+  
+  const result = {
+    cos: cosValue,
+    sin: sinValue,
+  };
+  trigCache.set(cacheKey, result);
+
+  return result;
 }
 
 function getDepthDataSignature(depthData: DecodedDepthData): string {
@@ -224,8 +245,7 @@ export function calculateFov(
   const effectiveZoom = zoom ?? 1;
   // Clamp zoom level for safety
   const clampedZoom = Math.max(0, Math.min(effectiveZoom, 4));
-  const normalizedAspect = Number(aspectRatio.toFixed(6));
-  const cacheKey = `${clampedZoom}_${normalizedAspect}`;
+  const cacheKey = UnifiedCache.generateKey('fov', { zoom: clampedZoom, aspectRatio });
   const cached = fovCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -233,19 +253,34 @@ export function calculateFov(
   // Look up the calibrated horizontal FOV and fall back to zoom level 1
   const hFov = CALIBRATED_HFOV_BY_ZOOM[clampedZoom as keyof typeof CALIBRATED_HFOV_BY_ZOOM] ?? CALIBRATED_HFOV_BY_ZOOM[1];
   // Derive vertical FOV from horizontal FOV and aspect ratio
-  const hFovRad = degreesToRadians(hFov!);
-  const vFovRad = 2 * Math.atan(Math.tan(hFovRad / 2) / aspectRatio);
+  const hFovRad = degreesToRadiansValidated(hFov!);
+  
+  // Validate aspect ratio
+  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+    return { hFov: hFov!, vFov: hFov! }; // Fallback to same as horizontal
+  }
+  
+  const tanHalfHFov = Math.tan(hFovRad / 2);
+  if (!Number.isFinite(tanHalfHFov) || tanHalfHFov <= 0) {
+    return { hFov: hFov!, vFov: hFov! }; // Fallback
+  }
+  
+  const vFovRad = 2 * Math.atan(tanHalfHFov / aspectRatio);
+  
+  // Validate result
+  if (!Number.isFinite(vFovRad)) {
+    return { hFov: hFov!, vFov: hFov! }; // Fallback
+  }
+  
   const vFov = (vFovRad * 180) / Math.PI;
+  
+  // Validate final vFov
+  if (!Number.isFinite(vFov) || vFov <= 0 || vFov > 180) {
+    return { hFov: hFov!, vFov: hFov! }; // Fallback
+  }
 
   const result = { hFov: hFov!, vFov };
   fovCache.set(cacheKey, result);
-
-  if (fovCache.size > FOV_CACHE_LIMIT) {
-    const firstKey = fovCache.keys().next().value;
-    if (firstKey) {
-      fovCache.delete(firstKey);
-    }
-  }
 
   return result;
 }
@@ -261,52 +296,39 @@ export function calculateFov(
  * @returns A normalized 3D direction vector {x, y, z}.
  */
 /**
- * Get effective calibration pitch offset, accounting for zoom-level bias interpolation
+ * Get effective calibration pitch offset with enhanced zoom-level bias interpolation
+ * Returns both the offset and confidence level
  */
-function getEffectiveCalibrationOffset(
+export function getEffectiveCalibrationPitchOffset(
   cameraParams: CameraParams,
-  zoomBiasTable?: Record<number, number>
-): number {
-  const baseOffset = cameraParams.calibrationPitchOffsetDeg ?? 0;
+  settings?: { calibrationPitchOffsetDeg?: number; calibrationBiasByZoom?: Record<number, number | { bias: number; confidence: number; sampleCount: number; lastUpdated: number }> }
+): { offset: number; confidence: number } {
+  const baseOffset = settings?.calibrationPitchOffsetDeg ?? cameraParams.calibrationPitchOffsetDeg ?? 0;
   
-  if (!zoomBiasTable || Object.keys(zoomBiasTable).length === 0) {
-    return baseOffset;
+  if (!settings?.calibrationBiasByZoom || !cameraParams.zoom) {
+    return { offset: baseOffset, confidence: 0.8 }; // Default confidence for base offset
   }
 
-  const zoom = cameraParams.zoom ?? 1;
-  const zoomLevels = Object.keys(zoomBiasTable)
-    .map(k => Number(k))
-    .filter(k => Number.isFinite(k))
-    .sort((a, b) => a - b);
+  // Check if using new format with confidence
+  const firstEntry = Object.values(settings.calibrationBiasByZoom)[0];
+  const isNewFormat = firstEntry && typeof firstEntry === 'object' && 'bias' in firstEntry;
 
-  if (zoomLevels.length === 0) return baseOffset;
-  if (zoomLevels.length === 1) return zoomBiasTable[zoomLevels[0]!] ?? baseOffset;
-
-  // Find surrounding zoom levels
-  let lower = zoomLevels[0]!;
-  let upper = zoomLevels[zoomLevels.length - 1]!;
-
-  for (let i = 0; i < zoomLevels.length - 1; i++) {
-    if (zoom >= zoomLevels[i]! && zoom <= zoomLevels[i + 1]!) {
-      lower = zoomLevels[i]!;
-      upper = zoomLevels[i + 1]!;
-      break;
-    }
+  if (isNewFormat) {
+    const { interpolateZoomBias } = require('./depthCalibration');
+    const zoomBias = interpolateZoomBias(cameraParams.zoom, settings.calibrationBiasByZoom as any);
+    return {
+      offset: baseOffset + zoomBias.bias,
+      confidence: Math.min(1.0, zoomBias.confidence * 0.9) // Slightly reduce confidence for interpolation
+    };
+  } else {
+    // Legacy format support
+    const { interpolateZoomBias } = require('./depthCalibration');
+    const zoomBias = interpolateZoomBias(cameraParams.zoom, settings.calibrationBiasByZoom as any);
+    return {
+      offset: baseOffset + zoomBias.bias,
+      confidence: 0.6 // Lower confidence for legacy format
+    };
   }
-
-  // Extrapolate if outside range
-  if (zoom < lower) {
-    return zoomBiasTable[lower] ?? baseOffset;
-  }
-  if (zoom > upper) {
-    return zoomBiasTable[upper] ?? baseOffset;
-  }
-
-  // Linear interpolation
-  const lowerBias = zoomBiasTable[lower] ?? baseOffset;
-  const upperBias = zoomBiasTable[upper] ?? baseOffset;
-  const t = (zoom - lower) / (upper - lower);
-  return lowerBias + t * (upperBias - lowerBias);
 }
 
 export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, viewWidth: number, viewHeight: number, zoomBiasTable?: Record<number, number>): Vector3 {
@@ -344,7 +366,7 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
 
     // 2. Account for FOV and aspect ratio
     // Calculate the distance from the camera to the projection plane based on FOV
-    const fovRadians = degreesToRadians(clampedVFov);
+    const fovRadians = degreesToRadiansValidated(clampedVFov);
     // tan(fov/2) = (projectionPlaneHeight/2) / distance
     // distance = (projectionPlaneHeight/2) / tan(fov/2)
     // Assuming projectionPlaneHeight corresponds to NDC range [-1, 1], so height/2 = 1
@@ -404,7 +426,10 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // 5. Normalize the vector to get a unit direction vector
     // Conventionally, in Street View context: +Y is up, +X is right, +Z is forward.
     // Our calculation results in +Z forward, +Y up, +X right relative to camera view. Let's keep this.
-    const normalized = normalizeVector(vector) as CalibratedVector3;
+    const normalized = normalizeVector3D(vector);
+    if (!normalized) {
+      return null;
+    }
     
     // Validate normalized vector
     if (!Number.isFinite(normalized.x) || !Number.isFinite(normalized.y) || !Number.isFinite(normalized.z)) {
@@ -413,6 +438,38 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     
     normalized[calibrationAppliedSymbol] = true;
     return normalized;
+}
+
+/**
+ * Fast rejection test for ground plane intersection
+ * Returns true if intersection is unlikely to succeed
+ */
+export function fastRejectGroundPlaneIntersection(
+  directionVector: Vector3,
+  cameraHeight: number
+): boolean {
+  // Fast validation checks
+  if (!Number.isFinite(directionVector.y) || !Number.isFinite(cameraHeight)) {
+    return true;
+  }
+
+  // Vector must point downward (negative y)
+  if (directionVector.y >= 0) {
+    return true;
+  }
+
+  // Reject vectors too close to horizontal
+  const HORIZON_THRESHOLD = 0.01;
+  if (Math.abs(directionVector.y) < HORIZON_THRESHOLD) {
+    return true;
+  }
+
+  // Reject if camera height is invalid
+  if (cameraHeight <= 0 || cameraHeight > 100) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -429,7 +486,11 @@ export function estimateGroundPlaneIntersection(
     cameraParams?: CameraParams
 ): Vector3 | null {
     const cameraHeight = cameraParams?.cameraHeight ?? 2.5; // Default assumed height
-    const HORIZON_THRESHOLD = 0.01; // Treat vectors with |y| < threshold as horizontal
+
+    // Fast rejection first
+    if (fastRejectGroundPlaneIntersection(directionVector, cameraHeight)) {
+        return null;
+    }
 
     const calibrationOffset = cameraParams?.calibrationPitchOffsetDeg ?? 0;
     let workingVector = directionVector as CalibratedVector3;
@@ -445,12 +506,11 @@ export function estimateGroundPlaneIntersection(
         } as CalibratedVector3;
         rotatedVector[calibrationAppliedSymbol] = true;
         workingVector = rotatedVector;
-    }
-
-    // Check if the vector points downwards (negative y component) and is not too close to horizontal
-    if (workingVector.y >= 0 || Math.abs(workingVector.y) < HORIZON_THRESHOLD) {
-        // Vector points upwards or is too close to horizontal, won't intersect reliably.
-        return null;
+        
+        // Re-check after calibration rotation
+        if (fastRejectGroundPlaneIntersection(workingVector, cameraHeight)) {
+            return null;
+        }
     }
 
     // Validate working vector components are finite
@@ -479,7 +539,7 @@ export function estimateGroundPlaneIntersection(
         return null;
     }
 
-    const dist = Math.hypot(intersectionPoint.x, intersectionPoint.y, intersectionPoint.z);
+    const dist = magnitude3D(intersectionPoint);
     if (dist > 1e5 || dist < 1e-6) {
         return null; // Unrealistic distance
     }
@@ -581,37 +641,40 @@ export function screenToWorldWithDepth(
     if (isValidPlaneIndex) {
         const selectedPlane = depthData.planes[planeIndex!];
         if (selectedPlane) {
-            // Validate plane normal
-            const normalLen = Math.hypot(selectedPlane.nx, selectedPlane.ny, selectedPlane.nz);
-            if (!Number.isFinite(normalLen) || normalLen < 1e-6 || normalLen > 2.0) {
-                // Invalid plane normal, skip this plane
-            } else {
-                const normal: Vector3 = { 
-                    x: selectedPlane.nx / normalLen, 
-                    y: selectedPlane.ny / normalLen, 
-                    z: selectedPlane.nz / normalLen 
-                };
-                const dotVN = dotProduct(directionVector, normal);
+            // Fast rejection before expensive validation
+            if (!fastRejectPlane(selectedPlane.nx, selectedPlane.ny, selectedPlane.nz, selectedPlane.d)) {
+                // Validate and normalize plane normal
+                const normal = validateAndNormalizePlaneNormal(
+                    selectedPlane.nx,
+                    selectedPlane.ny,
+                    selectedPlane.nz
+                );
                 
-                // Reject near-parallel intersections (more conservative threshold)
-                const PARALLEL_THRESHOLD = epsilon * 10; // 1e-5
-                if (Math.abs(dotVN) >= PARALLEL_THRESHOLD) {
-                    // Google depth planes follow n dot x + d = 0 with normals pointing toward the camera.
-                    // The intersection distance along the viewing ray is therefore t = -d / (n dot v).
-                    const t = -selectedPlane.d / dotVN;
+                if (normal) {
+                    const dotVN = dotProduct(directionVector, normal);
                     
-                    // Validate t is finite and within plausible scene bounds
-                    if (Number.isFinite(t) && t > epsilon && t < 1e5) {
-                        // Validate the resulting world point
-                        const testPoint: Vector3 = {
-                            x: directionVector.x * t,
-                            y: directionVector.y * t,
-                            z: directionVector.z * t
-                        };
-                        if (Number.isFinite(testPoint.x) && Number.isFinite(testPoint.y) && Number.isFinite(testPoint.z)) {
-                            const testDist = Math.hypot(testPoint.x, testPoint.y, testPoint.z);
-                            if (testDist > epsilon && testDist < 1e5) {
-                                minDistance = t;
+                    // Reject near-parallel intersections (more conservative threshold)
+                    const PARALLEL_THRESHOLD = epsilon * 10; // 1e-5
+                    if (Math.abs(dotVN) >= PARALLEL_THRESHOLD) {
+                        // Google depth planes follow n dot x + d = 0 with normals pointing toward the camera.
+                        // The intersection distance along the viewing ray is therefore t = -d / (n dot v).
+                        const t = -selectedPlane.d / dotVN;
+                        
+                        // Validate t is finite and within plausible scene bounds (0.1m to 10km)
+                        const MIN_DISTANCE = 0.1;
+                        const MAX_DISTANCE = 10000;
+                        if (Number.isFinite(t) && t > MIN_DISTANCE && t < MAX_DISTANCE) {
+                            // Validate the resulting world point
+                            const testPoint: Vector3 = {
+                                x: directionVector.x * t,
+                                y: directionVector.y * t,
+                                z: directionVector.z * t
+                            };
+                            if (Number.isFinite(testPoint.x) && Number.isFinite(testPoint.y) && Number.isFinite(testPoint.z)) {
+                                const testDist = magnitude3D(testPoint);
+                                if (testDist > MIN_DISTANCE && testDist < MAX_DISTANCE) {
+                                    minDistance = t;
+                                }
                             }
                         }
                     }
@@ -623,18 +686,21 @@ export function screenToWorldWithDepth(
     // 4. Fall back to searching all planes if no valid plane was found
     if (minDistance === Infinity) {
         const PARALLEL_THRESHOLD = epsilon * 10; // 1e-5
+        const MIN_DISTANCE = 0.1;
+        const MAX_DISTANCE = 10000;
+        
         for (const plane of depthData.planes) {
-            // Validate plane normal
-            const normalLen = Math.hypot(plane.nx, plane.ny, plane.nz);
-            if (!Number.isFinite(normalLen) || normalLen < 1e-6 || normalLen > 2.0) {
+            // Fast rejection before expensive validation
+            if (fastRejectPlane(plane.nx, plane.ny, plane.nz, plane.d)) {
+                continue;
+            }
+
+            // Validate and normalize plane normal
+            const normal = validateAndNormalizePlaneNormal(plane.nx, plane.ny, plane.nz);
+            if (!normal) {
                 continue; // Skip invalid plane
             }
             
-            const normal: Vector3 = { 
-                x: plane.nx / normalLen, 
-                y: plane.ny / normalLen, 
-                z: plane.nz / normalLen 
-            };
             const dotVN = dotProduct(directionVector, normal);
             
             if (Math.abs(dotVN) < PARALLEL_THRESHOLD) {
@@ -644,8 +710,8 @@ export function screenToWorldWithDepth(
             // Same Street View plane convention applies when examining all planes.
             const t = -plane.d / dotVN;
             
-            // Validate t is finite and closer than current best
-            if (Number.isFinite(t) && t > epsilon && t < minDistance && t < 1e5) {
+            // Validate t is finite and closer than current best, within physical bounds
+            if (Number.isFinite(t) && t > MIN_DISTANCE && t < minDistance && t < MAX_DISTANCE) {
                 // Validate the resulting world point
                 const testPoint: Vector3 = {
                     x: directionVector.x * t,
@@ -654,7 +720,7 @@ export function screenToWorldWithDepth(
                 };
                 if (Number.isFinite(testPoint.x) && Number.isFinite(testPoint.y) && Number.isFinite(testPoint.z)) {
                     const testDist = Math.hypot(testPoint.x, testPoint.y, testPoint.z);
-                    if (testDist > epsilon && testDist < 1e5) {
+                    if (testDist > MIN_DISTANCE && testDist < MAX_DISTANCE) {
                         minDistance = t;
                     }
                 }
@@ -670,10 +736,12 @@ export function screenToWorldWithDepth(
             z: directionVector.z * minDistance,
         };
         
-        // Final validation of world point
+        // Final validation of world point with consistent bounds
+        const MIN_DISTANCE = 0.1;
+        const MAX_DISTANCE = 10000;
         if (Number.isFinite(worldPoint.x) && Number.isFinite(worldPoint.y) && Number.isFinite(worldPoint.z)) {
-            const dist = Math.hypot(worldPoint.x, worldPoint.y, worldPoint.z);
-            if (dist > epsilon && dist < 1e5) {
+            const dist = magnitude3D(worldPoint);
+            if (dist > MIN_DISTANCE && dist < MAX_DISTANCE) {
                 setCachedResult(cacheKey, worldPoint);
                 return worldPoint;
             }
@@ -691,11 +759,12 @@ export function screenToWorldWithDepth(
  * @param point2 - The second 3D point.
  * @returns The distance in the same units as the point coordinates.
  */
+/**
+ * Calculates the Euclidean distance between two 3D points.
+ * @deprecated Use distance3D from '../utils/math' instead
+ */
 export function calculateDistance3D(point1: Vector3, point2: Vector3): number {
-    const dx = point2.x - point1.x;
-    const dy = point2.y - point1.y;
-    const dz = point2.z - point1.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return distance3D(point1, point2);
 }
 
 // Automatic horizon detection using multi-scale RANSAC and Hough transform
@@ -707,17 +776,23 @@ export interface HorizonDetectionResult {
 }
 
 /**
- * Multi-scale RANSAC with adaptive thresholding for robust horizon detection
+ * Enhanced multi-scale RANSAC with adaptive thresholding and quality-based selection
  */
 function multiScaleRansacLineFit(
   points: Array<{ x: number; y: number; depth: number }>,
-  scales: number[] = [1.0, 0.5, 2.0],
-  baseIterations: number = 50,
+  scales: number[] = [1.0, 0.75, 0.5, 1.5, 2.0],
+  baseIterations: number = 100,
   baseThreshold: number = 5.0
-): { slope: number; intercept: number; inliers: number; scale: number } | null {
-  let bestResult: { slope: number; intercept: number; inliers: number; scale: number } | null = null;
+): { slope: number; intercept: number; inliers: number; scale: number; quality: number } | null {
+  if (points.length < 4) return null;
 
-  for (const scale of scales) {
+  let bestResult: { slope: number; intercept: number; inliers: number; scale: number; quality: number } | null = null;
+  let bestQuality = 0;
+
+  // Sort scales to try most promising first (1.0 scale typically best)
+  const sortedScales = [...scales].sort((a, b) => Math.abs(a - 1.0) - Math.abs(b - 1.0));
+
+  for (const scale of sortedScales) {
     // Scale points for this iteration
     const scaledPoints = points.map(p => ({
       x: p.x * scale,
@@ -725,18 +800,32 @@ function multiScaleRansacLineFit(
       depth: p.depth
     }));
 
-    const threshold = baseThreshold * scale;
-    const iterations = Math.floor(baseIterations / scale);
+    // Adaptive iterations: more for smaller scales (more challenging)
+    const iterations = Math.floor(baseIterations * (1 + (1 - scale) * 0.5));
+    const threshold = baseThreshold * Math.max(0.5, Math.min(2.0, scale));
     
     const result = ransacLineFit(scaledPoints, iterations, threshold);
     
-    if (result && (!bestResult || result.inliers > bestResult.inliers)) {
-      bestResult = {
+    if (result) {
+      const unscaledResult = {
         slope: result.slope / scale, // Unscale slope
         intercept: result.intercept,
         inliers: result.inliers,
-        scale
+        scale,
+        quality: result.quality
       };
+
+      // Select based on quality first, then inliers
+      if (!bestResult || result.quality > bestQuality || 
+          (result.quality === bestQuality && result.inliers > bestResult.inliers)) {
+        bestResult = unscaledResult;
+        bestQuality = result.quality;
+      }
+
+      // Early exit if we find an excellent result
+      if (result.quality > 0.9 && result.inliers >= points.length * 0.5) {
+        break;
+      }
     }
   }
 
@@ -1024,18 +1113,22 @@ export function detectHorizonFromDepth(
   // Multi-method detection with confidence weighting
   const methods: Array<{ pitchOffset: number; confidence: number; method: 'ransac' | 'hough' | 'gradient' }> = [];
 
-  // Try multi-scale RANSAC
-  const ransacResult = multiScaleRansacLineFit(samplePoints, [1.0, 0.5, 2.0], 100, 5.0);
-  if (ransacResult && ransacResult.inliers >= samplePoints.length * 0.3) {
+  // Try enhanced multi-scale RANSAC
+  const ransacResult = multiScaleRansacLineFit(samplePoints, [1.0, 0.75, 0.5, 1.5, 2.0], 150, 5.0);
+  if (ransacResult && ransacResult.inliers >= samplePoints.length * 0.25) {
     const centerY = viewHeight / 2;
     const horizonY = ransacResult.intercept + ransacResult.slope * (viewWidth / 2);
     const pixelOffset = horizonY - centerY;
     const vFov = cameraParams.vFov || 90;
     const angleOffset = pixelOffsetToVerticalAngle(centerY - pixelOffset, viewHeight, vFov);
     const pitchOffset = Math.max(-30, Math.min(30, -angleOffset));
-    const confidence = Math.min(1.0, ransacResult.inliers / samplePoints.length);
     
-    if (Math.abs(ransacResult.slope) <= 0.1) {
+    // Enhanced confidence: combines inlier ratio and quality metric
+    const inlierRatio = ransacResult.inliers / samplePoints.length;
+    const confidence = Math.min(1.0, inlierRatio * 0.7 + ransacResult.quality * 0.3);
+    
+    // More lenient slope check: horizon can have slight tilt
+    if (Math.abs(ransacResult.slope) <= 0.15) {
       methods.push({ pitchOffset, confidence, method: 'ransac' });
     }
   }
@@ -1111,54 +1204,222 @@ export function detectHorizonFromDepth(
   return result;
 }
 
-// RANSAC line fitting for horizon detection
+/**
+ * Enhanced RANSAC line fitting with adaptive thresholds and early termination
+ * Uses progressive sampling and quality-based iteration control
+ */
 function ransacLineFit(
   points: Array<{ x: number; y: number; depth: number }>,
   maxIterations: number,
   threshold: number
-): { slope: number; intercept: number; inliers: number } | null {
-  let bestLine: { slope: number; intercept: number; inliers: number } | null = null;
+): { slope: number; intercept: number; inliers: number; quality: number } | null {
+  if (points.length < 2) return null;
+
+  let bestLine: { slope: number; intercept: number; inliers: number; quality: number } | null = null;
+  let bestInlierRatio = 0;
+  const minInlierRatio = 0.3; // Minimum acceptable inlier ratio
+  const earlyTerminationRatio = 0.95; // Stop if we find a line with this many inliers
+
+  // Pre-compute point distances for adaptive thresholding
+  const pointDepths = points.map(p => p.depth);
+  const minDepth = Math.min(...pointDepths);
+  const maxDepth = Math.max(...pointDepths);
+  const depthRange = maxDepth - minDepth || 1;
+
+  // Adaptive threshold based on depth variation
+  const adaptiveThreshold = threshold * (1 + depthRange / 100);
+
+  // Progressive sampling: start with small random samples, expand if needed
+  const sampleIndices = Array.from({ length: points.length }, (_, i) => i);
+  
+  // Shuffle for random sampling
+  for (let i = sampleIndices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [sampleIndices[i], sampleIndices[j]] = [sampleIndices[j]!, sampleIndices[i]!];
+  }
+
+  let consecutiveFailures = 0;
+  const maxConsecutiveFailures = Math.floor(maxIterations * 0.3);
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    // Randomly select 2 points
-    const idx1 = Math.floor(Math.random() * points.length);
-    const idx2 = Math.floor(Math.random() * points.length);
-    if (idx1 === idx2) continue;
+    // Early termination if we have a high-quality result
+    if (bestInlierRatio >= earlyTerminationRatio && iter > 10) {
+      break;
+    }
+
+    // Progressive sample selection: prefer points with similar depths (horizon consistency)
+    let idx1: number, idx2: number;
+    if (iter < maxIterations * 0.5) {
+      // First half: random sampling
+      idx1 = Math.floor(Math.random() * points.length);
+      idx2 = Math.floor(Math.random() * points.length);
+    } else {
+      // Second half: depth-guided sampling (horizon points often have similar depths)
+      const depthTarget = minDepth + depthRange * 0.5;
+      const depthSorted = [...points]
+        .map((p, i) => ({ point: p, idx: i, depthDiff: Math.abs(p.depth - depthTarget) }))
+        .sort((a, b) => a.depthDiff - b.depthDiff)
+        .slice(0, Math.min(20, points.length));
+      
+      if (depthSorted.length >= 2) {
+        const selected = depthSorted[Math.floor(Math.random() * depthSorted.length)]!;
+        idx1 = selected.idx;
+        const secondSelected = depthSorted.filter(s => s.idx !== idx1)[Math.floor(Math.random() * (depthSorted.length - 1))];
+        idx2 = secondSelected?.idx ?? Math.floor(Math.random() * points.length);
+      } else {
+        idx1 = Math.floor(Math.random() * points.length);
+        idx2 = Math.floor(Math.random() * points.length);
+      }
+    }
+
+    if (idx1 === idx2 || idx1 >= points.length || idx2 >= points.length) {
+      consecutiveFailures++;
+      if (consecutiveFailures > maxConsecutiveFailures) break;
+      continue;
+    }
 
     const p1 = points[idx1]!;
     const p2 = points[idx2]!;
 
+    // Skip if points are too close (numerically unstable)
+    const dx = p2.x - p1.x;
+    if (Math.abs(dx) < 1e-6) {
+      consecutiveFailures++;
+      continue;
+    }
+
     // Calculate line parameters (y = mx + b)
-    const slope = (p2.y - p1.y) / (p2.x - p1.x);
+    const slope = (p2.y - p1.y) / dx;
     const intercept = p1.y - slope * p1.x;
 
-    // Count inliers
+    // Skip extreme slopes (horizon should be nearly horizontal)
+    if (Math.abs(slope) > 0.5) {
+      consecutiveFailures++;
+      continue;
+    }
+
+    // Count inliers with adaptive threshold
     let inliers = 0;
+    let totalError = 0;
+    const inlierPoints: Array<{ x: number; y: number }> = [];
+
     for (const point of points) {
       const expectedY = slope * point.x + intercept;
       const distance = Math.abs(point.y - expectedY);
-      if (distance < threshold) {
+      
+      // Adaptive threshold based on point depth
+      const pointThreshold = adaptiveThreshold * (1 + Math.abs(point.depth - depthTarget) / depthRange * 0.5);
+      
+      if (distance < pointThreshold) {
         inliers++;
+        totalError += distance;
+        inlierPoints.push({ x: point.x, y: point.y });
       }
     }
 
+    const inlierRatio = inliers / points.length;
+    
+    // Quality metric: combines inlier ratio and average error
+    const avgError = inliers > 0 ? totalError / inliers : Infinity;
+    const quality = inlierRatio * (1 - Math.min(1, avgError / threshold));
+
     // Update best line
-    if (!bestLine || inliers > bestLine.inliers) {
-      bestLine = { slope, intercept, inliers };
+    if (!bestLine || quality > bestLine.quality || (quality === bestLine.quality && inliers > bestLine.inliers)) {
+      bestLine = { slope, intercept, inliers, quality };
+      bestInlierRatio = inlierRatio;
+      consecutiveFailures = 0;
+    } else {
+      consecutiveFailures++;
+    }
+
+    // Early termination conditions
+    if (bestInlierRatio >= earlyTerminationRatio && iter > 10) break;
+    if (consecutiveFailures > maxConsecutiveFailures) break;
+  }
+
+  // Refine best line using least squares on inliers
+  if (bestLine && bestLine.inliers >= points.length * minInlierRatio) {
+    // Re-compute inliers for refinement
+    const inlierPoints: Array<{ x: number; y: number }> = [];
+    for (const point of points) {
+      const expectedY = bestLine.slope * point.x + bestLine.intercept;
+      const distance = Math.abs(point.y - expectedY);
+      if (distance < adaptiveThreshold) {
+        inlierPoints.push({ x: point.x, y: point.y });
+      }
+    }
+
+    if (inlierPoints.length >= 2) {
+      // Least squares refinement
+      let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+      for (const p of inlierPoints) {
+        sumX += p.x;
+        sumY += p.y;
+        sumXY += p.x * p.y;
+        sumX2 += p.x * p.x;
+      }
+      const n = inlierPoints.length;
+      const denom = n * sumX2 - sumX * sumX;
+      if (Math.abs(denom) > 1e-6) {
+        const refinedSlope = (n * sumXY - sumX * sumY) / denom;
+        const refinedIntercept = (sumY - refinedSlope * sumX) / n;
+        
+        // Verify refinement improved quality
+        let refinedInliers = 0;
+        for (const point of points) {
+          const expectedY = refinedSlope * point.x + refinedIntercept;
+          const distance = Math.abs(point.y - expectedY);
+          if (distance < adaptiveThreshold) {
+            refinedInliers++;
+          }
+        }
+        
+        if (refinedInliers >= bestLine.inliers) {
+          const refinedQuality = (refinedInliers / points.length) * (1 - Math.min(1, adaptiveThreshold / threshold));
+          return { slope: refinedSlope, intercept: refinedIntercept, inliers: refinedInliers, quality: refinedQuality };
+        }
+      }
     }
   }
 
-  return bestLine;
+  return bestLine && bestLine.inliers >= points.length * minInlierRatio ? bestLine : null;
 }
 
 // Convert pixel offset to vertical angle (similar to existing function but more robust)
 function pixelOffsetToVerticalAngle(pixelY: number, viewHeight: number, vFov: number): number {
+  // Validate inputs to prevent division by zero and NaN
+  if (!Number.isFinite(pixelY) || !Number.isFinite(viewHeight) || !Number.isFinite(vFov)) {
+    return 0;
+  }
+
+  if (viewHeight <= 0) {
+    return 0;
+  }
+
+  // Clamp vFov to valid range
+  const clampedVFov = Math.max(1, Math.min(179, vFov));
+
   // Normalize pixel coordinate to [-1, 1] range
   const normalizedY = 1 - (pixelY / viewHeight) * 2; // Flip Y axis
 
+  // Clamp normalizedY to prevent extreme values
+  const clampedY = Math.max(-1, Math.min(1, normalizedY));
+
   // Convert to angle using FOV
-  const vFovRad = degreesToRadians(vFov);
-  const angleRad = Math.atan2(normalizedY * Math.tan(vFovRad / 2), 1);
+  const vFovRad = degreesToRadiansValidated(clampedVFov);
+  const tanHalfFov = Math.tan(vFovRad / 2);
+  
+  // Validate tan result
+  if (!Number.isFinite(tanHalfFov) || tanHalfFov <= 0) {
+    return 0;
+  }
+
+  const angleRad = Math.atan2(clampedY * tanHalfFov, 1);
+
+  // Validate result
+  if (!Number.isFinite(angleRad)) {
+    return 0;
+  }
 
   return angleRad * 180 / Math.PI;
 }
@@ -1221,19 +1482,231 @@ export function getGeometryCacheStats(): {
   fovCacheSize: number;
   trigCacheSize: number;
   depthSignatureCacheSize: number;
+  calculationCacheStats: ReturnType<typeof calculationCache.getStats>;
+  fovCacheStats: ReturnType<typeof fovCache.getStats>;
+  trigCacheStats: ReturnType<typeof trigCache.getStats>;
 } {
   return {
-    calculationCacheSize: calculationCache.size,
-    fovCacheSize: fovCache.size,
-    trigCacheSize: trigCache.size,
+    calculationCacheSize: calculationCache.size(),
+    fovCacheSize: fovCache.size(),
+    trigCacheSize: trigCache.size(),
     depthSignatureCacheSize: -1, // WeakMap doesn't expose size - entries are GC'd automatically
+    calculationCacheStats: calculationCache.getStats(),
+    fovCacheStats: fovCache.getStats(),
+    trigCacheStats: trigCache.getStats(),
   };
+}
+
+/**
+ * Fast rejection test for plane validity (checks before full validation)
+ * Returns true if plane should be rejected immediately
+ */
+export function fastRejectPlane(
+  nx: number,
+  ny: number,
+  nz: number,
+  d: number
+): boolean {
+  // Fast NaN/Infinity check
+  if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz) || !Number.isFinite(d)) {
+    return true;
+  }
+
+  // Fast normal length check (squared to avoid sqrt)
+  const normalLenSq = nx * nx + ny * ny + nz * nz;
+  if (normalLenSq < 1e-12 || normalLenSq > 4.0) {
+    return true; // Normal too short or too long
+  }
+
+  // Fast d range check (planes too far are likely invalid)
+  if (Math.abs(d) > 1e6) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Validate and normalize plane normal vector
+ * Returns normalized normal vector or null if invalid
+ */
+export function validateAndNormalizePlaneNormal(
+  nx: number,
+  ny: number,
+  nz: number
+): Vector3 | null {
+  // Fast rejection first
+  if (fastRejectPlane(nx, ny, nz, 0)) {
+    return null;
+  }
+
+  const normalized = normalizeVector3D({ x: nx, y: ny, z: nz });
+  if (!normalized) {
+    return null;
+  }
+  
+  // Validate normal length (should be near 1.0 for unit vectors, allow some drift)
+  const normalLen = magnitude3D(normalized);
+  if (!Number.isFinite(normalLen) || normalLen < 1e-6 || normalLen > 2.0) {
+    return null;
+  }
+
+  return normalized;
+}
+
+/**
+ * Validate complete plane equation: n·x + d = 0
+ * Returns true if plane is valid for intersection calculations
+ */
+export function validatePlaneEquation(
+  nx: number,
+  ny: number,
+  nz: number,
+  d: number
+): boolean {
+  if (fastRejectPlane(nx, ny, nz, d)) {
+    return false;
+  }
+
+  const normal = validateAndNormalizePlaneNormal(nx, ny, nz);
+  return normal !== null;
 }
 
 // Lightweight invariant check helper for plane parameters (development builds)
 export function validatePlaneInvariant(plane: { nx: number; ny: number; nz: number; d: number }): boolean {
-  const nLen = Math.hypot(plane.nx, plane.ny, plane.nz);
-  if (!Number.isFinite(nLen) || nLen < 1e-6) return false;
-  // Normals from Street View are unit length or close; allow small drift
-  return nLen > 0.5 && nLen < 2.0;
+  return validatePlaneEquation(plane.nx, plane.ny, plane.nz, plane.d);
+}
+
+/**
+ * Calculate height between two 3D points with improved accuracy
+ * Handles edge cases and provides confidence score
+ */
+export interface HeightEstimate {
+  height: number;
+  confidence: number;
+  method: 'direct' | 'projected' | 'angle';
+}
+
+export function estimateHeightBetweenPoints(
+  basePoint: Vector3,
+  topPoint: Vector3,
+  cameraPosition: Vector3 = { x: 0, y: 0, z: 0 }
+): HeightEstimate | null {
+  // Validate inputs
+  if (!Number.isFinite(basePoint.y) || !Number.isFinite(topPoint.y)) {
+    return null;
+  }
+
+  // Direct height difference (most accurate when both points have valid depth)
+  const directHeight = topPoint.y - basePoint.y;
+  
+  if (Number.isFinite(directHeight) && Math.abs(directHeight) < 1000) {
+    // High confidence for direct measurement with reasonable height
+    return {
+      height: directHeight,
+      confidence: 0.9,
+      method: 'direct'
+    };
+  }
+
+  // Fallback: calculate horizontal distance and use angle
+  const baseDist = Math.hypot(
+    basePoint.x - cameraPosition.x,
+    basePoint.z - cameraPosition.z
+  );
+  const topDist = Math.hypot(
+    topPoint.x - cameraPosition.x,
+    topPoint.z - cameraPosition.z
+  );
+
+  if (baseDist > 0.1 && topDist > 0.1) {
+    // Use average distance for angle-based estimation
+    const avgDist = (baseDist + topDist) / 2;
+    const projectedHeight = directHeight * (avgDist / Math.max(baseDist, topDist));
+    
+    if (Number.isFinite(projectedHeight) && Math.abs(projectedHeight) < 1000) {
+      return {
+        height: projectedHeight,
+        confidence: 0.6,
+        method: 'projected'
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Calculate intersection point between ray and plane with validation
+ * Returns intersection point and confidence score
+ */
+export interface PlaneIntersectionResult {
+  point: Vector3;
+  distance: number;
+  confidence: number;
+}
+
+export function intersectRayWithPlane(
+  rayOrigin: Vector3,
+  rayDirection: Vector3,
+  planeNormal: Vector3,
+  planeD: number
+): PlaneIntersectionResult | null {
+  // Fast rejection
+  if (fastRejectPlane(planeNormal.x, planeNormal.y, planeNormal.z, planeD)) {
+    return null;
+  }
+
+  // Normalize plane normal
+  const normal = validateAndNormalizePlaneNormal(planeNormal.x, planeNormal.y, planeNormal.z);
+  if (!normal) {
+    return null;
+  }
+
+  // Validate ray direction
+  if (!Number.isFinite(rayDirection.x) || !Number.isFinite(rayDirection.y) || !Number.isFinite(rayDirection.z)) {
+    return null;
+  }
+
+  const dotVN = dotProduct(rayDirection, normal);
+  const PARALLEL_THRESHOLD = 1e-5;
+  
+  if (Math.abs(dotVN) < PARALLEL_THRESHOLD) {
+    return null; // Ray is parallel to plane
+  }
+
+  // Calculate intersection distance: t = -(n·o + d) / (n·v)
+  const dotON = dotProduct(rayOrigin, normal);
+  const t = -(dotON + planeD) / dotVN;
+
+  if (!Number.isFinite(t) || t < 0.1 || t > 10000) {
+    return null;
+  }
+
+  // Calculate intersection point
+  const point: Vector3 = {
+    x: rayOrigin.x + rayDirection.x * t,
+    y: rayOrigin.y + rayDirection.y * t,
+    z: rayOrigin.z + rayDirection.z * t
+  };
+
+  // Validate point
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+    return null;
+  }
+
+  const dist = magnitude3D(point);
+  if (dist < 0.1 || dist > 10000) {
+    return null;
+  }
+
+  // Calculate confidence based on angle between ray and plane
+  const angleRad = Math.acos(Math.abs(dotVN));
+  const confidence = Math.min(1.0, angleRad / (Math.PI / 2)); // Higher confidence for perpendicular rays
+
+  return {
+    point,
+    distance: t,
+    confidence
+  };
 }

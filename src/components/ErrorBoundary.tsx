@@ -1,10 +1,18 @@
-import React, { Component } from 'react';
-import type { ErrorInfo, ReactNode } from 'react';
+// Use require for React to access CJS exports directly (Vite will bundle it)
+// @ts-expect-error - Dynamic require for React Component to work around Vite/Rollup CJS interop issue
+const React = require('react');
+import type { ErrorInfo, ReactNode, ComponentType } from 'react';
+import { errorHandler } from '../services/errorHandler';
+import { createError, ErrorSeverity, ErrorCategory } from '../types/common';
+
+// Component is exported from React's CJS build
+const Component = React.Component;
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  componentName?: string;
 }
 
 interface State {
@@ -33,27 +41,49 @@ export class ErrorBoundary extends Component<Props, State> {
       errorInfo,
     });
 
+    // Convert React error to AppError and handle through error handler
+    const appError = createError(
+      'UI_RENDER_FAILED',
+      `React component error: ${error.message}`,
+      'A component failed to render. The interface may not update correctly.',
+      ErrorSeverity.HIGH,
+      ErrorCategory.UI,
+      {
+        component: this.props.componentName || 'Unknown',
+        errorStack: error.stack,
+        componentStack: errorInfo.componentStack,
+        originalError: error.message
+      },
+      true,
+      1
+    );
+
+    // Handle through error handler service
+    errorHandler.handleError(appError, {
+      component: this.props.componentName || 'ErrorBoundary',
+      action: 'componentDidCatch',
+      data: {
+        errorMessage: error.message,
+        componentStack: errorInfo.componentStack
+      }
+    });
+
     // Call optional error handler
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
     }
-
-    // Report to error tracking service in production
-    if (!import.meta.env.DEV) {
-      // Example: Send to error tracking service
-      // errorTracker.captureException(error, { extra: errorInfo });
-    }
   }
 
   override render() {
+    const React = ReactObj as any;
     if (this.state.hasError) {
       // Custom fallback UI or default error UI
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      return (
-        <div style={{
+      return React.createElement('div', {
+        style: {
           padding: '20px',
           margin: '20px',
           border: '1px solid #ff6b6b',
@@ -61,35 +91,30 @@ export class ErrorBoundary extends Component<Props, State> {
           backgroundColor: '#fff5f5',
           color: '#d63031',
           fontFamily: 'system-ui, -apple-system, sans-serif'
-        }}>
-          <h2 style={{ margin: '0 0 16px 0', fontSize: '18px' }}>
-            ⚠️ Something went wrong
-          </h2>
-
-          <p style={{ margin: '0 0 12px 0', lineHeight: 1.5 }}>
-            An unexpected error occurred in PoleCheck Desktop. This might be due to:
-          </p>
-
-          <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px' }}>
-            <li>A temporary network issue</li>
-            <li>Corrupted browser data</li>
-            <li>A bug in the application</li>
-          </ul>
-
-          <div style={{ marginBottom: '16px' }}>
-            <strong>Error details:</strong>
-            <details style={{ marginTop: '8px' }}>
-              <summary style={{
+        }
+      },
+        React.createElement('h2', { style: { margin: '0 0 16px 0', fontSize: '18px' } }, '⚠️ Something went wrong'),
+        React.createElement('p', { style: { margin: '0 0 12px 0', lineHeight: 1.5 } }, 'An unexpected error occurred in PoleCheck Desktop. This might be due to:'),
+        React.createElement('ul', { style: { margin: '0 0 16px 0', paddingLeft: '20px' } },
+          React.createElement('li', null, 'A temporary network issue'),
+          React.createElement('li', null, 'Corrupted browser data'),
+          React.createElement('li', null, 'A bug in the application')
+        ),
+        React.createElement('div', { style: { marginBottom: '16px' } },
+          React.createElement('strong', null, 'Error details:'),
+          React.createElement('details', { style: { marginTop: '8px' } },
+            React.createElement('summary', {
+              style: {
                 cursor: 'pointer',
                 padding: '4px 8px',
                 backgroundColor: '#f8f9fa',
                 border: '1px solid #dee2e6',
                 borderRadius: '4px',
                 fontSize: '14px'
-              }}>
-                Click to view technical details
-              </summary>
-              <pre style={{
+              }
+            }, 'Click to view technical details'),
+            React.createElement('pre', {
+              style: {
                 margin: '8px 0 0 0',
                 padding: '8px',
                 backgroundColor: '#f8f9fa',
@@ -98,74 +123,60 @@ export class ErrorBoundary extends Component<Props, State> {
                 fontSize: '12px',
                 overflow: 'auto',
                 maxHeight: '200px'
-              }}>
-                {this.state.error?.message}
-                {this.state.errorInfo?.componentStack}
-              </pre>
-            </details>
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => window.location.reload()}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              🔄 Reload Page
-            </button>
-
-            <button
-              onClick={() => {
-                // Clear local storage and reload
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.reload();
-              }}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              🗑️ Clear Data & Reload
-            </button>
-
-            <button
-              onClick={() => this.setState({ hasError: false, error: undefined, errorInfo: undefined })}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              🔄 Try Again
-            </button>
-          </div>
-
-          <p style={{
+              }
+            }, this.state.error?.message, this.state.errorInfo?.componentStack)
+          )
+        ),
+        React.createElement('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
+          React.createElement('button', {
+            onClick: () => window.location.reload(),
+            style: {
+              padding: '8px 16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }
+          }, '🔄 Reload Page'),
+          React.createElement('button', {
+            onClick: () => {
+              localStorage.clear();
+              sessionStorage.clear();
+              window.location.reload();
+            },
+            style: {
+              padding: '8px 16px',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }
+          }, '🗑️ Clear Data & Reload'),
+          React.createElement('button', {
+            onClick: () => this.setState({ hasError: false, error: undefined, errorInfo: undefined }),
+            style: {
+              padding: '8px 16px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }
+          }, '🔄 Try Again')
+        ),
+        React.createElement('p', {
+          style: {
             margin: '16px 0 0 0',
             fontSize: '12px',
             color: '#6c757d',
             fontStyle: 'italic'
-          }}>
-            If this problem persists, please report it to our support team.
-          </p>
-        </div>
+          }
+        }, 'If this problem persists, please report it to our support team.')
       );
     }
 
@@ -175,17 +186,16 @@ export class ErrorBoundary extends Component<Props, State> {
 
 // Higher-order component for easier usage
 export function withErrorBoundary<P extends object>(
-  Component: React.ComponentType<P>,
+  ComponentToWrap: ComponentType<P>,
   fallback?: ReactNode,
   onError?: (error: Error, errorInfo: ErrorInfo) => void
 ) {
-  const WrappedComponent = (props: P) => (
-    <ErrorBoundary fallback={fallback} onError={onError}>
-      <Component {...props} />
-    </ErrorBoundary>
-  );
+  const WrappedComponent = (props: P) => {
+    const React = ReactObj as any;
+    return React.createElement(ErrorBoundary, { fallback, onError }, React.createElement(ComponentToWrap, props));
+  };
 
-  WrappedComponent.displayName = `withErrorBoundary(${Component.displayName || Component.name})`;
+  WrappedComponent.displayName = `withErrorBoundary(${ComponentToWrap.displayName || ComponentToWrap.name})`;
 
   return WrappedComponent;
 }

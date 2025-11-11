@@ -12,10 +12,35 @@ describe('MeasurementSidebar unit toggling', () => {
     invokeMock.mockReset();
     invokeMock.mockImplementation(() => Promise.resolve(undefined));
 
+    // Initialize store with default state first
     act(() => {
-      useRootStore.setState((state) => {
-        state.measurements = [];
-        state.settings.defaultUnit = 'metric';
+      useRootStore.setState({
+        measurements: [],
+        settings: {
+          defaultUnit: 'metric',
+          autoSave: true,
+          theme: 'light',
+          language: 'en',
+          measurementHistoryLimit: 1000,
+          useGPU: false,
+          calibrationPitchOffsetDeg: 0,
+          calibrationBiasByZoom: {},
+          telemetryOptIn: false,
+          depthScale: 1,
+          depthBias: 0,
+        },
+        isSettingsOpen: false,
+        isGeneratingMap: false,
+        calibrateMode: false,
+        error: null,
+        mapGenerationError: null,
+        isProjectPanelOpen: false,
+        targetCoords: null,
+        currentCameraParams: null,
+        onnxDepthMap: null,
+        depthData: null,
+        currentProjectId: null,
+        isCalibrated: false,
       });
     });
   });
@@ -34,15 +59,26 @@ describe('MeasurementSidebar unit toggling', () => {
       timestamp: Date.now(),
     };
 
+    const user = userEvent.setup();
+
+    // Set measurements first
     act(() => {
       useRootStore.setState((state) => {
         state.measurements = [measurement];
       });
     });
 
-    const user = userEvent.setup();
+    // Render component
+    act(() => {
+      render(<MeasurementSidebar />);
+    });
 
-    render(<MeasurementSidebar />);
+    // Force a re-render by updating the store again
+    act(() => {
+      useRootStore.setState((state) => {
+        state.measurements = [measurement];
+      });
+    });
 
     const metricDisplay = await screen.findByText(/Test Distance:/);
     expect(metricDisplay).toHaveTextContent('Test Distance: 10.00 m');

@@ -270,7 +270,7 @@ const CameraHUD = React.memo(() => {
   const bias = depthBias;
 
   useEffect(() => {
-    if (import.meta.env.DEV && cameraParams && showDebugOverlay) {
+    if (process.env.NODE_ENV === 'development' && cameraParams && showDebugOverlay) {
       console.debug('[CameraHUD] render snapshot', {
         fov,
         vFov,
@@ -322,7 +322,7 @@ const MapView: React.FC<{
   }), [targetCoords]);
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
+    if (process.env.NODE_ENV === 'development') {
       console.debug('[MapView] store slices updated', {
         targetCoords,
         isGeneratingMap,

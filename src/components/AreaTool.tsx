@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { convertAreaToDisplay, convertLengthToDisplay } from '../utils/units';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
-import { estimateDistanceToPoint } from '../services/measurementLogic';
+import { distance3D } from '../utils/math';
 import styles from './AreaTool.module.css';
 
 interface AreaPoint extends Point {
@@ -37,7 +36,7 @@ function calculatePolygonPerimeter(points: { x: number; y: number; z: number }[]
 
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    perimeter += calculateDistance3D(points[i]!, points[j]!);
+    perimeter += distance3D(points[i]!, points[j]!);
   }
 
   return perimeter;

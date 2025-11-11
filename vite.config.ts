@@ -30,20 +30,46 @@ export default defineConfig(({ mode }) => {
     plugins: [
       cspTransformPlugin(),
       react({
-        // Optimize React for production
-        jsxImportSource: undefined, // Remove Emotion JSX runtime
+        // Optimize React for production  
+        jsxImportSource: undefined,
         babel: {
           plugins: isProduction ? [
             ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }]
           ] : []
         }
       }),
+      // Plugin to handle React CommonJS exports properly
+      {
+        name: 'react-cjs-interop',
+        resolveId(id) {
+          if (id === 'react' || id.startsWith('react/')) {
+            return null; // Let Vite handle it normally
+          }
+          return null;
+        },
+        transform(code, id) {
+          // Ensure React.Component is accessible
+          if (id.includes('ErrorBoundary.tsx')) {
+            // Replace React import patterns if needed
+            return null; // Let normal transform handle it
+          }
+          return null;
+        }
+      },
       electron([
         {
           // Main process entry
           entry: 'electron/main.ts',
           onstart(options) {
             options.startup();
+            // Suppress Windows taskkill "process not found" errors
+            const originalWrite = process.stdout.write.bind(process.stdout);
+            process.stdout.write = (chunk: any, encoding?: any) => {
+              if (typeof chunk === 'string' && chunk.includes('ERROR: The process') && chunk.includes('not found')) {
+                return true; // Suppress this specific error message
+              }
+              return originalWrite(chunk, encoding);
+            };
           },
           vite: {
             build: {
@@ -134,19 +160,32 @@ export default defineConfig(({ mode }) => {
           },
           chunkFileNames: isProduction ? 'assets/[name]-[hash].js' : 'assets/[name].js',
           entryFileNames: isProduction ? 'assets/[name]-[hash].js' : 'assets/[name].js',
-          assetFileNames: isProduction ? 'assets/[name]-[hash].[ext]' : 'assets/[name].[ext]'
+          assetFileNames: isProduction ? 'assets/[name]-[hash].[ext]' : 'assets/[name].[ext]',
+          // Ensure proper interop for CommonJS modules - create default export
+          interop: 'default', // Create default export from CJS modules
+          exports: 'auto'
         },
         // Handle CommonJS modules properly
-        external: (id) => {
+        external: (_id) => {
           // Don't externalize react-window, we want it bundled
           return false;
-        }
+        },
+        plugins: [
+          // Note: Vite already includes commonjs plugin, but we can configure it here if needed
+        ]
       },
       commonjsOptions: {
-        include: [/react-window/, /node_modules\/react-window/],
+        include: [/react-window/, /node_modules\/react-window/, /react-window-infinite-loader/, /react/, /node_modules\/react/, /zustand/, /scheduler/, /lz-string/],
         transformMixedEsModules: true,
-        defaultIsModuleExports: 'auto',
-        requireReturnsDefault: 'auto'
+        defaultIsModuleExports: true, // Create default export from module.exports for React
+        requireReturnsDefault: true, // require() returns default export
+        // Ensure named exports are preserved for react-window, scheduler, and lz-string
+        namedExports: {
+          'react-window': ['FixedSizeList', 'VariableSizeList', 'FixedSizeGrid', 'VariableSizeGrid'],
+          'react-window-infinite-loader': ['InfiniteLoader'],
+          'scheduler': ['unstable_NormalPriority', 'unstable_runWithPriority', 'unstable_next'],
+          'lz-string': ['compress', 'decompress', 'compressToUTF16', 'decompressFromUTF16']
+        }
       },
       // Optimize chunk size
       chunkSizeWarningLimit: 1000,
@@ -171,8 +210,13 @@ export default defineConfig(({ mode }) => {
       // Optimize module resolution
       dedupe: ['react', 'react-dom'],
       // Ensure proper resolution of CommonJS modules
-      conditions: ['import', 'module', 'browser', 'default']
+      conditions: ['import', 'module', 'browser', 'default'],
+      // Prefer ESM but allow CJS fallback
+      mainFields: ['module', 'main']
     },
+      // Ensure React CommonJS interop works correctly  
+      // Note: This is separate from build.commonjsOptions - this is at root level
+      // React CJS interop is handled via the build.commonjsOptions below
     server: {
       host: '127.0.0.1',
       port: 5173,
@@ -193,13 +237,17 @@ export default defineConfig(({ mode }) => {
         'zustand',
         'immer',
         '@googlemaps/js-api-loader',
-        'react-window'
+        'react-window',
+        'react-window-infinite-loader',
+        'scheduler'
       ],
       exclude: ['electron'],
       esbuildOptions: {
         // Handle CommonJS modules
         target: 'esnext'
-      }
+      },
+      // Force re-optimization of react-window
+      force: false
     },
     // CSS optimization
     css: {

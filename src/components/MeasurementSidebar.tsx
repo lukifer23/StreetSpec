@@ -5,8 +5,8 @@ import type { Measurement } from '../types/common';
 import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
 import type { UnitSystem } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-// Import react-window - Vite will handle CommonJS interop
-import { FixedSizeList } from 'react-window';
+// Import react-window v2 - uses List component (FixedSizeList was v1 API)
+import { List } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
 
 const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string => {
@@ -37,8 +37,13 @@ const MeasurementItem: React.FC<MeasurementItemProps> = ({
   onRename,
   onDelete
 }) => {
+  // Handle undefined measurement gracefully
+  if (!measurement) {
+    return <li className={styles['measurementItem']}>Loading...</li>;
+  }
+
   const secondary = formatSecondaryLine(measurement, defaultUnit);
-  
+
   // Visual validation indicators
   const confidence = measurement.confidence ?? 0;
   const confidenceColor = confidence >= 0.7 ? '#28a745' : confidence >= 0.4 ? '#ffc107' : '#dc3545';
@@ -315,29 +320,28 @@ const MeasurementSidebar: React.FC = () => {
         </div>
       ) : (
         <div className={styles['measurementList']}>
-          <FixedSizeList
-            height={400}
-            itemCount={measurements.length}
-            itemSize={80}
-            itemData={{
+          <List
+            defaultHeight={400}
+            rowCount={measurements.length}
+            rowHeight={80}
+            rowProps={{
               measurements,
               defaultUnit: settings.defaultUnit,
               onRename: renameMeasurement,
               onDelete: deleteMeasurement
             }}
             className={styles['virtualizedList']}
-          >
-            {({ index, style, data }) => (
+            rowComponent={({ index, style, rowProps }) => (
               <div style={style}>
                 <MeasurementItem
-                  measurement={data.measurements[index]}
-                  defaultUnit={data.defaultUnit}
-                  onRename={data.onRename}
-                  onDelete={data.onDelete}
+                  measurement={rowProps?.measurements?.[index]}
+                  defaultUnit={rowProps?.defaultUnit}
+                  onRename={rowProps?.onRename}
+                  onDelete={rowProps?.onDelete}
                 />
               </div>
             )}
-          </FixedSizeList>
+          />
         </div>
       )}
       

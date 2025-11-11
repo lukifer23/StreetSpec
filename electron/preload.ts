@@ -15,19 +15,19 @@ try {
       break;
     }
   }
-  // eslint-disable-next-line no-console
   console.log('[env:preload] loaded', loadedPath ?? 'none', 'VITE?', Boolean(process.env.VITE_GOOGLE_MAPS_API_KEY), 'GOOGLE?', Boolean(process.env.GOOGLE_MAPS_API_KEY));
 } catch (_e) {
   // ignore
 }
 
-// Type declaration for window.electronAPI
+// Type declaration for window.electronAPI with type-safe IPC
+// Note: Types are imported for type checking, runtime validation uses require()
 declare global {
   interface Window {
     electronAPI: {
-      invoke: (channel: string, data?: any) => Promise<any>;
-      sendMessage: (channel: string, data: any) => void;
-      onMainProcessMessage: (callback: (data: any) => void) => () => void;
+      invoke: <T extends IPCChannel>(channel: T, data?: IPCRequest<T>) => Promise<unknown>;
+      sendMessage: (channel: string, data: unknown) => void;
+      onMainProcessMessage: (callback: (data: unknown) => void) => () => void;
       getEnv: () => { VITE_GOOGLE_MAPS_API_KEY?: string };
     }
   }
@@ -95,15 +95,19 @@ function sanitizeObject(input: unknown, maxDepth: number = 10): unknown {
   return null;
 }
 
-// Create the electronAPI object
+// Import validation utilities - using dynamic import for ESM/TypeScript module
+// We'll validate at runtime, but the actual validation happens in main process
+// For preload, we rely on the channel whitelist validation
+
+// Create the electronAPI object with type-safe IPC
 const electronAPI = {
-  invoke: async (channel: string, data?: any) => {
+  invoke: async (channel: string, data?: unknown) => {
     // Validate channel
     if (typeof channel !== 'string' || !(validChannels.invoke as readonly string[]).includes(channel)) {
       throw new Error(`Invalid invoke channel: ${channel}`);
     }
     
-    // Sanitize input data
+    // Sanitize input data - full validation happens in main process
     const sanitizedData = data !== undefined ? sanitizeObject(data) : undefined;
     
     try {
@@ -115,7 +119,7 @@ const electronAPI = {
     }
   },
 
-  sendMessage: (channel: string, data: any) => {
+  sendMessage: (channel: string, data: unknown) => {
     // Validate channel
     if (typeof channel !== 'string' || !(validChannels.send as readonly string[]).includes(channel)) {
       throw new Error(`Invalid send channel: ${channel}`);
@@ -132,7 +136,7 @@ const electronAPI = {
     }
   },
 
-  onMainProcessMessage: (callback: (data: any) => void) => {
+  onMainProcessMessage: (callback: (data: unknown) => void) => {
     if (typeof callback !== 'function') {
       throw new Error('Callback must be a function');
     }

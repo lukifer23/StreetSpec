@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import { UNIT_CONVERSIONS } from '../types/common';
 import type { Point, Measurement } from '../types/common';
-import { screenToWorld, estimateGroundPlaneIntersection, calculateDistance3D, screenToWorldWithDepth } from '../services/geometry';
-import { estimateDistanceToPoint } from '../services/measurementLogic';
+// Geometry functions imported via fusedWorldPoint
+import { distance3D } from '../utils/math';
+import { estimateDistanceToPoint, fusedWorldPoint } from '../services/measurementLogic';
+import { validateMeasurementPlausibility } from '../utils/polygonValidation';
 import styles from './PolylineTool.module.css';
 
 interface PolylinePoint extends Point {
@@ -22,11 +24,14 @@ const PolylineTool: React.FC = () => {
   const settings = useRootStore((state) => state.settings);
   const defaultUnit = settings.defaultUnit;
   const depthData = useRootStore((state) => state.depthData);
+  const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
 
   const [points, setPoints] = useState<PolylinePoint[]>([]);
   const [, setIsMeasuring] = useState(false);
   const [totalDistance, setTotalDistance] = useState(0);
   const [segmentDistances, setSegmentDistances] = useState<number[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [measurementConfidence, setMeasurementConfidence] = useState(1.0);
 
   // Handle canvas clicks to add points
   const handleCanvasClick = useCallback((event: MouseEvent) => {
@@ -44,57 +49,47 @@ const PolylineTool: React.FC = () => {
     const viewWidth = rect.width;
     const viewHeight = rect.height;
 
-    let worldPoint = undefined as PolylinePoint['worldPoint'] | undefined;
-    let worldSource: PolylinePoint['worldSource'] = undefined;
-
-    if (depthData) {
-      const depthWorld = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
-      if (depthWorld) {
-        worldPoint = depthWorld;
-        worldSource = 'planes';
+    // Use unified depth fusion for robust world point estimation
+    const onnxDistance = onnxDepthMap && cameraParams 
+      ? estimateDistanceToPoint(x, y, viewWidth, viewHeight, cameraParams, onnxDepthMap)
+      : null;
+    
+    const fused = fusedWorldPoint(
+      { x, y },
+      viewWidth,
+      viewHeight,
+      cameraParams,
+      depthData,
+      onnxDistance,
+      onnxDepthMap,
+      {
+        depthKernelSize: settings.depthKernelSize,
+        depthUseBilinear: settings.depthUseBilinear,
+        depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold
       }
-    }
+    );
 
-    if (!worldPoint) {
-      const onnx = useRootStore.getState().onnxDepthMap;
-      if (onnx && cameraParams) {
-        const d = estimateDistanceToPoint(x, y, viewWidth, viewHeight, cameraParams, onnx);
-        if (d && Number.isFinite(d) && d > 0) {
-          const dir = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-          worldPoint = { x: dir.x * d, y: dir.y * d, z: dir.z * d };
-          worldSource = 'onnx';
-        }
-      }
-    }
-
-    if (!worldPoint) {
-      const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-      const groundPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
-      if (groundPoint) {
-        worldPoint = groundPoint;
-        worldSource = 'ground';
-      }
-    }
-
-    if (worldPoint) {
+    if (fused.world) {
       const newPoint: PolylinePoint = {
         id: `point-${Date.now()}-${Math.random()}`,
         x,
         y,
-        worldPoint,
-        worldSource
+        worldPoint: fused.world,
+        worldSource: fused.method
       };
 
       setPoints(prev => [...prev, newPoint]);
       setIsMeasuring(true);
     }
-  }, [isPolylineToolActive, cameraParams, depthData]);
+  }, [isPolylineToolActive, cameraParams, depthData, onnxDepthMap, settings]);
 
-  // Calculate distances when points change
+  // Calculate distances with validation when points change
   useEffect(() => {
     if (points.length < 2) {
       setTotalDistance(0);
       setSegmentDistances([]);
+      setValidationError(null);
+      setMeasurementConfidence(0);
       return;
     }
 
@@ -105,26 +100,66 @@ const PolylineTool: React.FC = () => {
     if (validPoints.length < 2) {
       setTotalDistance(0);
       setSegmentDistances([]);
+      setValidationError('Unable to resolve world coordinates for all points');
+      setMeasurementConfidence(0);
       return;
     }
 
+    const worldPoints = validPoints.map(p => p.worldPoint);
     const distances: number[] = [];
     let total = 0;
 
     for (let i = 1; i < validPoints.length; i++) {
-      // validPoints is filtered to only include points with worldPoint != null
       const prevPoint = validPoints[i - 1];
       const currentPoint = validPoints[i];
-      // TypeScript strict mode requires bounds and null checks
       if (!prevPoint?.worldPoint || !currentPoint?.worldPoint) continue;
-      const distance = calculateDistance3D(prevPoint.worldPoint, currentPoint.worldPoint);
+      
+      const distance = distance3D(prevPoint.worldPoint, currentPoint.worldPoint);
+      
+      // Validate segment distance
+      if (!Number.isFinite(distance) || distance < 0) {
+        setValidationError(`Invalid segment distance at point ${i}`);
+        setSegmentDistances([]);
+        setTotalDistance(0);
+        setMeasurementConfidence(0);
+        return;
+      }
+      
       distances.push(distance);
       total += distance;
     }
 
+    // Plausibility check
+    const plausibility = validateMeasurementPlausibility(
+      total,
+      worldPoints,
+      cameraParams || undefined
+    );
+
+    if (!plausibility.isValid) {
+      setValidationError(plausibility.warnings.join('; '));
+    } else {
+      setValidationError(null);
+    }
+
+    // Calculate confidence based on point sources
+    const planesBackedCount = validPoints.filter((p) => p.worldSource === 'planes').length;
+    const onnxBackedCount = validPoints.filter((p) => p.worldSource === 'onnx').length;
+    let baseConfidence = 0.5;
+    if (planesBackedCount === validPoints.length) {
+      baseConfidence = 0.85;
+    } else if (planesBackedCount > validPoints.length * 0.5) {
+      baseConfidence = 0.75;
+    } else if (onnxBackedCount > validPoints.length * 0.5) {
+      baseConfidence = 0.65;
+    }
+    
+    const finalConfidence = baseConfidence * plausibility.confidenceMultiplier;
+
     setSegmentDistances(distances);
     setTotalDistance(total);
-  }, [points]);
+    setMeasurementConfidence(finalConfidence);
+  }, [points, cameraParams]);
 
   // Add event listeners when tool is active
   useEffect(() => {
@@ -145,15 +180,21 @@ const PolylineTool: React.FC = () => {
 
   // Complete the measurement
   const handleCompleteMeasurement = useCallback(() => {
-    if (points.length >= 2 && totalDistance > 0) {
-      // Create measurement object
-      const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
-      const confidence =
-        planesBackedCount === points.length
-          ? 0.85
-          : planesBackedCount > 0
-            ? 0.75
-            : 0.6;
+    if (points.length >= 2 && totalDistance > 0 && !validationError) {
+      const validPoints = points.filter((p): p is ValidPolylinePoint => p.worldPoint != null);
+      const worldPoints = validPoints.map(p => p.worldPoint);
+
+      // Final plausibility check
+      const plausibility = validateMeasurementPlausibility(
+        totalDistance,
+        worldPoints,
+        cameraParams || undefined
+      );
+
+      if (!plausibility.isValid) {
+        setValidationError(plausibility.warnings.join('; '));
+        return;
+      }
 
       const measurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
         kind: 'polyline',
@@ -167,15 +208,16 @@ const PolylineTool: React.FC = () => {
         unit: defaultUnit,
         panoId: cameraParams?.panoId ?? cameraParams?.pano,
         cameraParams: cameraParams || undefined,
-        confidence,
+        confidence: measurementConfidence,
         source: 'polyline',
         points: points.map(({ x, y }) => ({ x, y })),
         metadata: {
           segmentDistancesMeters: segmentDistances,
-          worldPointsMeters: points.map((point) => point.worldPoint),
-          pointSources: points.map((point) => point.worldSource ?? 'ground'),
+          worldPointsMeters: worldPoints,
+          pointSources: validPoints.map((point) => point.worldSource ?? 'ground'),
+          validationWarnings: plausibility.warnings
         },
-        error: points.length < 2 ? 'Need at least 2 points for measurement' : undefined
+        error: validationError || undefined
       };
 
       addMeasurement(measurement);
@@ -185,8 +227,10 @@ const PolylineTool: React.FC = () => {
       setIsMeasuring(false);
       setTotalDistance(0);
       setSegmentDistances([]);
+      setValidationError(null);
+      setMeasurementConfidence(1.0);
     }
-  }, [points, totalDistance, segmentDistances, defaultUnit, cameraParams, addMeasurement]);
+  }, [points, totalDistance, segmentDistances, defaultUnit, cameraParams, addMeasurement, validationError, measurementConfidence]);
 
   // Cancel measurement
   const handleCancel = useCallback(() => {

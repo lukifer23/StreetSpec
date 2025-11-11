@@ -1,6 +1,10 @@
 import type { CameraParams, OnnxDepthMap } from '../types/common';
 import { cacheDepthMap, getCachedDepthMap } from './depth';
 import { executeWithRateLimit } from './rateLimiter';
+import {
+  createModelInferenceError,
+  createNetworkError
+} from '../utils/errorUtils';
 
 export async function blobToDataUrl(blob: Blob): Promise<string> {
   const mimeType = blob.type || 'application/octet-stream';
@@ -13,10 +17,19 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
         if (typeof result === 'string') {
           resolve(result);
         } else {
-          reject(new Error('Failed to read blob as data URL.'));
+          reject(createModelInferenceError(
+            'Failed to read blob as data URL - result is not a string',
+            { resultType: typeof result }
+          ));
         }
       };
-      reader.onerror = () => reject(reader.error ?? new Error('FileReader error.'));
+      reader.onerror = () => {
+        const error = reader.error ?? new Error('FileReader error');
+        reject(createModelInferenceError(
+          'Failed to read blob as data URL',
+          { error: error instanceof Error ? error.message : String(error) }
+        ));
+      };
       reader.readAsDataURL(blob);
     });
   }
@@ -32,7 +45,10 @@ export async function blobToDataUrl(blob: Blob): Promise<string> {
   }
 
   if (typeof btoa !== 'function') {
-    throw new Error('Base64 encoding is not supported in this environment.');
+    throw createModelInferenceError(
+      'Base64 encoding is not supported in this environment',
+      { environment: typeof window !== 'undefined' ? 'browser' : 'node' }
+    );
   }
 
   const base64 = btoa(binary);
@@ -128,7 +144,10 @@ export async function generateDepthMap(
       const response = await deps.fetchImage(apiUrl);
 
       if (!response.ok) {
-        throw new Error(`Static API request failed: ${response.status} ${response.statusText}`);
+        throw createNetworkError(
+          `Static API request failed: ${response.status} ${response.statusText}`,
+          { status: response.status, statusText: response.statusText, url }
+        );
       }
 
       const imageBlob = await response.blob();
@@ -138,7 +157,10 @@ export async function generateDepthMap(
       const inferenceResult = await deps.invokeDepth(base64data);
 
       if (!inferenceResult?.data || !inferenceResult?.width || !inferenceResult?.height) {
-        throw new Error('Main process failed to return valid depth map data.');
+        throw createModelInferenceError(
+          'Main process failed to return valid depth map data',
+          { inferenceResult }
+        );
       }
 
       result = inferenceResult;
@@ -172,7 +194,10 @@ export async function generateDepthMap(
   }
 
   if (!result) {
-    throw new Error('Failed to generate depth map');
+    throw createModelInferenceError(
+      'Failed to generate depth map',
+      { cameraParams, quality: targetQuality }
+    );
   }
 
   options.onProgress?.({ stage: 'complete', quality: currentQuality });
@@ -236,8 +261,6 @@ export async function generateBatchDepthMaps(
   results.push(...cachedResults);
 
   // Process uncached items in batches with progress tracking
-  const totalUncached = uncachedParams.length;
-  let processedCount = 0;
 
   for (let i = 0; i < uncachedParams.length; i += concurrency) {
     const batch = uncachedParams.slice(i, i + concurrency);
@@ -274,7 +297,6 @@ export async function generateBatchDepthMaps(
       .map(result => result.value!);
     
     results.push(...successfulResults);
-    processedCount += batch.length;
 
     // Adaptive delay between batches: shorter if success rate is high
     if (i + concurrency < uncachedParams.length) {

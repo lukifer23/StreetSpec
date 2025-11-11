@@ -1,7 +1,7 @@
 {
   "name": "polecheck-desktop",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
   "author": "PoleCheck Team <support@polecheck.app>",
   "type": "commonjs",

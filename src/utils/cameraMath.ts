@@ -1,10 +1,7 @@
-export function degreesToRadians(degrees: number): number {
-  return (degrees * Math.PI) / 180;
-}
+import { degreesToRadians, radiansToDegrees } from './math';
 
-export function radiansToDegrees(radians: number): number {
-  return (radians * 180) / Math.PI;
-}
+// Re-export from math.ts for backward compatibility
+export { degreesToRadians, radiansToDegrees } from './math';
 
 /**
  * Converts a pixel Y coordinate into a vertical angle relative to the camera centre.

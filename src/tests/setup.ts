@@ -38,6 +38,13 @@ Object.defineProperty(window, 'google', {
   },
 };
 
+// Mock ResizeObserver for react-window
+global.ResizeObserver = jest.fn().mockImplementation(() => ({
+  observe: jest.fn(),
+  unobserve: jest.fn(),
+  disconnect: jest.fn(),
+}));
+
 // Suppress console warnings during tests
 const originalWarn = console.warn;
 beforeAll(() => {

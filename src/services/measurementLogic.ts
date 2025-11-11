@@ -475,6 +475,187 @@ export function calculateEstimatedHeight(
 }
 
 /**
+ * Enhanced gradient analysis for depth confidence
+ * Analyzes depth gradients in multiple directions and scales
+ */
+export interface GradientAnalysis {
+  normalizedGradient: number;
+  edgeStrength: number;
+  depthConsistency: number;
+  neighborhoodVariance: number;
+  isValid: boolean;
+}
+
+/**
+ * Compute comprehensive gradient analysis for depth confidence
+ */
+export function analyzeDepthGradients(
+  mapX: number,
+  mapY: number,
+  depthMap: OnnxDepthMap,
+  kernelSize: number = 5
+): GradientAnalysis {
+  const { width, height, data } = depthMap;
+  
+  // Validate coordinates
+  if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) {
+    return {
+      normalizedGradient: 1.0,
+      edgeStrength: 1.0,
+      depthConsistency: 0.0,
+      neighborhoodVariance: Infinity,
+      isValid: false
+    };
+  }
+
+  const half = Math.floor(kernelSize / 2);
+  const samples: number[] = [];
+  let centerDepth: number | null = null;
+
+  // Collect neighborhood samples
+  for (let dy = -half; dy <= half; dy++) {
+    const yy = Math.round(mapY + dy);
+    if (yy < 0 || yy >= height) continue;
+    for (let dx = -half; dx <= half; dx++) {
+      const xx = Math.round(mapX + dx);
+      if (xx < 0 || xx >= width) continue;
+      const idx = yy * width + xx;
+      const depth = data[idx];
+      if (depth && depth > 0 && Number.isFinite(depth)) {
+        samples.push(depth);
+        if (dx === 0 && dy === 0) {
+          centerDepth = depth;
+        }
+      }
+    }
+  }
+
+  if (samples.length === 0 || centerDepth === null) {
+    return {
+      normalizedGradient: 1.0,
+      edgeStrength: 1.0,
+      depthConsistency: 0.0,
+      neighborhoodVariance: Infinity,
+      isValid: false
+    };
+  }
+
+  // Calculate Sobel gradients (horizontal and vertical)
+  let gx = 0;
+  let gy = 0;
+  const sobelKernel = [
+    [-1, 0, 1],
+    [-2, 0, 2],
+    [-1, 0, 1]
+  ];
+
+  for (let dy = -1; dy <= 1; dy++) {
+    const yy = Math.round(mapY + dy);
+    if (yy < 0 || yy >= height) continue;
+    for (let dx = -1; dx <= 1; dx++) {
+      const xx = Math.round(mapX + dx);
+      if (xx < 0 || xx >= width) continue;
+      const idx = yy * width + xx;
+      const depth = data[idx];
+      if (depth && depth > 0 && Number.isFinite(depth)) {
+        gx += depth * sobelKernel[dy + 1]![dx + 1]!;
+        gy += depth * sobelKernel[dx + 1]![dy + 1]!; // Transposed for vertical
+      }
+    }
+  }
+
+  const gradientMagnitude = Math.sqrt(gx * gx + gy * gy);
+  
+  // Normalize gradient relative to center depth
+  const normalizedGradient = centerDepth > 0 
+    ? Math.min(1.0, gradientMagnitude / (centerDepth + 1e-6))
+    : 1.0;
+
+  // Calculate neighborhood variance (consistency measure)
+  const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
+  const variance = samples.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) / samples.length;
+  const stdDev = Math.sqrt(variance);
+  const neighborhoodVariance = mean > 0 ? stdDev / mean : Infinity;
+  
+  // Depth consistency: inverse of normalized variance
+  const depthConsistency = Math.max(0, Math.min(1.0, 1.0 - Math.min(1.0, neighborhoodVariance)));
+
+  // Edge strength: normalized gradient magnitude
+  const edgeStrength = Math.min(1.0, normalizedGradient);
+
+  return {
+    normalizedGradient,
+    edgeStrength,
+    depthConsistency,
+    neighborhoodVariance,
+    isValid: true
+  };
+}
+
+/**
+ * Compute proximity to plane boundaries for confidence adjustment
+ * Returns confidence multiplier based on distance to nearest plane edge
+ */
+export function computePlaneBoundaryProximity(
+  point: Point,
+  viewportWidth: number,
+  viewportHeight: number,
+  depthData: DecodedDepthData,
+  _worldPoint: Vector3
+): number {
+  if (!depthData.indices || depthData.indices.length === 0) {
+    return 1.0; // No boundary information available
+  }
+
+  const { width, height, indices } = depthData;
+  
+  // Map screen point to depth map coordinates
+  const mapX = Math.floor((point.x / viewportWidth) * width);
+  const mapY = Math.floor((point.y / viewportHeight) * height);
+  
+  if (mapX < 0 || mapX >= width || mapY < 0 || mapY >= height) {
+    return 0.5; // Outside bounds, lower confidence
+  }
+
+  const centerIdx = mapY * width + mapX;
+  const centerPlaneIndex = indices[centerIdx];
+  
+  if (centerPlaneIndex === undefined || centerPlaneIndex === 255) {
+    return 0.5; // No plane assigned
+  }
+
+  // Check neighborhood for plane index changes (boundaries)
+  const searchRadius = 3;
+  let boundaryDistance = searchRadius + 1;
+  
+  for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+    const yy = mapY + dy;
+    if (yy < 0 || yy >= height) continue;
+    for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+      const xx = mapX + dx;
+      if (xx < 0 || xx >= width) continue;
+      const idx = yy * width + xx;
+      const planeIdx = indices[idx];
+      
+      if (planeIdx !== centerPlaneIndex && planeIdx !== 255) {
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < boundaryDistance) {
+          boundaryDistance = dist;
+        }
+      }
+    }
+  }
+
+  // Convert to confidence multiplier (closer to boundary = lower confidence)
+  if (boundaryDistance > searchRadius) {
+    return 1.0; // Far from boundary, full confidence
+  }
+  
+  // Linear falloff: 1.0 at distance 3, 0.7 at distance 0
+  return 0.7 + (boundaryDistance / searchRadius) * 0.3;
+}
+
+/**
  * Computes confidence score for ONNX depth based on Sobel gradients and depth consistency
  */
 function computeOnnxDepthConfidence(
@@ -495,46 +676,23 @@ function computeOnnxDepthConfidence(
   const clampedX = Math.max(0, Math.min(onnxDepthMap.width - 1, Math.round(mappedX)));
   const clampedY = Math.max(0, Math.min(onnxDepthMap.height - 1, Math.round(mappedY)));
 
-  // Compute gradient-based confidence
-  const gradient = computeNormalizedSobelGradient(clampedX, clampedY, onnxDepthMap);
+  // Use enhanced gradient analysis
+  const kernelSize = (settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE) as 3 | 5 | 7 | 9;
+  const gradientAnalysis = analyzeDepthGradients(clampedX, clampedY, onnxDepthMap, kernelSize);
+  
+  if (!gradientAnalysis.isValid) {
+    return 0.2; // Low confidence for invalid samples
+  }
+
   const edgeRejectThreshold = settings?.depthEdgeRejectThreshold ?? DEFAULT_EDGE_REJECT_THRESHOLD;
   
-  // Lower confidence near edges (high gradients)
-  let gradientConfidence = 1.0;
-  if (gradient !== null) {
-    gradientConfidence = Math.max(0.3, 1.0 - (gradient / edgeRejectThreshold));
-  }
+  // Gradient-based confidence: lower near edges
+  const gradientConfidence = gradientAnalysis.edgeStrength <= edgeRejectThreshold
+    ? 1.0
+    : Math.max(0.3, 1.0 - ((gradientAnalysis.edgeStrength - edgeRejectThreshold) / (1.0 - edgeRejectThreshold + 1e-6)));
 
-  // Check depth consistency in local neighborhood
-  const kernelSize = (settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE) as 3 | 5 | 7 | 9;
-  const half = Math.floor(kernelSize / 2);
-  const depths: number[] = [];
-  
-  for (let dy = -half; dy <= half; dy++) {
-    const yy = clampedY + dy;
-    if (yy < 0 || yy >= onnxDepthMap.height) continue;
-    for (let dx = -half; dx <= half; dx++) {
-      const xx = clampedX + dx;
-      if (xx < 0 || xx >= onnxDepthMap.width) continue;
-      const idx = yy * onnxDepthMap.width + xx;
-      const v = onnxDepthMap.data[idx];
-      if (v && v > 0 && Number.isFinite(v)) {
-        depths.push(v);
-      }
-    }
-  }
-
-  // Compute consistency as inverse of coefficient of variation
-  let consistencyConfidence = 0.5; // Default moderate confidence
-  if (depths.length >= 3) {
-    const mean = depths.reduce((a, b) => a + b, 0) / depths.length;
-    const variance = depths.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) / depths.length;
-    const stdDev = Math.sqrt(variance);
-    const coefficientOfVariation = mean > 0 ? stdDev / mean : Infinity;
-    
-    // Lower CV = higher consistency = higher confidence
-    consistencyConfidence = Math.max(0.2, Math.min(1.0, 1.0 / (1.0 + coefficientOfVariation * 2)));
-  }
+  // Use depth consistency from gradient analysis
+  const consistencyConfidence = gradientAnalysis.depthConsistency;
 
   // Combine confidences (geometric mean for conservative estimate)
   const combinedConfidence = Math.sqrt(gradientConfidence * consistencyConfidence);
@@ -575,7 +733,9 @@ function computePlaneDepthConfidence(
   depthData: DecodedDepthData,
   worldPoint: Vector3
 ): number {
-  // Check distance from plane boundaries
+  // Check distance from plane boundaries using enhanced proximity function
+  const boundaryProximity = computePlaneBoundaryProximity(point, viewportWidth, viewportHeight, depthData, worldPoint);
+  
   const mappedX = (point.x / viewportWidth) * depthData.width;
   const mappedY = (point.y / viewportHeight) * depthData.height;
   const clampedX = Math.max(0, Math.min(depthData.width - 1, Math.round(mappedX)));
@@ -627,8 +787,11 @@ function computePlaneDepthConfidence(
   // Plane quality factor (more planes = better sampling)
   const planeCountConfidence = Math.min(1.0, depthData.planes.length / 20);
 
-  // Base plane confidence is high, scaled by consistency and factors
-  return 0.9 * planeConsistency * distanceConfidence * (0.9 + planeCountConfidence * 0.1);
+  // Apply boundary proximity multiplier (closer to boundaries = lower confidence)
+  const boundaryMultiplier = boundaryProximity;
+
+  // Base plane confidence is high, scaled by consistency, boundary proximity, and factors
+  return 0.9 * planeConsistency * distanceConfidence * boundaryMultiplier * (0.9 + planeCountConfidence * 0.1);
 }
 
 /**
@@ -719,7 +882,6 @@ export function fusedWorldPoint(
 
   // Compute distances for adaptive selection
   const candidateDistances = candidates.map(c => Math.hypot(c.world.x, c.world.y, c.world.z));
-  const avgDistance = candidateDistances.reduce((a, b) => a + b, 0) / candidateDistances.length;
 
   // Adaptive confidence adjustment based on distance and method type
   const adjustedCandidates = candidates.map((cand, idx) => {
@@ -767,35 +929,68 @@ export function fusedWorldPoint(
   adjustedCandidates.sort((a, b) => b.confidence - a.confidence);
   const best = adjustedCandidates[0]!;
 
-  // Hybrid fusion: combine multiple methods when they agree
+  // Enhanced hybrid fusion: combine multiple methods when they agree
+  // This improves accuracy by leveraging complementary strengths of each method
   if (adjustedCandidates.length > 1 && best.confidence > 0.4) {
     const highConfidenceCandidates = adjustedCandidates.filter(c => c.confidence > 0.3);
     
     if (highConfidenceCandidates.length >= 2) {
-      // Check agreement between top candidates
-      const topTwo = highConfidenceCandidates.slice(0, 2);
-      const dist1 = Math.hypot(topTwo[0]!.world.x, topTwo[0]!.world.y, topTwo[0]!.world.z);
-      const dist2 = Math.hypot(topTwo[1]!.world.x, topTwo[1]!.world.y, topTwo[1]!.world.z);
-      const distanceDiff = Math.abs(dist1 - dist2);
-      const avgDist = (dist1 + dist2) / 2;
-      const relativeDiff = avgDist > 0 ? distanceDiff / avgDist : 1;
+      // Calculate 3D spatial agreement (not just distance)
+      const candidateDistances = highConfidenceCandidates.map(c => 
+        Math.hypot(c.world.x, c.world.y, c.world.z)
+      );
+      
+      // Check both distance agreement and 3D position agreement
+      const positions = highConfidenceCandidates.map(c => c.world);
+      const avgDistance = candidateDistances.reduce((a, b) => a + b, 0) / candidateDistances.length;
+      
+      // Calculate pairwise 3D distances between candidate positions
+      const maxPairwiseDistance = Math.max(
+        ...positions.slice(0, -1).map((p1, i) => 
+          Math.hypot(
+            p1.x - positions[i + 1]!.x,
+            p1.y - positions[i + 1]!.y,
+            p1.z - positions[i + 1]!.z
+          )
+        )
+      );
+      
+      // Relative 3D position difference
+      const relativePositionDiff = avgDistance > 0 ? maxPairwiseDistance / avgDistance : 1;
+      
+      // Distance consistency check
+      const distanceVariance = candidateDistances.reduce((sum, d) => 
+        sum + Math.pow(d - avgDistance, 2), 0
+      ) / candidateDistances.length;
+      const distanceStdDev = Math.sqrt(distanceVariance);
+      const relativeDistanceDiff = avgDistance > 0 ? distanceStdDev / avgDistance : 1;
 
-      // Fuse if candidates agree (within 15% distance difference)
-      if (relativeDiff < 0.15) {
-        const totalConfidence = topTwo.reduce((sum, c) => sum + c.confidence, 0);
-        const weights = topTwo.map(c => c.confidence / totalConfidence);
+      // Fuse if candidates agree spatially (within 15% distance difference and 20% position difference)
+      // Stricter thresholds for better accuracy
+      const distanceAgreement = relativeDistanceDiff < 0.15;
+      const positionAgreement = relativePositionDiff < 0.20;
+      
+      if (distanceAgreement && positionAgreement) {
+        // Weighted fusion using confidence scores
+        const totalConfidence = highConfidenceCandidates.reduce((sum, c) => sum + c.confidence, 0);
+        const weights = highConfidenceCandidates.map(c => c.confidence / totalConfidence);
         
+        // Weighted average of all agreeing candidates
         const fusedWorld: Vector3 = {
-          x: topTwo[0]!.world.x * weights[0]! + topTwo[1]!.world.x * weights[1]!,
-          y: topTwo[0]!.world.y * weights[0]! + topTwo[1]!.world.y * weights[1]!,
-          z: topTwo[0]!.world.z * weights[0]! + topTwo[1]!.world.z * weights[1]!,
+          x: highConfidenceCandidates.reduce((sum, c, i) => sum + c.world.x * weights[i]!, 0),
+          y: highConfidenceCandidates.reduce((sum, c, i) => sum + c.world.y * weights[i]!, 0),
+          z: highConfidenceCandidates.reduce((sum, c, i) => sum + c.world.z * weights[i]!, 0),
         };
 
-        // Agreement bonus increases confidence
-        const agreementBonus = (1 - relativeDiff) * 0.15;
-        const fusedConfidence = Math.min(1.0, 
-          (topTwo[0]!.confidence + topTwo[1]!.confidence) / 2 + agreementBonus
-        );
+        // Agreement bonus increases confidence based on both distance and position agreement
+        const distanceAgreementBonus = (1 - relativeDistanceDiff) * 0.1;
+        const positionAgreementBonus = (1 - relativePositionDiff) * 0.1;
+        const agreementBonus = distanceAgreementBonus + positionAgreementBonus;
+        
+        // Average confidence of fused candidates, boosted by agreement
+        const avgConfidence = highConfidenceCandidates.reduce((sum, c) => sum + c.confidence, 0) 
+          / highConfidenceCandidates.length;
+        const fusedConfidence = Math.min(1.0, avgConfidence + agreementBonus);
 
         // Determine best method name (prefer planes > onnx > ground)
         const methodPriority: Record<'planes' | 'onnx' | 'ground', number> = {
@@ -803,7 +998,7 @@ export function fusedWorldPoint(
           onnx: 2,
           ground: 1
         };
-        const bestMethod = topTwo.reduce((best, curr) => 
+        const bestMethod = highConfidenceCandidates.reduce((best, curr) => 
           methodPriority[curr.method] > methodPriority[best.method] ? curr : best
         ).method;
 

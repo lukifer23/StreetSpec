@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type { Point, CameraParams, Measurement } from '../types/common';
+import { sanitizeString as sanitizeStringInput } from './inputValidation';
+import { validateNumber as validateNumberInput } from './inputValidation';
 
 /**
  * Validation schemas for input sanitization and validation
@@ -114,25 +116,13 @@ export function validateViewportDimensions(width: unknown, height: unknown): { w
 
 /**
  * Sanitizes string input to prevent XSS
+ * Delegates to inputValidation.sanitizeString for consistency
  */
 export function sanitizeString(input: unknown, maxLength: number = 1000): string {
   if (typeof input !== 'string') {
     throw new Error('Input must be a string');
   }
-  
-  // Remove potentially dangerous characters
-  let sanitized = input
-    .replace(/[<>]/g, '') // Remove angle brackets
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+=/gi, '') // Remove event handlers
-    .trim();
-  
-  // Enforce length limit
-  if (sanitized.length > maxLength) {
-    sanitized = sanitized.substring(0, maxLength);
-  }
-  
-  return sanitized;
+  return sanitizeStringInput(input, maxLength);
 }
 
 /**
@@ -157,67 +147,175 @@ export function validatePanoId(panoId: unknown): string {
 
 /**
  * Validates numeric input with bounds
+ * Uses inputValidation.validateNumber for consistency
  */
 export function validateNumeric(value: unknown, min: number, max: number, name: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`${name} must be a finite number`);
+  const result = validateNumberInput(value, { min, max, required: true });
+  if (!result.valid || result.value === undefined) {
+    throw new Error(result.error || `${name} must be a finite number between ${min} and ${max}`);
   }
-  
-  if (value < min || value > max) {
-    throw new Error(`${name} must be between ${min} and ${max}`);
-  }
-  
-  return value;
+  return result.value;
 }
 
 /**
- * IPC message validation schemas
+ * IPC message validation schemas using Zod
+ * These schemas provide runtime validation for all IPC communication
+ */
+
+// Schema for depth data fetch payload
+const DepthDataFetchPayloadSchema = z.union([
+  z.string().regex(/^[A-Za-z0-9_-]+$/).min(1).max(200), // PanoId string
+  z.object({
+    panoId: z.string().regex(/^[A-Za-z0-9_-]+$/).min(1).max(200),
+    maxRetries: z.number().int().min(1).max(10).optional(),
+    retryDelayMs: z.number().int().min(0).max(60000).optional()
+  })
+]);
+
+// Schema for CSV export content
+const CsvContentSchema = z.string().max(10 * 1024 * 1024); // 10MB max
+
+// Schema for base64 image data URL
+const ImageDataUrlSchema = z.string()
+  .regex(/^data:image\/(jpeg|jpg|png|webp);base64,/)
+  .max(50 * 1024 * 1024); // 50MB max for base64 image
+
+// Schema for revision history
+const RevisionSchema = z.object({
+  timestamp: z.number().int().positive(),
+  measurements: z.array(MeasurementSchema).max(10000)
+});
+
+// Schema for project
+const ProjectSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).max(200),
+  measurements: z.array(MeasurementSchema).max(10000),
+  revisionHistory: z.array(RevisionSchema).max(100).optional()
+});
+
+// Schema for app settings
+const AppSettingsSchema = z.object({
+  defaultUnit: z.enum(['metric', 'imperial']).optional(),
+  autoSave: z.boolean().optional(),
+  theme: z.enum(['light', 'dark']).optional(),
+  language: z.string().length(2).optional(), // ISO 639-1 code
+  measurementHistoryLimit: z.number().int().min(1).max(10000).optional(),
+  useGPU: z.boolean().optional(),
+  calibrationPitchOffsetDeg: z.number().finite().min(-90).max(90).optional(),
+  calibrationBiasByZoom: z.record(z.number().finite()).optional(),
+  telemetryOptIn: z.boolean().optional(),
+  depthScale: z.number().finite().min(0.1).max(10).optional(),
+  depthBias: z.number().finite().min(-1000).max(1000).optional(),
+  depthApiMaxRetries: z.number().int().min(1).max(10).optional(),
+  depthKernelSize: z.enum(['3', '5', '7', '9']).optional(),
+  depthUseBilinear: z.boolean().optional(),
+  depthEdgeRejectThreshold: z.number().min(0).max(1).optional()
+}).passthrough(); // Allow additional properties for forward compatibility
+
+// Schema for error log entry
+const ErrorLogEntrySchema = z.object({
+  message: z.string().max(5000),
+  stack: z.string().max(10000).optional(),
+  context: z.record(z.unknown()).optional(),
+  code: z.string().max(100).optional(),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  category: z.string().max(100).optional()
+});
+
+// Schema for telemetry payload
+const TelemetryPayloadSchema = z.object({
+  event: z.string().min(1).max(100),
+  data: z.record(z.unknown()).optional(),
+  timestamp: z.number().int().positive().optional()
+});
+
+/**
+ * Complete IPC invoke schemas mapping
  */
 export const IPCInvokeSchemas = {
-  'fetch-depth-data': z.union([
-    z.string(),
-    z.object({
-      panoId: z.string().min(1).max(200),
-      maxRetries: z.number().int().min(1).max(10).optional(),
-      retryDelayMs: z.number().int().min(0).max(60000).optional()
-    })
-  ]),
-  'csv-export': z.string().max(10 * 1024 * 1024), // 10MB max
-  'infer-depth': z.string().max(50 * 1024 * 1024), // 50MB max for base64 image
+  'fetch-depth-data': DepthDataFetchPayloadSchema,
+  'csv-export': CsvContentSchema,
+  'infer-depth': ImageDataUrlSchema,
   'get-projects': z.undefined(),
   'get-measurements': z.undefined(),
   'save-measurements': z.array(MeasurementSchema).max(10000),
-  'save-project': z.object({
-    id: z.string().uuid(),
-    name: z.string().max(200),
-    measurements: z.array(MeasurementSchema).max(10000),
-    revisionHistory: z.array(z.any()).max(100).optional()
-  }),
+  'save-project': ProjectSchema,
   'delete-project': z.string().uuid(),
   'get-settings': z.undefined(),
-  'save-settings': z.record(z.unknown()),
+  'save-settings': AppSettingsSchema,
+  'set-use-gpu': z.boolean(),
   'clear-data': z.undefined(),
-  'log-error': z.object({
-    message: z.string().max(5000),
-    stack: z.string().max(10000).optional(),
-    context: z.record(z.unknown()).optional()
-  })
-};
+  'log-error': ErrorLogEntrySchema,
+  'log-telemetry': TelemetryPayloadSchema
+} as const;
 
 /**
- * Validates IPC invoke message
+ * Type-safe IPC channel names
  */
-export function validateIPCInvoke(channel: string, data: unknown): unknown {
-  const schema = IPCInvokeSchemas[channel as keyof typeof IPCInvokeSchemas];
+export type IPCChannel = keyof typeof IPCInvokeSchemas;
+
+/**
+ * Type-safe IPC request types
+ */
+export type IPCRequest<T extends IPCChannel> = 
+  T extends 'fetch-depth-data' ? z.infer<typeof DepthDataFetchPayloadSchema> :
+  T extends 'csv-export' ? z.infer<typeof CsvContentSchema> :
+  T extends 'infer-depth' ? z.infer<typeof ImageDataUrlSchema> :
+  T extends 'get-projects' ? undefined :
+  T extends 'get-measurements' ? undefined :
+  T extends 'save-measurements' ? z.infer<typeof MeasurementSchema>[] :
+  T extends 'save-project' ? z.infer<typeof ProjectSchema> :
+  T extends 'delete-project' ? string :
+  T extends 'get-settings' ? undefined :
+  T extends 'save-settings' ? z.infer<typeof AppSettingsSchema> :
+  T extends 'set-use-gpu' ? boolean :
+  T extends 'clear-data' ? undefined :
+  T extends 'log-error' ? z.infer<typeof ErrorLogEntrySchema> :
+  T extends 'log-telemetry' ? z.infer<typeof TelemetryPayloadSchema> :
+  never;
+
+/**
+ * Type-safe IPC validation function
+ */
+export function validateIPCInvoke<T extends IPCChannel>(
+  channel: T,
+  data: unknown
+): IPCRequest<T> {
+  const schema = IPCInvokeSchemas[channel];
   if (!schema) {
     throw new Error(`Unknown IPC channel: ${channel}`);
   }
   
   const result = schema.safeParse(data);
   if (!result.success) {
-    throw new Error(`Invalid IPC data for channel ${channel}: ${result.error.message}`);
+    const errorMessages = result.error.errors.map(e => 
+      `${e.path.join('.')}: ${e.message}`
+    ).join('; ');
+    throw new Error(`Invalid IPC data for channel ${channel}: ${errorMessages}`);
   }
   
-  return result.data;
+  return result.data as IPCRequest<T>;
+}
+
+/**
+ * Type guard to check if a string is a valid IPC channel
+ */
+export function isValidIPCChannel(channel: string): channel is IPCChannel {
+  return channel in IPCInvokeSchemas;
+}
+
+/**
+ * Runtime type guard for IPC requests
+ */
+export function isValidIPCRequest<T extends IPCChannel>(
+  channel: T,
+  data: unknown
+): data is IPCRequest<T> {
+  const schema = IPCInvokeSchemas[channel];
+  if (!schema) {
+    return false;
+  }
+  return schema.safeParse(data).success;
 }
 

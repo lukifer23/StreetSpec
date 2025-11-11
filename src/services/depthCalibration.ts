@@ -42,23 +42,46 @@ export interface MultiPointCalibration {
 }
 
 export interface ZoomBiasTable {
-  [zoom: number]: number; // pitch offset in degrees
+  [zoom: number]: {
+    bias: number; // pitch offset in degrees
+    confidence: number; // 0-1 confidence in this bias value
+    sampleCount: number; // number of samples used
+    lastUpdated: number; // timestamp
+  };
+}
+
+export interface PerZoomCalibration {
+  zoom: number;
+  bias: number;
+  confidence: number;
+  sampleCount: number;
+  scale?: number; // optional depth scale adjustment per zoom
+  biasStdDev?: number; // standard deviation of bias measurements
 }
 
 /**
- * Interpolate zoom-level bias values for smooth transitions
+ * Enhanced zoom-level bias interpolation with confidence weighting
  */
 export function interpolateZoomBias(
   zoom: number,
   biasTable: ZoomBiasTable
-): number {
+): { bias: number; confidence: number } {
   const zoomLevels = Object.keys(biasTable)
     .map(k => Number(k))
     .filter(k => Number.isFinite(k))
     .sort((a, b) => a - b);
 
-  if (zoomLevels.length === 0) return 0;
-  if (zoomLevels.length === 1) return biasTable[zoomLevels[0]!] ?? 0;
+  if (zoomLevels.length === 0) return { bias: 0, confidence: 0 };
+  
+  if (zoomLevels.length === 1) {
+    const entry = biasTable[zoomLevels[0]!];
+    if (entry && typeof entry === 'object') {
+      return { bias: entry.bias, confidence: entry.confidence };
+    }
+    // Legacy format support
+    const legacyBias = typeof entry === 'number' ? entry : 0;
+    return { bias: legacyBias, confidence: 0.5 };
+  }
 
   // Find surrounding zoom levels
   let lower = zoomLevels[0]!;
@@ -72,19 +95,48 @@ export function interpolateZoomBias(
     }
   }
 
-  // Extrapolate if outside range
+  // Extract bias entries (handle both new and legacy formats)
+  const getBiasEntry = (z: number): { bias: number; confidence: number } => {
+    const entry = biasTable[z];
+    if (!entry) return { bias: 0, confidence: 0 };
+    if (typeof entry === 'object') {
+      return { bias: entry.bias, confidence: entry.confidence };
+    }
+    return { bias: entry, confidence: 0.5 }; // Legacy format
+  };
+
+  const lowerEntry = getBiasEntry(lower);
+  const upperEntry = getBiasEntry(upper);
+
+  // Extrapolate if outside range (with reduced confidence)
   if (zoom < lower) {
-    return biasTable[lower] ?? 0;
+    return { bias: lowerEntry.bias, confidence: lowerEntry.confidence * 0.7 };
   }
   if (zoom > upper) {
-    return biasTable[upper] ?? 0;
+    return { bias: upperEntry.bias, confidence: upperEntry.confidence * 0.7 };
   }
 
-  // Linear interpolation
-  const lowerBias = biasTable[lower] ?? 0;
-  const upperBias = biasTable[upper] ?? 0;
+  // Confidence-weighted interpolation
   const t = (zoom - lower) / (upper - lower);
-  return lowerBias + t * (upperBias - lowerBias);
+  const totalConfidence = lowerEntry.confidence + upperEntry.confidence;
+  
+  if (totalConfidence < 1e-6) {
+    // Simple linear interpolation if no confidence data
+    const bias = lowerEntry.bias + t * (upperEntry.bias - lowerEntry.bias);
+    return { bias, confidence: 0.5 };
+  }
+
+  // Weight by confidence
+  const lowerWeight = lowerEntry.confidence / totalConfidence;
+  const upperWeight = upperEntry.confidence / totalConfidence;
+  
+  const bias = lowerEntry.bias * (1 - t) * lowerWeight + upperEntry.bias * t * upperWeight +
+               lowerEntry.bias * (1 - t) * (1 - lowerWeight) + upperEntry.bias * t * (1 - upperWeight);
+  
+  // Interpolated confidence decreases with distance from known points
+  const confidence = Math.min(lowerEntry.confidence, upperEntry.confidence) * (1 - Math.abs(t - 0.5) * 0.5);
+  
+  return { bias, confidence: Math.max(0, Math.min(1, confidence)) };
 }
 
 /**
@@ -123,25 +175,32 @@ export function fitMultiPointCalibration(
   };
 }
 
-// Runtime calibration manager (front-end)
+// Runtime calibration manager with enhanced adaptive learning
 class CalibrationManager {
   private samples: CalibrationSample[] = [];
-  private readonly maxSamples: number = 200;
+  private readonly maxSamples: number = 500; // Increased for better learning
   private readonly minSamplesForFit: number = 10;
   private adaptiveWeights: Map<string, number> = new Map(); // Track weights per pano/zoom
+  private zoomBiasTable: ZoomBiasTable = {}; // Per-zoom bias tracking
+  private readonly zoomBiasDecayTime = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
 
   reset(): void {
     this.samples = [];
     this.adaptiveWeights.clear();
+    this.zoomBiasTable = {};
   }
 
   getSampleCount(): number {
     return this.samples.length;
   }
 
+  /**
+   * Enhanced sample addition with zoom-level bias tracking
+   */
   addSample(predicted: number, actual: number, context?: { panoId?: string; zoom?: number }): void {
     if (!Number.isFinite(predicted) || !Number.isFinite(actual)) return;
     if (predicted <= 0 || actual <= 0) return;
+    
     this.samples.push({ predicted, actual });
     if (this.samples.length > this.maxSamples) {
       this.samples.shift();
@@ -157,6 +216,84 @@ class CalibrationManager {
         this.adaptiveWeights.set(key, Math.min(2.0, currentWeight * 1.05));
       }
     }
+
+    // Track zoom-level bias if zoom is available
+    if (context?.zoom !== undefined) {
+      this.updateZoomBias(context.zoom, predicted, actual);
+    }
+  }
+
+  /**
+   * Update per-zoom bias table with new measurement
+   */
+  private updateZoomBias(zoom: number, predicted: number, actual: number): void {
+    const roundedZoom = Math.round(zoom * 2) / 2; // Round to nearest 0.5
+    const relativeError = (actual - predicted) / actual;
+    
+    // Convert error to pitch offset estimate (rough approximation)
+    // Larger error at closer distances suggests pitch offset
+    const biasEstimate = relativeError * 10; // Rough conversion factor
+
+    const existing = this.zoomBiasTable[roundedZoom];
+    const now = Date.now();
+
+    if (existing && typeof existing === 'object') {
+      // Update existing entry with exponential moving average
+      const alpha = 0.2; // Learning rate
+      const newBias = existing.bias * (1 - alpha) + biasEstimate * alpha;
+      const newSampleCount = existing.sampleCount + 1;
+      
+      // Update confidence based on consistency
+      const biasDiff = Math.abs(newBias - existing.bias);
+      const consistency = Math.max(0, 1 - biasDiff / 5); // 5 degrees max difference
+      const newConfidence = Math.min(1.0, existing.confidence * 0.9 + consistency * 0.1);
+
+      this.zoomBiasTable[roundedZoom] = {
+        bias: newBias,
+        confidence: newConfidence,
+        sampleCount: newSampleCount,
+        lastUpdated: now
+      };
+    } else {
+      // Create new entry
+      this.zoomBiasTable[roundedZoom] = {
+        bias: biasEstimate,
+        confidence: 0.3, // Low initial confidence
+        sampleCount: 1,
+        lastUpdated: now
+      };
+    }
+
+    // Clean up old entries
+    this.cleanupZoomBiasTable();
+  }
+
+  /**
+   * Remove stale zoom bias entries
+   */
+  private cleanupZoomBiasTable(): void {
+    const now = Date.now();
+    for (const [zoom, entry] of Object.entries(this.zoomBiasTable)) {
+      if (typeof entry === 'object' && entry.lastUpdated < now - this.zoomBiasDecayTime) {
+        delete this.zoomBiasTable[Number(zoom)];
+      }
+    }
+  }
+
+  /**
+   * Get zoom bias table for persistence
+   */
+  getZoomBiasTable(): ZoomBiasTable {
+    this.cleanupZoomBiasTable();
+    return { ...this.zoomBiasTable };
+  }
+
+  /**
+   * Set zoom bias table (e.g., from persisted settings)
+   */
+  setZoomBiasTable(table: ZoomBiasTable): void {
+    this.zoomBiasTable = { ...table };
+    this.cleanupZoomBiasTable();
   }
 
   computeScaleBias(context?: { panoId?: string; zoom?: number }): { scale: number; bias: number } | null {
@@ -193,22 +330,60 @@ class CalibrationManager {
   }
 
   /**
-   * Adaptive calibration: learn from measurement errors over time
+   * Enhanced adaptive calibration: learn from measurement errors with quality filtering
    */
   learnFromMeasurement(
     predicted: number,
     measured: number,
-    context: { panoId?: string; zoom?: number }
+    context: { panoId?: string; zoom?: number; confidence?: number }
   ): void {
     if (!Number.isFinite(predicted) || !Number.isFinite(measured)) return;
     if (predicted <= 0 || measured <= 0) return;
 
     const relativeError = Math.abs(predicted - measured) / measured;
     
-    // Only learn from reasonably accurate measurements (< 20% error)
-    if (relativeError < 0.2) {
-      this.addSample(predicted, measured, context);
+    // Adaptive threshold based on measurement confidence
+    const confidenceThreshold = context.confidence ?? 0.5;
+    const maxError = 0.15 + (1 - confidenceThreshold) * 0.15; // 15-30% max error
+    
+    // Only learn from reasonably accurate measurements
+    if (relativeError < maxError) {
+      // Weight sample by confidence
+      const sampleWeight = confidenceThreshold;
+      
+      // Add multiple samples for high-confidence measurements to speed learning
+      const numSamples = Math.max(1, Math.floor(sampleWeight * 2));
+      for (let i = 0; i < numSamples; i++) {
+        this.addSample(predicted, measured, context);
+      }
     }
+  }
+
+  /**
+   * Get calibration statistics for visualization
+   */
+  getCalibrationStats(): {
+    sampleCount: number;
+    zoomBiasCount: number;
+    avgConfidence: number;
+    recentSamples: number;
+  } {
+    let totalConfidence = 0;
+    let zoomBiasCount = 0;
+    
+    for (const entry of Object.values(this.zoomBiasTable)) {
+      if (typeof entry === 'object') {
+        zoomBiasCount++;
+        totalConfidence += entry.confidence;
+      }
+    }
+
+    return {
+      sampleCount: this.samples.length,
+      zoomBiasCount,
+      avgConfidence: zoomBiasCount > 0 ? totalConfidence / zoomBiasCount : 0,
+      recentSamples: this.samples.length // Could filter by timestamp if we add it
+    };
   }
 
   private median(arr: number[]): number {

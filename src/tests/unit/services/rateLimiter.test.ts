@@ -29,7 +29,8 @@ describe('rateLimiter.executeWithRateLimit', () => {
   it('defers requests beyond the rate limit window before processing them', async () => {
     const executionTimes: number[] = [];
 
-    const operations = Array.from({ length: testConfig.maxRequests + 1 }, (_, index) =>
+    // Execute requests beyond the rate limit
+    Array.from({ length: testConfig.maxRequests + 1 }, (_, index) =>
       rateLimiter.executeWithRateLimit(TEST_CATEGORY, async () => {
         executionTimes.push(Date.now());
         return index;

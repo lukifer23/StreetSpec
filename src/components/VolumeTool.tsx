@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
-import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
-import { estimateDistanceToPoint } from '../services/measurementLogic';
+// Geometry functions imported via fusedWorldPoint
+import { estimateDistanceToPoint, fusedWorldPoint } from '../services/measurementLogic';
+import { validatePolygon, validateMeasurementPlausibility } from '../utils/polygonValidation';
 import { convertAreaToDisplay, convertLengthToDisplay, convertVolumeToDisplay } from '../utils/units';
 import { analyzeVolumeBase, MINIMUM_BASE_AREA } from '../utils/volumeBase';
 import type { VolumeBaseAnalysis } from '../utils/volumeBase';
@@ -21,6 +22,8 @@ const VolumeTool: React.FC = () => {
   const addMeasurement = useRootStore((state) => state.addMeasurement);
   const defaultUnit = useRootStore((state) => state.settings.defaultUnit);
   const depthData = useRootStore((state) => state.depthData);
+  const onnxDepthMap = useRootStore((state) => state.onnxDepthMap);
+  const settings = useRootStore((state) => state.settings);
 
   const [points, setPoints] = useState<VolumePoint[]>([]);
   const [volume, setVolume] = useState(0);
@@ -29,6 +32,7 @@ const VolumeTool: React.FC = () => {
   const [baseAnalysis, setBaseAnalysis] = useState<VolumeBaseAnalysis | null>(null);
   const [baseArea, setBaseArea] = useState(0);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [polygonConfidence, setPolygonConfidence] = useState(1.0);
 
   // Handle canvas clicks to add points
   const handleCanvasClick = useCallback((event: MouseEvent) => {
@@ -46,50 +50,38 @@ const VolumeTool: React.FC = () => {
     const viewWidth = rect.width;
     const viewHeight = rect.height;
 
-    let worldPoint = undefined as VolumePoint['worldPoint'] | undefined;
-    let worldSource: VolumePoint['worldSource'] = undefined;
-
-    if (depthData) {
-      const depthWorld = screenToWorldWithDepth({ x, y }, cameraParams, viewWidth, viewHeight, depthData);
-      if (depthWorld) {
-        worldPoint = depthWorld;
-        worldSource = 'planes';
+    // Use unified depth fusion for robust world point estimation
+    const onnxDistance = onnxDepthMap && cameraParams 
+      ? estimateDistanceToPoint(x, y, viewWidth, viewHeight, cameraParams, onnxDepthMap)
+      : null;
+    
+    const fused = fusedWorldPoint(
+      { x, y },
+      viewWidth,
+      viewHeight,
+      cameraParams,
+      depthData,
+      onnxDistance,
+      onnxDepthMap,
+      {
+        depthKernelSize: settings.depthKernelSize,
+        depthUseBilinear: settings.depthUseBilinear,
+        depthEdgeRejectThreshold: settings.depthEdgeRejectThreshold
       }
-    }
+    );
 
-    if (!worldPoint) {
-      const onnx = useRootStore.getState().onnxDepthMap;
-      if (onnx && cameraParams) {
-        const d = estimateDistanceToPoint(x, y, viewWidth, viewHeight, cameraParams, onnx);
-        if (d && Number.isFinite(d) && d > 0) {
-          const dir = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-          worldPoint = { x: dir.x * d, y: dir.y * d, z: dir.z * d };
-          worldSource = 'onnx';
-        }
-      }
-    }
-
-    if (!worldPoint) {
-      const directionVector = screenToWorld({ x, y }, cameraParams, viewWidth, viewHeight);
-      const groundPoint = estimateGroundPlaneIntersection(directionVector, cameraParams);
-      if (groundPoint) {
-        worldPoint = groundPoint;
-        worldSource = 'ground';
-      }
-    }
-
-    if (worldPoint) {
+    if (fused.world) {
       const newPoint: VolumePoint = {
         id: `point-${Date.now()}-${Math.random()}`,
         x,
         y,
-        worldPoint,
-        worldSource
+        worldPoint: fused.world,
+        worldSource: fused.method
       };
 
       setPoints(prev => [...prev, newPoint]);
     }
-  }, [isVolumeToolActive, cameraParams, depthData]);
+  }, [isVolumeToolActive, cameraParams, depthData, onnxDepthMap, settings]);
 
   // Calculate volume when points or height change
   useEffect(() => {
@@ -124,6 +116,19 @@ const VolumeTool: React.FC = () => {
       return;
     }
 
+    // Comprehensive polygon validation
+    const validation = validatePolygon(worldPoints);
+    
+    if (!validation.isValid) {
+      setBaseAnalysis(null);
+      setBaseArea(0);
+      setVolume(0);
+      setDimensions({ length: 0, width: 0, height });
+      setValidationError(validation.warnings.join('; ') || 'Base polygon validation failed');
+      setPolygonConfidence(validation.confidence);
+      return;
+    }
+
     const analysis = analyzeVolumeBase(worldPoints, cameraParams?.heading);
 
     if (!analysis || analysis.area < MINIMUM_BASE_AREA) {
@@ -132,15 +137,32 @@ const VolumeTool: React.FC = () => {
       setVolume(0);
       setDimensions({ length: 0, width: 0, height });
       setValidationError('Base polygon is too small or degenerate. Adjust the points and try again.');
+      setPolygonConfidence(0);
       return;
     }
+
+    // Plausibility check for volume
+    const volumeValue = analysis.area * height;
+    const plausibility = validateMeasurementPlausibility(
+      volumeValue,
+      worldPoints,
+      cameraParams || undefined
+    );
+
+    if (!plausibility.isValid) {
+      setValidationError(plausibility.warnings.join('; '));
+    } else {
+      setValidationError(null);
+    }
+
+    const finalConfidence = validation.confidence * plausibility.confidenceMultiplier;
 
     setBaseAnalysis(analysis);
     setBaseArea(analysis.area);
     setDimensions({ length: analysis.length, width: analysis.width, height });
-    setVolume(analysis.area * height);
-    setValidationError(null);
-  }, [points, height, cameraParams?.heading]);
+    setVolume(volumeValue);
+    setPolygonConfidence(finalConfidence);
+  }, [points, height, cameraParams]);
 
   // Add event listeners when tool is active
   useEffect(() => {
@@ -161,7 +183,7 @@ const VolumeTool: React.FC = () => {
 
   // Complete the measurement
   const handleCompleteMeasurement = useCallback(() => {
-    if (!baseAnalysis || volume <= 0) {
+    if (!baseAnalysis || volume <= 0 || validationError) {
       return;
     }
 
@@ -173,13 +195,27 @@ const VolumeTool: React.FC = () => {
       return;
     }
 
+    // Final validation check
+    const validation = validatePolygon(worldPoints);
+    if (!validation.isValid) {
+      setValidationError(validation.warnings.join('; '));
+      return;
+    }
+
+    // Enhanced confidence calculation
     const planesBackedCount = points.filter((point) => point.worldSource === 'planes').length;
-    const confidence =
-      planesBackedCount === points.length
-        ? 0.72
-        : planesBackedCount > 0
-          ? 0.62
-          : 0.48;
+    const onnxBackedCount = points.filter((point) => point.worldSource === 'onnx').length;
+    
+    let baseConfidence = 0.48;
+    if (planesBackedCount === points.length) {
+      baseConfidence = 0.85;
+    } else if (planesBackedCount > points.length * 0.5) {
+      baseConfidence = 0.75;
+    } else if (onnxBackedCount > points.length * 0.5) {
+      baseConfidence = 0.65;
+    }
+    
+    const confidence = baseConfidence * polygonConfidence;
 
     const { value: displayVolumeValue } = convertVolumeToDisplay(volume, defaultUnit);
     const baseOrientationDegrees = (baseAnalysis.orientationRadians * 180) / Math.PI;
@@ -211,8 +247,10 @@ const VolumeTool: React.FC = () => {
         worldPointsMeters: worldPoints,
         headingDegreesAtCapture: headingDegrees,
         pointSources: points.map((point) => point.worldSource ?? 'ground'),
+        polygonProperties: validation.properties,
+        validationWarnings: validation.warnings
       },
-      error: points.length < 3 ? 'Need at least three points for volume measurement' : undefined,
+      error: validationError || undefined,
     };
 
     addMeasurement(volumeMeasurement);
@@ -224,6 +262,7 @@ const VolumeTool: React.FC = () => {
     setBaseAnalysis(null);
     setBaseArea(0);
     setValidationError(null);
+    setPolygonConfidence(1.0);
   }, [
     baseAnalysis,
     volume,
@@ -233,6 +272,8 @@ const VolumeTool: React.FC = () => {
     addMeasurement,
     height,
     baseArea,
+    validationError,
+    polygonConfidence,
   ]);
 
   // Cancel measurement
@@ -323,7 +364,7 @@ const VolumeTool: React.FC = () => {
         <div className={styles['controls']}>
           <button
             onClick={handleCompleteMeasurement}
-            disabled={!canComplete}
+            disabled={!canComplete || !!validationError}
             className={styles['completeButton']}
           >
             Complete Volume Measurement

@@ -226,6 +226,32 @@ export interface ErrorHandler {
   showUserError: (error: AppError) => void;
   isRecoverable: (error: AppError) => boolean;
   retryOperation: <T>(operation: () => Promise<T>, error: AppError) => Promise<T>;
+  getRecoveryStrategy: (error: AppError) => RecoveryStrategy;
+  serializeErrorForIPC: (error: AppError) => SerializedError;
+  detectWindowsError: (error: Error | AppError) => AppError | null;
+  handleWindowsErrorRecovery: (error: AppError, strategy: RecoveryStrategy) => Promise<boolean>;
+}
+
+export interface RecoveryStrategy {
+  action: 'retry' | 'wait' | 'reload' | 'cleanup' | 'fix_config' | 'user_action' | 'generate_depth' | 'refresh' | 'repair';
+  maxRetries: number;
+  delayMs: number;
+  fallback: 'offline_mode' | 'cache_only' | 'fallback_model' | 'use_cached_depth' | 'reduce_quality' | 'use_ground_plane' | 'approximate' | 'export_manual' | 'use_backup' | 'reduce_features' | null;
+}
+
+export interface SerializedError {
+  id: string;
+  code: string;
+  message: string;
+  userFriendlyMessage: string;
+  severity: ErrorSeverity;
+  category: ErrorCategory;
+  details?: unknown;
+  timestamp: number;
+  recoverable: boolean;
+  retryCount: number;
+  maxRetries: number;
+  stack?: string;
 }
 
 // Error codes for consistent error handling

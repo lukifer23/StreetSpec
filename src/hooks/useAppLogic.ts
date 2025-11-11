@@ -736,6 +736,7 @@ export const useAppLogic = (apiKey: string) => {
     currentCameraParams,
     onnxDepthMap,
     depthData,
+    depthGenProgress,
 
     // Actions
     setIsSettingsOpen,
