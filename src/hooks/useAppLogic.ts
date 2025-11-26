@@ -526,6 +526,10 @@ export const useAppLogic = (apiKey: string) => {
     setDepthGenProgress({ stage: 'fetching', quality: 'high' });
 
     try {
+      const mapViewElement = document.querySelector('[data-testid="map-view"]') as HTMLElement | null;
+      const viewportWidth = mapViewElement?.clientWidth;
+      const viewportHeight = mapViewElement?.clientHeight;
+
       const deps = {
         fetchImage: createDepthMapFetcher(),
         getCachedDepthMap,
@@ -547,6 +551,8 @@ export const useAppLogic = (apiKey: string) => {
         enableCache: true,
         quality: 'high',
         progressive: false,
+        viewportWidth,
+        viewportHeight,
         onProgress: (progress) => {
           setDepthGenProgress(progress);
         }

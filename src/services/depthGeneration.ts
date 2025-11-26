@@ -75,6 +75,8 @@ export interface DepthGenerationOptions {
   enableCache?: boolean;
   progressive?: boolean; // Start with low quality, upgrade if needed
   onProgress?: (progress: { stage: 'fetching' | 'processing' | 'complete'; quality?: 'low' | 'medium' | 'high' }) => void;
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 const QUALITY_SETTINGS = {
@@ -163,7 +165,36 @@ export async function generateDepthMap(
         );
       }
 
-      result = inferenceResult;
+      const baseTransform = inferenceResult.transform ?? {
+        originalWidth: options.imageWidth || dimensions.width,
+        originalHeight: options.imageHeight || dimensions.height,
+        resizedWidth: inferenceResult.width,
+        resizedHeight: inferenceResult.height,
+        scaleX: inferenceResult.width / (options.imageWidth || dimensions.width),
+        scaleY: inferenceResult.height / (options.imageHeight || dimensions.height),
+        offsetX: 0,
+        offsetY: 0
+      };
+
+      const transform = {
+        ...baseTransform,
+        originalWidth: options.viewportWidth || baseTransform.originalWidth,
+        originalHeight: options.viewportHeight || baseTransform.originalHeight,
+        resizedWidth: baseTransform.resizedWidth ?? inferenceResult.width,
+        resizedHeight: baseTransform.resizedHeight ?? inferenceResult.height,
+        scaleX:
+          baseTransform.scaleX ??
+          ((baseTransform.resizedWidth ?? inferenceResult.width) /
+            (options.viewportWidth || baseTransform.originalWidth)),
+        scaleY:
+          baseTransform.scaleY ??
+          ((baseTransform.resizedHeight ?? inferenceResult.height) /
+            (options.viewportHeight || baseTransform.originalHeight)),
+        offsetX: baseTransform.offsetX ?? 0,
+        offsetY: baseTransform.offsetY ?? 0
+      } as OnnxDepthMap['transform'];
+
+      result = { ...inferenceResult, transform };
 
       // If progressive and we got a lower quality result, upgrade to target quality
       if (options.progressive && currentQuality !== targetQuality && attempts === 0) {
