@@ -129,9 +129,23 @@ export async function generateDepthMap(
       console.warn(`[DepthGeneration] Clamping FOV from ${rawFov} to ${clampedFov}`);
     }
 
+    const hasPanoId = Boolean(cameraParams.panoId);
+    const hasValidLat = typeof cameraParams.lat === 'number' && Number.isFinite(cameraParams.lat);
+    const hasValidLng = typeof cameraParams.lng === 'number' && Number.isFinite(cameraParams.lng);
+
+    if (!hasPanoId && (!hasValidLat || !hasValidLng)) {
+      throw createModelInferenceError(
+        'Cannot generate depth map without panoId or valid coordinates',
+        {
+          cameraParams,
+          reason: 'Missing panoId and valid lat/lng for Street View request'
+        }
+      );
+    }
+
     const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
       `size=${imgWidth}x${imgHeight}&` +
-      (cameraParams.panoId
+      (hasPanoId
         ? `pano=${cameraParams.panoId}&`
         : `location=${cameraParams.lat},${cameraParams.lng}&`) +
       `heading=${cameraParams.heading ?? 0}&` +
