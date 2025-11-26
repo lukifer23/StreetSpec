@@ -116,4 +116,32 @@ describe('createMeasurement', () => {
 
     expect(measurement.source).toBe('ground');
   });
+
+  it('does not penalize confidence when calibration offset is zero but calibration is confirmed', () => {
+    const calibratedMeasurement = createMeasurement(
+      startPoint,
+      endPoint,
+      { ...cameraParams, calibrationPitchOffsetDeg: 0 },
+      100,
+      100,
+      depthData,
+      'metric',
+      { isCalibrated: true }
+    );
+
+    const uncalibratedMeasurement = createMeasurement(
+      startPoint,
+      endPoint,
+      { ...cameraParams, calibrationPitchOffsetDeg: 0 },
+      100,
+      100,
+      depthData,
+      'metric',
+      { isCalibrated: false }
+    );
+
+    expect(calibratedMeasurement.confidence).toBeCloseTo(0.9, 5);
+    expect(uncalibratedMeasurement.confidence).toBeCloseTo(0.63, 5);
+    expect(calibratedMeasurement.confidence).toBeGreaterThan(uncalibratedMeasurement.confidence);
+  });
 });
