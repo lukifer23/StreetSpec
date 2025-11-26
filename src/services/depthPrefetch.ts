@@ -16,6 +16,12 @@ interface PrefetchOptions {
   quality?: 'low' | 'medium' | 'high';
 }
 
+const PREFETCH_QUALITY_DIMENSIONS: Record<'low' | 'medium' | 'high', { width: number; height: number }> = {
+  low: { width: 320, height: 320 },
+  medium: { width: 480, height: 480 },
+  high: { width: 640, height: 640 }
+};
+
 interface PrefetchTask {
   panoId: string;
   cameraParams: CameraParams;
@@ -204,9 +210,15 @@ class DepthPrefetchService {
     if (!this.deps) return;
 
     try {
+      const { width, height } = PREFETCH_QUALITY_DIMENSIONS[options.quality];
+
       // Check if already cached
       if (options.enableCache) {
-        const cached = await getCachedDepthMap(cameraParams);
+        const cached = await getCachedDepthMap(cameraParams, undefined, {
+          width,
+          height,
+          quality: options.quality
+        });
         if (cached) {
           console.log(`[DepthPrefetch] ${panoId} already cached, skipping`);
           const task = this.activeTasks.get(panoId);

@@ -108,7 +108,17 @@ cacheRegistry.register('depth-maps', depthCacheRegistry);
  * Enhanced cache key generation using UnifiedCache key generation
  * Provides consistent key normalization and prevents collisions
  */
-function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transform']): string {
+export interface DepthCacheKeyOptions {
+  width?: number;
+  height?: number;
+  quality?: string;
+}
+
+function generateCacheKey(
+  params: CameraParams,
+  transform?: OnnxDepthMap['transform'],
+  cacheOptions: DepthCacheKeyOptions = {}
+): string {
   if (!params.panoId) {
     return '';
   }
@@ -123,6 +133,17 @@ function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transf
     zoom: params.zoom ?? 1,
     calibrationOffset: params.calibrationPitchOffsetDeg ?? 0
   };
+
+  if (cacheOptions.width || cacheOptions.height) {
+    cacheParams.dimensions = {
+      width: cacheOptions.width,
+      height: cacheOptions.height
+    };
+  }
+
+  if (cacheOptions.quality) {
+    cacheParams.quality = cacheOptions.quality;
+  }
 
   // Add transform signature if available
   if (transform) {
@@ -262,9 +283,13 @@ function decompressDepthData(
 /**
  * Get cached depth map with request deduplication and enhanced caching
  */
-export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDepthMap['transform']): Promise<OnnxDepthMap | null> {
+export async function getCachedDepthMap(
+  params: CameraParams,
+  transform?: OnnxDepthMap['transform'],
+  cacheOptions: DepthCacheKeyOptions = {}
+): Promise<OnnxDepthMap | null> {
   try {
-    const cacheKey = generateCacheKey(params, transform);
+    const cacheKey = generateCacheKey(params, transform, cacheOptions);
     if (!cacheKey) return null;
 
     // Check unified cache first (in-memory)
@@ -357,12 +382,12 @@ export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDe
  * Cache depth map with enhanced compression and dual-layer caching
  */
 export async function cacheDepthMap(
-  params: CameraParams, 
+  params: CameraParams,
   depthMap: OnnxDepthMap,
-  options?: { isPredictive?: boolean; ttl?: number }
+  options: { isPredictive?: boolean; ttl?: number } & DepthCacheKeyOptions = {}
 ): Promise<void> {
   try {
-    const cacheKey = generateCacheKey(params, depthMap.transform);
+    const cacheKey = generateCacheKey(params, depthMap.transform, options);
     if (!cacheKey) return;
 
     // Compress data with enhanced algorithm
@@ -580,7 +605,12 @@ export async function prefetchDepthMap(
   depthMap: OnnxDepthMap,
   ttl: number = PREDICTIVE_CACHE_TTL
 ): Promise<void> {
-  await cacheDepthMap(params, depthMap, { isPredictive: true, ttl });
+  await cacheDepthMap(params, depthMap, {
+    isPredictive: true,
+    ttl,
+    width: depthMap.width,
+    height: depthMap.height
+  });
 }
 
 /**

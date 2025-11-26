@@ -83,6 +83,18 @@ const QUALITY_SETTINGS = {
   high: { width: 640, height: 640 }
 };
 
+function resolveDimensions(
+  quality: 'low' | 'medium' | 'high',
+  imageWidth?: number,
+  imageHeight?: number
+): { width: number; height: number } {
+  const dimensions = QUALITY_SETTINGS[quality];
+  return {
+    width: imageWidth || dimensions.width,
+    height: imageHeight || dimensions.height
+  };
+}
+
 export async function generateDepthMap(
   cameraParams: CameraParams,
   apiKey: string,
@@ -92,16 +104,21 @@ export async function generateDepthMap(
   const getCache = deps.getCachedDepthMap ?? getCachedDepthMap;
   const setCache = deps.cacheDepthMap ?? cacheDepthMap;
 
+  // Progressive loading: start with lower quality if requested
+  const targetQuality = options.quality || 'high';
+  const targetDimensions = resolveDimensions(targetQuality, options.imageWidth, options.imageHeight);
   // Use cache if enabled (default behavior)
   if (options.enableCache !== false) {
-    const cached = await getCache(cameraParams);
+    const cached = await getCache(cameraParams, undefined, {
+      width: targetDimensions.width,
+      height: targetDimensions.height,
+      quality: targetQuality
+    });
     if (cached) {
       return { depthMap: cached, fromCache: true };
     }
   }
 
-  // Progressive loading: start with lower quality if requested
-  const targetQuality = options.quality || 'high';
   let currentQuality: 'low' | 'medium' | 'high' = targetQuality;
   
   if (options.progressive && targetQuality !== 'low') {
@@ -114,13 +131,36 @@ export async function generateDepthMap(
 
   // Generate initial depth map
   let result: OnnxDepthMap | null = null;
+  let fromCache = false;
   let attempts = 0;
   const maxAttempts = options.progressive && targetQuality === 'high' ? 2 : 1;
 
   while (attempts < maxAttempts && (!result || (options.progressive && currentQuality !== targetQuality))) {
-    const dimensions = QUALITY_SETTINGS[currentQuality];
-    const imgWidth = options.imageWidth || dimensions.width;
-    const imgHeight = options.imageHeight || dimensions.height;
+    const { width: imgWidth, height: imgHeight } = resolveDimensions(
+      currentQuality,
+      options.imageWidth,
+      options.imageHeight
+    );
+
+    if (options.enableCache !== false) {
+      const cachedForQuality = await getCache(cameraParams, undefined, {
+        width: imgWidth,
+        height: imgHeight,
+        quality: currentQuality
+      });
+
+      if (cachedForQuality) {
+        result = cachedForQuality;
+        fromCache = true;
+        if (options.progressive && currentQuality !== targetQuality && attempts === 0) {
+          currentQuality = targetQuality;
+          attempts++;
+          continue;
+        }
+
+        return { depthMap: cachedForQuality, fromCache: true };
+      }
+    }
 
     const rawFov = cameraParams.fov ?? 90;
     const clampedFov = Math.min(Math.max(rawFov, 1), 120);
@@ -164,12 +204,17 @@ export async function generateDepthMap(
       }
 
       result = inferenceResult;
+      fromCache = false;
 
       // If progressive and we got a lower quality result, upgrade to target quality
       if (options.progressive && currentQuality !== targetQuality && attempts === 0) {
         // Cache the lower quality result for quick access
         if (options.enableCache !== false) {
-          await setCache(cameraParams, result);
+          await setCache(cameraParams, result, {
+            width: imgWidth,
+            height: imgHeight,
+            quality: currentQuality
+          });
         }
         
         // Upgrade to target quality
@@ -179,7 +224,11 @@ export async function generateDepthMap(
       } else {
         // Done - cache final result
         if (options.enableCache !== false) {
-          await setCache(cameraParams, result);
+          await setCache(cameraParams, result, {
+            width: imgWidth,
+            height: imgHeight,
+            quality: currentQuality
+          });
         }
         break;
       }
@@ -201,7 +250,7 @@ export async function generateDepthMap(
   }
 
   options.onProgress?.({ stage: 'complete', quality: currentQuality });
-  return { depthMap: result, fromCache: false };
+  return { depthMap: result, fromCache };
 }
 
 export function createDepthMapFetcher() {
@@ -237,7 +286,13 @@ export async function generateBatchDepthMaps(
   const cacheChecks = await Promise.allSettled(
     cameraParamsList.map(async (params) => {
       if (options.enableCache !== false) {
-        const cached = await getCache(params);
+        const cacheQuality = options.quality || 'medium';
+        const cacheDimensions = resolveDimensions(cacheQuality, options.imageWidth, options.imageHeight);
+        const cached = await getCache(params, undefined, {
+          width: cacheDimensions.width,
+          height: cacheDimensions.height,
+          quality: cacheQuality
+        });
         if (cached) {
           return { params, cached: true, result: { depthMap: cached, fromCache: true } };
         }
