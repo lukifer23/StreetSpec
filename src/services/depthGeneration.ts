@@ -146,7 +146,7 @@ export async function generateDepthMap(
       if (!response.ok) {
         throw createNetworkError(
           `Static API request failed: ${response.status} ${response.statusText}`,
-          { status: response.status, statusText: response.statusText, url }
+          { status: response.status, statusText: response.statusText, url: apiUrl }
         );
       }
 
