@@ -55,6 +55,7 @@ export function createMeasurement(
   unit: 'metric' | 'imperial' = 'metric',
   options: MeasurementOptions = {}
 ): Measurement {
+  const isCalibrated = options?.isCalibrated ?? false;
   let errorMessage: string | undefined = undefined;
   let confidence = 0;
   let startSource: Measurement['source'] | 'unknown' = 'unknown';
@@ -308,7 +309,7 @@ export function createMeasurement(
   }
 
   // Adjust confidence based on calibration status
-  if (cameraParams.calibrationPitchOffsetDeg === 0 || cameraParams.calibrationPitchOffsetDeg === undefined) {
+  if (!isCalibrated) {
     confidence *= 0.7; // Reduce confidence if not manually calibrated
     errorMessage = (errorMessage ?? "") + "No horizon calibration applied. ";
   }

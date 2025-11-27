@@ -1,6 +1,6 @@
 import type { CameraParams, OnnxDepthMap } from '../types/common';
 import { cacheDepthMap, getCachedDepthMap } from './depth';
-import { executeWithRateLimit } from './rateLimiter';
+import { executeWithRateLimit, getRateLimitStatus } from './rateLimiter';
 import {
   createModelInferenceError,
   createNetworkError
@@ -66,6 +66,10 @@ export interface DepthGenerationDeps {
 export interface DepthGenerationResult {
   depthMap: OnnxDepthMap;
   fromCache: boolean;
+  rateLimitStatus?: {
+    googleMaps?: ReturnType<typeof getRateLimitStatus>;
+    depthGeneration?: ReturnType<typeof getRateLimitStatus>;
+  };
 }
 
 export interface DepthGenerationOptions {
@@ -75,6 +79,8 @@ export interface DepthGenerationOptions {
   enableCache?: boolean;
   progressive?: boolean; // Start with low quality, upgrade if needed
   onProgress?: (progress: { stage: 'fetching' | 'processing' | 'complete'; quality?: 'low' | 'medium' | 'high' }) => void;
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 const QUALITY_SETTINGS = {
@@ -82,6 +88,11 @@ const QUALITY_SETTINGS = {
   medium: { width: 480, height: 480 },
   high: { width: 640, height: 640 }
 };
+
+const getDepthRateLimitStatus = () => ({
+  googleMaps: getRateLimitStatus('google-maps'),
+  depthGeneration: getRateLimitStatus('depth-generation')
+});
 
 export async function generateDepthMap(
   cameraParams: CameraParams,
@@ -96,7 +107,7 @@ export async function generateDepthMap(
   if (options.enableCache !== false) {
     const cached = await getCache(cameraParams);
     if (cached) {
-      return { depthMap: cached, fromCache: true };
+      return { depthMap: cached, fromCache: true, rateLimitStatus: getDepthRateLimitStatus() };
     }
   }
 
@@ -129,9 +140,23 @@ export async function generateDepthMap(
       console.warn(`[DepthGeneration] Clamping FOV from ${rawFov} to ${clampedFov}`);
     }
 
+    const hasPanoId = Boolean(cameraParams.panoId);
+    const hasValidLat = typeof cameraParams.lat === 'number' && Number.isFinite(cameraParams.lat);
+    const hasValidLng = typeof cameraParams.lng === 'number' && Number.isFinite(cameraParams.lng);
+
+    if (!hasPanoId && (!hasValidLat || !hasValidLng)) {
+      throw createModelInferenceError(
+        'Cannot generate depth map without panoId or valid coordinates',
+        {
+          cameraParams,
+          reason: 'Missing panoId and valid lat/lng for Street View request'
+        }
+      );
+    }
+
     const apiUrl = `https://maps.googleapis.com/maps/api/streetview?` +
       `size=${imgWidth}x${imgHeight}&` +
-      (cameraParams.panoId
+      (hasPanoId
         ? `pano=${cameraParams.panoId}&`
         : `location=${cameraParams.lat},${cameraParams.lng}&`) +
       `heading=${cameraParams.heading ?? 0}&` +
@@ -141,7 +166,9 @@ export async function generateDepthMap(
 
     try {
       options.onProgress?.({ stage: 'fetching', quality: currentQuality });
-      const response = await deps.fetchImage(apiUrl);
+      const response = await executeWithRateLimit('google-maps', () => deps.fetchImage(apiUrl), {
+        timeout: 15000
+      });
 
       if (!response.ok) {
         throw createNetworkError(
@@ -154,7 +181,9 @@ export async function generateDepthMap(
       const base64data = await blobToDataUrl(imageBlob);
 
       options.onProgress?.({ stage: 'processing', quality: currentQuality });
-      const inferenceResult = await deps.invokeDepth(base64data);
+      const inferenceResult = await executeWithRateLimit('depth-generation', () => deps.invokeDepth(base64data), {
+        timeout: 60000
+      });
 
       if (!inferenceResult?.data || !inferenceResult?.width || !inferenceResult?.height) {
         throw createModelInferenceError(
@@ -163,7 +192,36 @@ export async function generateDepthMap(
         );
       }
 
-      result = inferenceResult;
+      const baseTransform = inferenceResult.transform ?? {
+        originalWidth: options.imageWidth || dimensions.width,
+        originalHeight: options.imageHeight || dimensions.height,
+        resizedWidth: inferenceResult.width,
+        resizedHeight: inferenceResult.height,
+        scaleX: inferenceResult.width / (options.imageWidth || dimensions.width),
+        scaleY: inferenceResult.height / (options.imageHeight || dimensions.height),
+        offsetX: 0,
+        offsetY: 0
+      };
+
+      const transform = {
+        ...baseTransform,
+        originalWidth: options.viewportWidth || baseTransform.originalWidth,
+        originalHeight: options.viewportHeight || baseTransform.originalHeight,
+        resizedWidth: baseTransform.resizedWidth ?? inferenceResult.width,
+        resizedHeight: baseTransform.resizedHeight ?? inferenceResult.height,
+        scaleX:
+          baseTransform.scaleX ??
+          ((baseTransform.resizedWidth ?? inferenceResult.width) /
+            (options.viewportWidth || baseTransform.originalWidth)),
+        scaleY:
+          baseTransform.scaleY ??
+          ((baseTransform.resizedHeight ?? inferenceResult.height) /
+            (options.viewportHeight || baseTransform.originalHeight)),
+        offsetX: baseTransform.offsetX ?? 0,
+        offsetY: baseTransform.offsetY ?? 0
+      } as OnnxDepthMap['transform'];
+
+      result = { ...inferenceResult, transform };
 
       // If progressive and we got a lower quality result, upgrade to target quality
       if (options.progressive && currentQuality !== targetQuality && attempts === 0) {
@@ -189,6 +247,9 @@ export async function generateDepthMap(
         console.warn('[DepthGeneration] Progressive upgrade failed, using lower quality result:', error);
         break;
       }
+      if (error && typeof error === 'object') {
+        (error as { rateLimitStatus?: ReturnType<typeof getDepthRateLimitStatus> }).rateLimitStatus = getDepthRateLimitStatus();
+      }
       throw error;
     }
   }
@@ -201,7 +262,7 @@ export async function generateDepthMap(
   }
 
   options.onProgress?.({ stage: 'complete', quality: currentQuality });
-  return { depthMap: result, fromCache: false };
+  return { depthMap: result, fromCache: false, rateLimitStatus: getDepthRateLimitStatus() };
 }
 
 export function createDepthMapFetcher() {
@@ -239,7 +300,11 @@ export async function generateBatchDepthMaps(
       if (options.enableCache !== false) {
         const cached = await getCache(params);
         if (cached) {
-          return { params, cached: true, result: { depthMap: cached, fromCache: true } };
+          return {
+            params,
+            cached: true,
+            result: { depthMap: cached, fromCache: true, rateLimitStatus: getDepthRateLimitStatus() }
+          };
         }
       }
       return { params, cached: false };

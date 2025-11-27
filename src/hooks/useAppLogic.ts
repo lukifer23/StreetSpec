@@ -22,6 +22,35 @@ const getExportValue = (
   defaultUnit: UnitSystem
 ): MeasurementDisplayValue => getDisplayValue(measurement, defaultUnit);
 
+const stableStringify = (value: unknown): string => {
+  const seen = new WeakSet<object>();
+
+  const sortKeys = (input: unknown): unknown => {
+    if (input === null || typeof input !== 'object') {
+      return input;
+    }
+
+    if (seen.has(input as object)) {
+      return null;
+    }
+
+    seen.add(input as object);
+
+    if (Array.isArray(input)) {
+      return input.map(sortKeys);
+    }
+
+    return Object.keys(input as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = sortKeys((input as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+  };
+
+  return JSON.stringify(sortKeys(value));
+};
+
 export const useAppLogic = (apiKey: string) => {
   const [isApiLoaded, setIsApiLoaded] = useState(false);
   const [depthFetchStatus, setDepthFetchStatus] = useState<DepthDataFetchResult | null>(null);
@@ -247,13 +276,25 @@ export const useAppLogic = (apiKey: string) => {
       return;
     }
 
-    const measurementSignature = JSON.stringify(
+    const measurementSignature = stableStringify(
       measurements.map((m) => ({
         id: m.id,
         kind: m.kind,
+        label: m.label,
+        name: m.name,
         updatedAt: m.timestamp,
+        unit: m.unit,
         value: m.distanceMeters ?? m.areaSquareMeters ?? m.volumeCubicMeters ?? 0,
-        points: m.points?.length ?? 0,
+        distanceMeters: m.distanceMeters,
+        distance: m.distance,
+        areaSquareMeters: m.areaSquareMeters,
+        perimeterMeters: m.perimeterMeters,
+        volumeCubicMeters: m.volumeCubicMeters,
+        dimensionsMeters: m.dimensionsMeters,
+        points: m.points,
+        source: m.source,
+        confidence: m.confidence,
+        metadata: m.metadata,
       }))
     );
 
@@ -560,6 +601,10 @@ export const useAppLogic = (apiKey: string) => {
     setDepthGenProgress({ stage: 'fetching', quality: 'high' });
 
     try {
+      const mapViewElement = document.querySelector('[data-testid="map-view"]') as HTMLElement | null;
+      const viewportWidth = mapViewElement?.clientWidth;
+      const viewportHeight = mapViewElement?.clientHeight;
+
       const deps = {
         fetchImage: createDepthMapFetcher(),
         getCachedDepthMap,
@@ -581,6 +626,8 @@ export const useAppLogic = (apiKey: string) => {
         enableCache: true,
         quality: 'high',
         progressive: false,
+        viewportWidth,
+        viewportHeight,
         onProgress: (progress) => {
           setDepthGenProgress(progress);
         }

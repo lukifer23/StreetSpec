@@ -183,6 +183,19 @@ describe('depthGeneration helpers', () => {
     })).rejects.toThrow('Main process failed to return valid depth map data');
   });
 
+  it('throws when panoId is missing and coordinates are invalid', async () => {
+    const fetchImage = jest.fn();
+
+    await expect(generateDepthMap({ heading: 10 }, 'api-key', {
+      fetchImage: fetchImage as unknown as (url: string) => Promise<Response>,
+      getCachedDepthMap: jest.fn().mockResolvedValue(null),
+      cacheDepthMap: jest.fn(),
+      invokeDepth: jest.fn(),
+    })).rejects.toThrow('panoId or valid coordinates');
+
+    expect(fetchImage).not.toHaveBeenCalled();
+  });
+
   it('clamps FOV values beyond API limits', async () => {
     const imageBuffer = Buffer.from([1, 2, 3]);
     const blob = {
