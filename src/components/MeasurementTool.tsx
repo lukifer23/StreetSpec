@@ -5,12 +5,12 @@ import type {
   CameraParams,
   OnnxDepthMap,
   DecodedDepthData,
-  Vector3,
 } from '../types/common';
-import { estimateDistanceToPoint, calculateEstimatedHeight } from '../services/measurementLogic';
+import { estimateDistanceToPoint, calculateEstimatedHeight, fusedWorldPoint } from '../services/measurementLogic';
 import { calibrationManager } from '../services/depthCalibration';
-import { screenToWorld, estimateGroundPlaneIntersection, screenToWorldWithDepth } from '../services/geometry';
+import { screenToWorld, estimateGroundPlaneIntersection } from '../services/geometry';
 import { distance3D } from '../utils/math';
+import { createMeasurement } from '../services/measurement';
 import { ErrorBoundary } from './ErrorBoundary';
 import { convertLengthToDisplay } from '../utils/units';
 import styles from './MeasurementTool.module.css';
@@ -563,7 +563,6 @@ const MeasurementTool: React.FC = () => {
   }, []);
 
   const completeMeasurement = useCallback((startPoint: Point, coords: Point) => {
-    console.log('[measure] completeMeasurement called with:', { startPoint, coords, cameraParams: !!currentCameraParams, onnxDepthMap: !!onnxDepthMap });
 
     // Input validation
     if (!startPoint || !coords) {
@@ -602,299 +601,211 @@ const MeasurementTool: React.FC = () => {
 
     const viewWidth = overlayRef.current?.offsetWidth || 640;
     const viewHeight = overlayRef.current?.offsetHeight || 640;
-    console.log('[measure] View dimensions:', { viewWidth, viewHeight });
 
     // Enforce vertical snapping for calculation: keep X aligned with base
     const snappedEnd: Point = { x: startPoint.x, y: coords.y };
 
-    // Distance estimates
-    let distanceToBase: number | null = null;
-    // Vertical height derived from Street View depth planes
-    let planeHeight: number | null = null;
-    let source: 'planes' | 'onnx' | 'ground' | undefined;
-    let confidence = 0.0;
+    const fusionSettings = {
+      depthKernelSize: depthKernelSize as 3 | 5 | 7 | 9,
+      depthUseBilinear,
+      depthEdgeRejectThreshold,
+    };
 
-    let worldStart: Vector3 | null = null;
-    let worldEnd: Vector3 | null = null;
+    const onnxDistanceStart = onnxDepthMap
+      ? estimateDistanceToPoint(
+          startPoint.x,
+          startPoint.y,
+          viewWidth,
+          viewHeight,
+          currentCameraParams,
+          onnxDepthMap,
+          fusionSettings
+        )
+      : null;
 
-    // When Street View depth planes are available, compute world points directly
-    if (depthData) {
-      worldStart = screenToWorldWithDepth(startPoint, currentCameraParams, viewWidth, viewHeight, depthData);
-      worldEnd = screenToWorldWithDepth(snappedEnd, currentCameraParams, viewWidth, viewHeight, depthData);
-      if (worldStart && worldEnd) {
-        // Use vertical component of world coordinates for height
-        planeHeight = Math.abs(worldEnd.y - worldStart.y);
-        distanceToBase = distance3D({ x: 0, y: 0, z: 0 }, worldStart);
-        console.log('[measure] plane vertical height:', planeHeight, 'base distance from planes:', distanceToBase);
-        source = 'planes';
-        // Higher confidence when planes succeed and distance is reasonable
-        const distOk = distanceToBase > 0.5 && distanceToBase < 200;
-        confidence = distOk ? 0.9 : 0.7;
+    const onnxDistanceEnd = onnxDepthMap
+      ? estimateDistanceToPoint(
+          snappedEnd.x,
+          snappedEnd.y,
+          viewWidth,
+          viewHeight,
+          currentCameraParams,
+          onnxDepthMap,
+          fusionSettings
+        )
+      : null;
 
-        // Optional auto-calibration: compare ONNX predicted distance at base vs plane distance
-        if (autoCalibrateDepth && onnxDepthMap) {
-          const onnxDist = estimateDistanceToPoint(
-            startPoint.x,
-            startPoint.y,
-            viewWidth,
-            viewHeight,
-            currentCameraParams,
-            onnxDepthMap,
-            {
-              depthKernelSize: depthKernelSize as 3|5|7,
-              depthUseBilinear,
-              depthEdgeRejectThreshold,
-            }
-          );
-          if (onnxDist && distanceToBase) {
-            calibrationManager.addSample(onnxDist, distanceToBase);
-            const proposal = calibrationManager.computeScaleBias();
-            if (proposal) {
-              const scaleDelta = Math.abs(depthScale - proposal.scale);
-              const biasDelta = Math.abs(depthBias - proposal.bias);
-              const shouldPropose = scaleDelta > 0.02 || biasDelta > 0.05;
-              if (shouldPropose) {
-                // One-time confirmation per session
-                const confirmed = sessionStorage.getItem('autoCalConfirmed') === '1' || window.confirm(`Apply new depth calibration?\nScale: ${proposal.scale.toFixed(3)}  Bias: ${proposal.bias.toFixed(3)}`);
-                if (!confirmed) {
-                  // Remember decline only for this prompt occurrence
-                } else {
-                  sessionStorage.setItem('autoCalConfirmed', '1');
-                  if (applyCalTimerRef.current) {
-                    clearTimeout(applyCalTimerRef.current);
-                  }
-                  applyCalTimerRef.current = window.setTimeout(() => {
-                    updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
-                    const newSettings = { ...useRootStore.getState().settings, depthScale: proposal.scale, depthBias: proposal.bias };
-                    window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
-                  }, 1500);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    const fusedStart = fusedWorldPoint(
+      startPoint,
+      viewWidth,
+      viewHeight,
+      currentCameraParams,
+      depthData,
+      onnxDistanceStart,
+      onnxDepthMap,
+      fusionSettings
+    );
 
-    // Fall back to ONNX depth for distance to base
-    if (distanceToBase === null && onnxDepthMap) {
-      distanceToBase = estimateDistanceToPoint(
-        startPoint.x,
-        startPoint.y,
-        viewWidth,
-        viewHeight,
-        currentCameraParams,
-        onnxDepthMap,
-        {
-          depthKernelSize: depthKernelSize as 3|5|7,
-          depthUseBilinear,
-          depthEdgeRejectThreshold,
-        }
-      );
-      console.log('[measure] Depth map distance:', distanceToBase);
-      if (distanceToBase !== null) {
-        source = 'onnx';
-        const distOk = distanceToBase > 0.5 && distanceToBase < 200;
-        confidence = Math.max(confidence, distOk ? 0.6 : 0.4);
-      }
-    }
+    const fusedEnd = fusedWorldPoint(
+      snappedEnd,
+      viewWidth,
+      viewHeight,
+      currentCameraParams,
+      depthData,
+      onnxDistanceEnd,
+      onnxDepthMap,
+      fusionSettings
+    );
 
-    // Always compute a ground-plane base distance as a stable anchor
-    try {
-      if (currentCameraParams) {
-        const dirBase = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
-        const wpBase = estimateGroundPlaneIntersection(dirBase, currentCameraParams);
-        if (wpBase) {
-          const gpDist = distance3D({ x: 0, y: 0, z: 0 }, wpBase);
-          // Use ground-plane distance if primary estimate is missing or clearly unreasonable
-          if (distanceToBase === null || !Number.isFinite(distanceToBase) || distanceToBase <= 0.1) {
-            distanceToBase = gpDist;
-          }
-        }
-      }
-    } catch {}
-
-    if (distanceToBase === null) {
-      // fallback to ground plane
-      const dir = screenToWorld(startPoint, currentCameraParams, viewWidth, viewHeight);
-      const wp = estimateGroundPlaneIntersection(dir, currentCameraParams);
-      if (wp) {
-        distanceToBase = distance3D({x:0,y:0,z:0}, wp);
-        console.log('[measure] fallback ground-plane distance', distanceToBase);
-        source = 'ground';
-        confidence = Math.max(confidence, 0.3);
-      } else {
-        console.warn('[measure] unable to get ground-plane fallback');
-      }
-    } else {
-      console.log('[measure] kernel depth distance', distanceToBase);
-    }
-
-    if (distanceToBase === null && planeHeight === null) {
-      console.error('[measure] No distance or height calculated');
+    if (!fusedStart.world || !fusedEnd.world) {
       pushNotification({
         kind: 'error',
-        message: 'Could not calculate measurement. Ensure both points are on visible surfaces and try again.',
+        title: 'Measurement failed',
+        message: 'Could not resolve depth at the selected points. Try regenerating the depth map or selecting different points.'
       });
       setStartPoint(null);
       setPhase('idle');
       return;
     }
 
-    // Height from ONNX depth
-    let estimatedHeight: number | null = null;
-    if (distanceToBase !== null) {
-      estimatedHeight = calculateEstimatedHeight(
+    // Optional auto-calibration: compare ONNX predicted distance at base vs plane distance
+    if (autoCalibrateDepth && onnxDepthMap && fusedStart.method === 'planes' && onnxDistanceStart && onnxDistanceStart > 0) {
+      const planeDistance = distance3D({ x: 0, y: 0, z: 0 }, fusedStart.world);
+      if (planeDistance > 0.1 && planeDistance < 1e4) {
+        calibrationManager.addSample(onnxDistanceStart, planeDistance);
+        const proposal = calibrationManager.computeScaleBias();
+        if (proposal) {
+          const scaleDelta = Math.abs(depthScale - proposal.scale);
+          const biasDelta = Math.abs(depthBias - proposal.bias);
+          const shouldPropose = scaleDelta > 0.02 || biasDelta > 0.05;
+          if (shouldPropose) {
+            const confirmed = sessionStorage.getItem('autoCalConfirmed') === '1' || window.confirm(`Apply new depth calibration?\nScale: ${proposal.scale.toFixed(3)}  Bias: ${proposal.bias.toFixed(3)}`);
+            if (confirmed) {
+              sessionStorage.setItem('autoCalConfirmed', '1');
+              if (applyCalTimerRef.current) {
+                clearTimeout(applyCalTimerRef.current);
+              }
+              applyCalTimerRef.current = window.setTimeout(() => {
+                updateSettings({ depthScale: proposal.scale, depthBias: proposal.bias });
+                const newSettings = { ...useRootStore.getState().settings, depthScale: proposal.scale, depthBias: proposal.bias };
+                window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
+              }, 1500);
+            }
+          }
+        }
+      }
+    }
+
+    // Use the unified createMeasurement function for consistent, validated results
+    try {
+      const measurement = createMeasurement(
         startPoint,
         snappedEnd,
+        currentCameraParams,
         viewWidth,
         viewHeight,
-        currentCameraParams,
         depthData,
-        distanceToBase
+        defaultUnit as 'metric' | 'imperial',
+        {
+          onnxDepthMap,
+          fusionSettings,
+          fusedStart,
+          fusedEnd
+        }
       );
-      console.log('[measure] Estimated height:', estimatedHeight);
-    }
 
-    // Choose the most reliable height estimate
-    let finalHeight: number | null = null;
-    if (planeHeight !== null) {
-      // Depth planes succeeded; prefer this direct measurement
-      finalHeight = planeHeight;
-      source = source ?? 'planes';
-    } else {
-      finalHeight = estimatedHeight;
-    }
+      // Handle measurement creation failure
+      if (!measurement.distanceMeters || measurement.distanceMeters <= 0) {
+        console.error('[measure] Measurement creation failed:', measurement.error);
+        pushNotification({
+          kind: 'error',
+          message: measurement.error || 'Unable to calculate measurement. Please try selecting different points.',
+        });
+        setStartPoint(null);
+        setPhase('idle');
+        return;
+      }
 
-    if (finalHeight === null) {
-      console.error('[measure] No height calculated');
+      // Warn user about low confidence measurements
+      if (measurement.confidence !== undefined && measurement.confidence < 0.5) {
+        pushNotification({
+          kind: 'warning',
+          title: 'Low Confidence Measurement',
+          message: `Measurement confidence is ${Math.round(measurement.confidence * 100)}%. Results may be inaccurate.`,
+          timeoutMs: 5000
+        });
+      }
+
+      // Check for unrealistic measurements (likely calibration issues)
+      if (measurement.distanceMeters > 1000) { // 1000m = ~3000ft
+        console.warn('[measure] Unrealistic height detected:', measurement.distanceMeters);
+        pushNotification({
+          kind: 'warning',
+          message: 'Measurement result seems unrealistic. Please confirm your horizon calibration.',
+        });
+      }
+
+      addMeasurement(measurement);
+
+      // Visual feedback: show success notification
+      const displayValue = measurement.distance !== undefined ? measurement.distance : measurement.distanceMeters;
+      const unitLabel = measurement.unit === 'metric' ? 'm' : 'ft';
+      const confidencePercent = measurement.confidence !== undefined ? Math.round(measurement.confidence * 100) : 0;
+      pushNotification({
+        kind: 'success',
+        title: 'Measurement Added',
+        message: `${displayValue.toFixed(2)} ${unitLabel} (confidence: ${confidencePercent}%)`,
+        timeoutMs: 3000
+      });
+
+    } catch (error) {
+      console.error('[measure] Measurement creation error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Measurement calculation failed';
       pushNotification({
         kind: 'error',
-        title: 'Invalid Measurement',
-        message: 'Could not calculate height. Ensure both points are on measurable surfaces.',
-        timeoutMs: 5000
+        message: `Failed to create measurement: ${errorMessage}`,
       });
       setStartPoint(null);
       setPhase('idle');
       return;
     }
-
-    // Validate measurement results
-    if (!Number.isFinite(finalHeight) || finalHeight <= 0) {
-      console.error('[measure] Invalid height result:', finalHeight);
-      pushNotification({
-        kind: 'error',
-        title: 'Invalid Measurement',
-        message: 'Invalid measurement result. Please try different points.',
-        timeoutMs: 5000
-      });
-      setStartPoint(null);
-      setPhase('idle');
-      return;
-    }
-
-    // Warn if confidence is low
-    if (confidence < 0.3) {
-      pushNotification({
-        kind: 'warning',
-        title: 'Low Confidence Measurement',
-        message: `Measurement confidence is ${Math.round(confidence * 100)}%. Results may be inaccurate.`,
-        timeoutMs: 5000
-      });
-    }
-
-    // Check for unrealistic measurements (likely calibration issues)
-    if (finalHeight > 1000) { // 1000m = ~3000ft
-      console.warn('[measure] Unrealistic height detected:', finalHeight);
-      pushNotification({
-        kind: 'warning',
-        message: 'Measurement result seems unrealistic. Please confirm your horizon calibration.',
-      });
-    }
-
-    // Convert to display value
-    const { value: finalDistance } = convertLengthToDisplay(finalHeight, defaultUnit as 'metric' | 'imperial');
-    const measurementConfidence = Math.min(1, Math.max(0, confidence));
-
-    const newMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
-      kind: 'distance',
-      label: 'Est. Height',
-      distanceMeters: finalHeight,
-      distance: finalDistance ?? finalHeight,
-      startPoint,
-      endPoint: snappedEnd,
-      unit: defaultUnit,
-      panoId: currentCameraParams.panoId ?? currentCameraParams.pano,
-      cameraParams: currentCameraParams,
-      source: source ?? 'ground',
-      confidence: measurementConfidence,
-      metadata: {
-        distanceToBase,
-        planeHeight,
-        estimatedHeight,
-        baseWorld: worldStart,
-        topWorld: worldEnd,
-      },
-    };
-    console.log('[measure] Creating measurement:', newMeasurement);
-    addMeasurement(newMeasurement);
-
-    // Visual feedback: show success notification
-    pushNotification({
-      kind: 'success',
-      title: 'Measurement Added',
-      message: `${finalDistance?.toFixed(2) ?? finalHeight.toFixed(2)} ${defaultUnit === 'metric' ? 'm' : 'ft'} (confidence: ${Math.round(measurementConfidence * 100)}%)`,
-      timeoutMs: 3000
-    });
-
-    console.log('[measure] Resetting measurement state');
-    setStartPoint(null);
-    setCurrentMousePos(null);
-    setPhase('idle');
   }, [
     currentCameraParams,
-    onnxDepthMap,
     depthData,
     defaultUnit,
     addMeasurement,
-    autoCalibrateDepth,
+    onnxDepthMap,
     depthKernelSize,
     depthUseBilinear,
     depthEdgeRejectThreshold,
+    autoCalibrateDepth,
     depthScale,
     depthBias,
-    updateSettings,
+    updateSettings
   ]);
 
   const handleOverlayClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    console.log('[measure] Click detected, phase:', phase);
-
     if (phase === 'idle') {
-      console.log('[measure] Ignoring click while idle');
       return;
     }
 
     if (!hasDepthSupport) {
-      console.log('[measure] Prerequisites missing, ignoring click');
       return;
     }
 
     if (phase === 'placingStart') {
       // Handle the first click when starting from button
       const coords = getClickCoords(event);
-      console.log('[measure] First click (placingStart), coords:', coords);
       if (coords) {
         setStartPoint(coords);
         setPhase('placingEnd');
       }
     } else if (phase === 'placingEnd') {
       const coords = getClickCoords(event);
-      console.log('[measure] Completing measurement, coords:', coords, 'startPoint:', startPoint);
       if (coords && startPoint) {
         completeMeasurement(startPoint, coords);
       } else if (coords && !startPoint) {
         // If we're in placingEnd but no startPoint, this is the first click
-        console.log('[measure] First click in placingEnd, setting startPoint');
         setStartPoint(coords);
       }
     }
@@ -943,8 +854,6 @@ const MeasurementTool: React.FC = () => {
   }, [phase]);
 
   const startMeasurement = useCallback(() => {
-    console.log('[measure] startMeasurement called');
-
     // Validate prerequisites with detailed error messages
     if (!currentCameraParams) {
       pushNotification({
@@ -1059,7 +968,7 @@ const MeasurementTool: React.FC = () => {
           borderRadius: '8px',
           color: '#6c757d'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠</div>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>!</div>
           <h3 style={{ margin: '0 0 8px 0', color: '#495057' }}>Measurement Tool Error</h3>
           <p style={{ margin: '0 0 16px 0', maxWidth: '400px' }}>
             The measurement tool encountered an error. Please try refreshing the page or contact support if the problem persists.

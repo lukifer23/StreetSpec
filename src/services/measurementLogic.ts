@@ -1,4 +1,10 @@
-import type { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings } from '../types/common';
+import type { CameraParams, OnnxDepthMap, Point, DecodedDepthData, AppSettings, Vector3 } from '../types/common';
+
+export type FusedWorldPointResult = {
+  world: { x: number; y: number; z: number } | null;
+  method: 'planes' | 'onnx' | 'ground';
+  confidence: number;
+};
 import { screenToWorldWithDepth, screenToWorld, estimateGroundPlaneIntersection } from './geometry';
 import { pixelOffsetToVerticalAngle, degreesToRadians } from '../utils/cameraMath';
 
@@ -658,7 +664,7 @@ export function computePlaneBoundaryProximity(
 /**
  * Computes confidence score for ONNX depth based on Sobel gradients and depth consistency
  */
-function computeOnnxDepthConfidence(
+export function computeOnnxDepthConfidence(
   point: Point,
   viewportWidth: number,
   viewportHeight: number,
@@ -726,7 +732,7 @@ function computeOnnxDepthConfidence(
 /**
  * Enhanced confidence scoring for plane-based depth with adaptive weighting
  */
-function computePlaneDepthConfidence(
+export function computePlaneDepthConfidence(
   point: Point,
   viewportWidth: number,
   viewportHeight: number,

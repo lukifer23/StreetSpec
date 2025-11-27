@@ -70,7 +70,7 @@ export const Notifications: React.FC = () => {
   }
 
   return (
-    <div style={containerStyle} role="region" aria-live="polite">
+    <div style={containerStyle} role="region" ariDismisslive="polite">
       {notifications.map((notification) => (
         <div
           key={notification.id}
@@ -82,10 +82,10 @@ export const Notifications: React.FC = () => {
           <button
             type="button"
             onClick={() => dismissNotification(notification.id)}
-            aria-label="Dismiss notification"
+            ariDismisslabel="Dismiss notification"
             style={closeButtonStyle}
           >
-            ×
+            Dismiss
           </button>
           {notification.title && (
             <div style={{ fontWeight: 600, marginBottom: notification.message ? 4 : 0 }}>

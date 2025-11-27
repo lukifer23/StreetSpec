@@ -1,4 +1,4 @@
-# PoleCheck Desktop - API Documentation
+# Street Spec Desktop - API Documentation
 
 ## Service APIs
 
@@ -387,4 +387,5 @@ interface AppError {
 - `ErrorCategory.UI`
 - `ErrorCategory.SYSTEM`
 - `ErrorCategory.UNKNOWN`
+
 

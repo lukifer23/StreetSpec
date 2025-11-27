@@ -1,12 +1,6 @@
-// Use require for React to access CJS exports directly (Vite will bundle it)
-// @ts-expect-error - Dynamic require for React Component to work around Vite/Rollup CJS interop issue
-const React = require('react');
-import type { ErrorInfo, ReactNode, ComponentType } from 'react';
+import React, { Component, type ErrorInfo, type ReactNode, type ComponentType } from 'react';
 import { errorHandler } from '../services/errorHandler';
 import { createError, ErrorSeverity, ErrorCategory } from '../types/common';
-
-// Component is exported from React's CJS build
-const Component = React.Component;
 
 interface Props {
   children: ReactNode;
@@ -49,7 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
       ErrorSeverity.HIGH,
       ErrorCategory.UI,
       {
-        component: this.props.componentName || 'Unknown',
+        component: this.props['componentName'] || 'Unknown',
         errorStack: error.stack,
         componentStack: errorInfo.componentStack,
         originalError: error.message
@@ -60,7 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     // Handle through error handler service
     errorHandler.handleError(appError, {
-      component: this.props.componentName || 'ErrorBoundary',
+      component: this.props['componentName'] || 'ErrorBoundary',
       action: 'componentDidCatch',
       data: {
         errorMessage: error.message,
@@ -69,17 +63,16 @@ export class ErrorBoundary extends Component<Props, State> {
     });
 
     // Call optional error handler
-    if (this.props.onError) {
-      this.props.onError(error, errorInfo);
+    if (this.props['onError']) {
+      this.props['onError'](error, errorInfo);
     }
   }
 
   override render() {
-    const React = ReactObj as any;
-    if (this.state.hasError) {
+    if (this.state['hasError']) {
       // Custom fallback UI or default error UI
-      if (this.props.fallback) {
-        return this.props.fallback;
+      if (this.props['fallback']) {
+        return this.props['fallback'];
       }
 
       return React.createElement('div', {
@@ -93,8 +86,8 @@ export class ErrorBoundary extends Component<Props, State> {
           fontFamily: 'system-ui, -apple-system, sans-serif'
         }
       },
-        React.createElement('h2', { style: { margin: '0 0 16px 0', fontSize: '18px' } }, '⚠️ Something went wrong'),
-        React.createElement('p', { style: { margin: '0 0 12px 0', lineHeight: 1.5 } }, 'An unexpected error occurred in PoleCheck Desktop. This might be due to:'),
+        React.createElement('h2', { style: { margin: '0 0 16px 0', fontSize: '18px' } }, 'Oops, something went wrong'),
+        React.createElement('p', { style: { margin: '0 0 12px 0', lineHeight: 1.5 } }, 'An unexpected error occurred in Street Spec Desktop. This might be due to:'),
         React.createElement('ul', { style: { margin: '0 0 16px 0', paddingLeft: '20px' } },
           React.createElement('li', null, 'A temporary network issue'),
           React.createElement('li', null, 'Corrupted browser data'),
@@ -124,7 +117,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 overflow: 'auto',
                 maxHeight: '200px'
               }
-            }, this.state.error?.message, this.state.errorInfo?.componentStack)
+            }, this.state['error']?.message, this.state['errorInfo']?.componentStack)
           )
         ),
         React.createElement('div', { style: { display: 'flex', gap: '12px', flexWrap: 'wrap' } },
@@ -139,7 +132,7 @@ export class ErrorBoundary extends Component<Props, State> {
               cursor: 'pointer',
               fontSize: '14px'
             }
-          }, '🔄 Reload Page'),
+          }, 'Reload Page'),
           React.createElement('button', {
             onClick: () => {
               localStorage.clear();
@@ -155,7 +148,7 @@ export class ErrorBoundary extends Component<Props, State> {
               cursor: 'pointer',
               fontSize: '14px'
             }
-          }, '🗑️ Clear Data & Reload'),
+          }, 'Clear Data & Reload'),
           React.createElement('button', {
             onClick: () => this.setState({ hasError: false, error: undefined, errorInfo: undefined }),
             style: {
@@ -167,7 +160,7 @@ export class ErrorBoundary extends Component<Props, State> {
               cursor: 'pointer',
               fontSize: '14px'
             }
-          }, '🔄 Try Again')
+          }, 'Try Again')
         ),
         React.createElement('p', {
           style: {
@@ -180,7 +173,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return this.props['children'];
   }
 }
 
@@ -191,11 +184,15 @@ export function withErrorBoundary<P extends object>(
   onError?: (error: Error, errorInfo: ErrorInfo) => void
 ) {
   const WrappedComponent = (props: P) => {
-    const React = ReactObj as any;
-    return React.createElement(ErrorBoundary, { fallback, onError }, React.createElement(ComponentToWrap, props));
+    return (
+      <ErrorBoundary fallback={fallback} onError={onError}>
+        <ComponentToWrap {...props} />
+      </ErrorBoundary>
+    );
   };
 
   WrappedComponent.displayName = `withErrorBoundary(${ComponentToWrap.displayName || ComponentToWrap.name})`;
 
   return WrappedComponent;
 }
+

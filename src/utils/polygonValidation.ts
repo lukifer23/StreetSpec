@@ -4,6 +4,7 @@
  */
 
 import type { Point, Vector3 } from '../types/common';
+import { distance3D, isValidPoint3D } from './math';
 
 export interface PolygonValidationResult {
   isValid: boolean;
@@ -335,7 +336,7 @@ export function validatePolygon(points: Vector3[]): PolygonValidationResult {
   const area = calculatePolygonArea3D(validPoints);
   
   if (area < MIN_AREA_THRESHOLD) {
-    warnings.push(`Polygon area is too small: ${area.toFixed(6)} m²`);
+    warnings.push(`Polygon area is too small: ${area.toFixed(6)} m^2`);
     confidence *= 0.2;
     isDegenerate = true;
   }
@@ -378,12 +379,12 @@ export function validatePolygon(points: Vector3[]): PolygonValidationResult {
   const angles = calculateAngles(validPoints);
   
   if (angles.min < MIN_ANGLE_THRESHOLD) {
-    warnings.push(`Polygon contains very acute angles (min: ${(angles.min * 180 / Math.PI).toFixed(2)}°)`);
+    warnings.push(`Polygon contains very acute angles (min: ${(angles.min * 180 / Math.PI).toFixed(2)} deg)`);
     confidence *= 0.7;
   }
   
   if (angles.max > MAX_ANGLE_THRESHOLD) {
-    warnings.push(`Polygon contains very obtuse angles (max: ${(angles.max * 180 / Math.PI).toFixed(2)}°)`);
+    warnings.push(`Polygon contains very obtuse angles (max: ${(angles.max * 180 / Math.PI).toFixed(2)} deg)`);
     confidence *= 0.8;
   }
   

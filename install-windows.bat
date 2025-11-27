@@ -2,16 +2,16 @@
 setlocal enabledelayedexpansion
 
 echo ========================================
-echo PoleCheck Desktop - Windows Installer
+echo Street Spec Desktop - Windows Installer
 echo ========================================
 echo.
-echo This script will build and launch the PoleCheck Desktop installer.
+echo This script will build and launch the Street Spec Desktop installer.
 echo Run it from the repository root on a Windows machine.
 echo.
 
 REM Verify project root
 if not exist "package.json" (
-    echo ERROR: package.json not found. Please run this script from the PoleCheck Desktop project root.
+    echo ERROR: package.json not found. Please run this script from the Street Spec Desktop project root.
     pause
     exit /b 1
 )
@@ -83,7 +83,7 @@ if %errorLevel% neq 0 (
 
 REM Locate the most recent installer package
 set "INSTALLER="
-for /f "delims= tokens=*" %%I in ('dir /b /a:-d /o:-n "release\PoleCheck-Desktop-Setup-*.exe"') do (
+for /f "delims= tokens=*" %%I in ('dir /b /a:-d /o:-n "release\\StreetSpec-Desktop-Setup-*.exe"') do (
     set "INSTALLER=%%I"
     goto :FoundInstaller
 )
@@ -101,3 +101,4 @@ start "" "release\%INSTALLER%"
 echo.
 echo The installer has been launched in a new window. Follow the setup prompts to finish installation.
 pause
+

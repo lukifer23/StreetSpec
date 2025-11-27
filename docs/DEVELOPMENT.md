@@ -1,4 +1,4 @@
-# PoleCheck Desktop - Development Guide
+# Street Spec Desktop - Development Guide
 
 ## Quick Start
 
@@ -340,4 +340,5 @@ Use Memory tab to identify memory leaks. Check for:
 - [API.md](./API.md) - API documentation
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - Contribution guidelines
 - [roadmap.md](./roadmap.md) - Development roadmap
+
 

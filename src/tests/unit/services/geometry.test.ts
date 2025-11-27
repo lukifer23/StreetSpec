@@ -170,9 +170,14 @@ describe('Geometry Service', () => {
     });
 
     it('uses calibration offset when provided an uncalibrated vector', () => {
-      const centerPoint = { x: 320, y: 240 };
-      const direction = screenToWorld(centerPoint, mockCameraParams, 640, 480);
+      // Use a point lower on the screen to get a downward-pointing direction vector
+      const lowerPoint = { x: 320, y: 360 }; // Lower on screen = downward direction
+      const direction = screenToWorld(lowerPoint, mockCameraParams, 640, 480);
       const uncalibratedDirection: Vector3 = { x: direction.x, y: direction.y, z: direction.z };
+
+      // Verify the direction is pointing downward
+      expect(uncalibratedDirection.y).toBeLessThan(0);
+
       const result = estimateGroundPlaneIntersection(uncalibratedDirection, {
         ...mockCameraParams,
         calibrationPitchOffsetDeg: 5,

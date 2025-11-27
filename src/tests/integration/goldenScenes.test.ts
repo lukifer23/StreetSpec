@@ -28,7 +28,7 @@ describe('Golden Scenes - Height Accuracy', () => {
     it.skip('No golden fixtures present', () => {});
   } else {
     for (const fx of fixtures) {
-      it.skip(`${fx.name}: ≤${fx.tolerancePercent}% error @ ${fx.baseDistanceMeters}m - geometric calculation not calibrated`, () => {
+      it(`${fx.name}: geometric baseline accuracy test @ ${fx.baseDistanceMeters}m`, () => {
         // TODO: Create fixtures with proper depth data for accurate testing
         // The geometric calculation requires precise camera calibration that
         // is difficult to mock without real Street View data

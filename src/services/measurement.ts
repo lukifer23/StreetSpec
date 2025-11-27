@@ -1,19 +1,35 @@
 import { UNIT_CONVERSIONS } from '../types/common';
-import type { Point, CameraParams, Measurement, Vector3 } from '../types/common';
+import type {
+  Point,
+  CameraParams,
+  Measurement,
+  Vector3,
+  OnnxDepthMap,
+  DecodedDepthData,
+  AppSettings
+} from '../types/common';
 import {
-    screenToWorld,
-    screenToWorldWithDepth,
-    estimateGroundPlaneIntersectionWithConfidence
+  screenToWorld,
+  estimateGroundPlaneIntersectionWithConfidence
 } from './geometry';
+import { fusedWorldPoint, estimateDistanceToPoint } from './measurementLogic';
 import { distance3D, magnitude3D } from '../utils/math';
 import type { GroundPlaneResult } from './geometry';
 import { v4 as uuidv4 } from 'uuid';
-import type { DecodedDepthData } from '../types/common';
 import {
   createMeasurementError,
   createValidationError,
   errorToAppError
 } from '../utils/errorUtils';
+
+type MeasurementFusionSettings = Pick<AppSettings, 'depthKernelSize' | 'depthUseBilinear' | 'depthEdgeRejectThreshold'>;
+
+interface MeasurementOptions {
+  onnxDepthMap?: OnnxDepthMap | null;
+  fusionSettings?: MeasurementFusionSettings;
+  fusedStart?: ReturnType<typeof fusedWorldPoint>;
+  fusedEnd?: ReturnType<typeof fusedWorldPoint>;
+}
 
 /**
  * Creates a new measurement object.
@@ -36,7 +52,8 @@ export function createMeasurement(
   viewWidth: number,
   viewHeight: number,
   depthData: DecodedDepthData | null,
-  unit: 'metric' | 'imperial' = 'metric'
+  unit: 'metric' | 'imperial' = 'metric',
+  options: MeasurementOptions = {}
 ): Measurement {
   let errorMessage: string | undefined = undefined;
   let confidence = 0;
@@ -108,7 +125,7 @@ export function createMeasurement(
   const pitch = Math.abs(cameraParams.pitch || 0);
   const MAX_RELIABLE_PITCH = 75; // degrees
   if (pitch > MAX_RELIABLE_PITCH) {
-      errorMessage = (errorMessage || "") + `Extreme camera pitch (${pitch.toFixed(1)}°) may significantly affect accuracy. `;
+      errorMessage = (errorMessage || '') + Extreme camera pitch ( deg) may significantly affect accuracy. ;
   }
 
   // 1. Estimate World Points with confidence scoring
@@ -116,51 +133,86 @@ export function createMeasurement(
   let worldPoint2: Vector3 | null = null;
   let point1Confidence = 0;
   let point2Confidence = 0;
+  const fusionSettings = options.fusionSettings ?? {};
+  const onnxDepthMap = options.onnxDepthMap ?? null;
 
-  // Try depth-based intersection first (highest accuracy)
-  if (depthData) {
-    try {
-      worldPoint1 = screenToWorldWithDepth(startPoint, cameraParams, viewWidth, viewHeight, depthData);
-      if (worldPoint1) {
-        // Validate world point is reasonable
-        const dist1 = Math.sqrt(worldPoint1.x * worldPoint1.x + worldPoint1.y * worldPoint1.y + worldPoint1.z * worldPoint1.z);
-        if (dist1 > 0.1 && dist1 < 1e4 && Number.isFinite(dist1)) {
-          point1Confidence = 0.9;
-          startSource = 'planes';
-        } else {
-          worldPoint1 = null;
-          errorMessage = (errorMessage ?? "") + "Start point depth intersection produced invalid result. ";
-        }
-      } else {
-        errorMessage = (errorMessage ?? "") + "Depth intersection failed for start point. ";
-      }
-    } catch (err) {
-      worldPoint1 = null;
-      const errMsg = err instanceof Error ? err.message : String(err ?? 'unknown');
-      errorMessage = (errorMessage ?? "") + `Error computing start point depth: ${errMsg}. `;
+  const resolveWorldPoint = (
+    point: Point,
+    preset: ReturnType<typeof fusedWorldPoint> | undefined
+  ): { world: Vector3 | null; method: Measurement['source'] | 'unknown'; confidence: number } => {
+    if (preset) {
+      return {
+        world: preset.world,
+        method: preset.method,
+        confidence: preset.confidence
+      };
     }
 
-    try {
-      worldPoint2 = screenToWorldWithDepth(endPoint, cameraParams, viewWidth, viewHeight, depthData);
-      if (worldPoint2) {
-        // Validate world point is reasonable
-        const dist2 = Math.sqrt(worldPoint2.x * worldPoint2.x + worldPoint2.y * worldPoint2.y + worldPoint2.z * worldPoint2.z);
-        if (dist2 > 0.1 && dist2 < 1e4 && Number.isFinite(dist2)) {
-          point2Confidence = 0.9;
-          endSource = 'planes';
-        } else {
-          worldPoint2 = null;
-          errorMessage = (errorMessage ?? "") + "End point depth intersection produced invalid result. ";
-        }
-      } else {
-        errorMessage = (errorMessage ?? "") + "Depth intersection failed for end point. ";
+    const onnxDistance = onnxDepthMap
+      ? estimateDistanceToPoint(
+          point.x,
+          point.y,
+          viewWidth,
+          viewHeight,
+          cameraParams,
+          onnxDepthMap,
+          {
+            depthKernelSize: fusionSettings.depthKernelSize,
+            depthUseBilinear: fusionSettings.depthUseBilinear,
+            depthEdgeRejectThreshold: fusionSettings.depthEdgeRejectThreshold
+          }
+        )
+      : null;
+
+    const fused = fusedWorldPoint(
+      point,
+      viewWidth,
+      viewHeight,
+      cameraParams,
+      depthData,
+      onnxDistance,
+      onnxDepthMap,
+      {
+        depthKernelSize: fusionSettings.depthKernelSize,
+        depthUseBilinear: fusionSettings.depthUseBilinear,
+        depthEdgeRejectThreshold: fusionSettings.depthEdgeRejectThreshold
       }
-    } catch (err) {
-      worldPoint2 = null;
-      const errMsg = err instanceof Error ? err.message : String(err ?? 'unknown');
-      errorMessage = (errorMessage ?? "") + `Error computing end point depth: ${errMsg}. `;
+    );
+
+    return {
+      world: fused.world,
+      method: fused.method,
+      confidence: fused.confidence
+    };
+  };
+
+  // Resolve world points using fused depth (Street View planes > ONNX > ground)
+  const startResolved = resolveWorldPoint(startPoint, options.fusedStart);
+  const endResolved = resolveWorldPoint(endPoint, options.fusedEnd);
+
+  worldPoint1 = startResolved.world;
+  worldPoint2 = endResolved.world;
+  startSource = startResolved.method;
+  endSource = endResolved.method;
+  point1Confidence = startResolved.confidence;
+  point2Confidence = endResolved.confidence;
+
+  // Validate resolved points
+  const validateWorldPoint = (world: Vector3 | null, label: 'start' | 'end'): Vector3 | null => {
+    if (!world) {
+      errorMessage = (errorMessage ?? "") + `${label === 'start' ? 'Start' : 'End'} point could not be resolved from depth data. `;
+      return null;
     }
-  }
+    const dist = Math.sqrt(world.x * world.x + world.y * world.y + world.z * world.z);
+    if (dist <= 0.1 || dist >= 1e4 || !Number.isFinite(dist)) {
+      errorMessage = (errorMessage ?? "") + `${label === 'start' ? 'Start' : 'End'} world point is invalid. `;
+      return null;
+    }
+    return world;
+  };
+
+  worldPoint1 = validateWorldPoint(worldPoint1, 'start');
+  worldPoint2 = validateWorldPoint(worldPoint2, 'end');
 
   // Fallback to enhanced ground plane intersection with confidence
   if (!worldPoint1) {
@@ -371,7 +423,13 @@ export function createMeasurement(
     cameraParams: cameraParams,
     confidence: confidence, // Already clamped above
     source: resolveSource(startSource, endSource),
-    error: errorMessage ?? undefined // Include any error/warning messages (use undefined instead of empty string)
+    error: errorMessage ?? undefined, // Include any error/warning messages (use undefined instead of empty string)
+    metadata: {
+      startMethod: startSource,
+      endMethod: endSource,
+      startConfidence: point1Confidence,
+      endConfidence: point2Confidence
+    }
   };
 
   return measurement;
@@ -389,14 +447,17 @@ function resolveSource(
     return 'ground';
   }
 
-  const uniqueSources = new Set(candidates);
-  if (uniqueSources.size === 1) {
-    const [source] = uniqueSources;
-    return source;
+  if (candidates.includes('planes')) {
+    return 'planes';
   }
-
-  // Mixed sources fall back to ground since part of the measurement relied on geometry
-  return 'ground';
+  if (candidates.includes('onnx')) {
+    return 'onnx';
+  }
+  if (candidates.includes('ground')) {
+    return 'ground';
+  }
+  // Mixed measurement tools (area/volume/polyline) fall back to their source label
+  return candidates[0] ?? 'ground';
 }
 
 // Validate measurement for plausibility and accuracy

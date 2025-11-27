@@ -3,6 +3,8 @@ import { useRootStore } from '../stores/rootStore';
 import type { Point, Measurement } from '../types/common';
 import { convertAreaToDisplay, convertLengthToDisplay } from '../utils/units';
 import { distance3D } from '../utils/math';
+import { screenToWorldWithDepth, screenToWorld, estimateGroundPlaneIntersection } from '../services/geometry';
+import { estimateDistanceToPoint } from '../services/measurementLogic';
 import styles from './AreaTool.module.css';
 
 interface AreaPoint extends Point {

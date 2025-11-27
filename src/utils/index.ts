@@ -13,7 +13,6 @@ export {
   createGeometryError,
   createMeasurementError,
   createStorageError,
-  createUIError,
   createValidationError,
   assert
 } from './errorUtils';
@@ -38,17 +37,14 @@ export {
 // Cache management
 export {
   UnifiedCache,
-  cacheRegistry,
-  type EvictionStrategy,
-  type CacheOptions
+  cacheRegistry
 } from './cacheManager';
 
 // Polygon validation
 export {
   validatePolygon,
   validateMeasurementPlausibility,
-  type PolygonValidationResult,
-  type PlausibilityValidationResult
+  type PolygonValidationResult
 } from './polygonValidation';
 
 // Math utilities
@@ -77,34 +73,19 @@ export {
 
 // Unit conversion
 export {
-  convertMetersToFeet,
-  convertFeetToMeters,
-  formatDistance,
   formatArea,
   formatVolume
 } from './units';
-
-// Measurement display
-export {
-  formatMeasurementLabel,
-  getMeasurementDisplayValue
-} from './measurementDisplay';
 
 // Status banner
 export {
   getStatusBannerPresentation
 } from './statusBanner';
 
-// Volume base calculation
-export {
-  calculateVolumeBase
-} from './volumeBase';
-
 // Input validation
 export {
   validateString,
   validateNumber,
-  validateEmail,
   type ValidationResult
 } from './inputValidation';
 

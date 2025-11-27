@@ -19,7 +19,16 @@ import styles from './App.module.css';
 import './App.css';
 
 function App() {
-  const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || (window as any).electronAPI?.getEnv()?.VITE_GOOGLE_MAPS_API_KEY || '';
+  // Safely get API key with error handling
+  let apiKey = '';
+  try {
+    apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
+             (window as any).electronAPI?.getEnv?.()?.VITE_GOOGLE_MAPS_API_KEY ||
+             '';
+  } catch (error) {
+    console.error('Error accessing API key:', error);
+    apiKey = '';
+  }
 
   const {
     // State
@@ -99,32 +108,32 @@ function App() {
             </button>
           </Tooltip>
           <Tooltip text="Generate depth map for current Street View location (Required for measurements)" position="bottom">
-            <button style={{marginRight:10}} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}>
-              {isGeneratingMap? 'Generating...' : 'Generate Depth Map'}
+            <button style={{ marginRight: 10 }} onClick={handleGenerateDepthMap} disabled={isGeneratingMap || !currentCameraParams}>
+              {isGeneratingMap ? 'Generating...' : 'Generate Depth Map'}
             </button>
           </Tooltip>
-          <Tooltip text="Automatically detect the horizon using depth data for accurate measurements. Requires depth map to be generated first." position="bottom">
-            <button style={{marginRight:10}} onClick={handleAutoCalibrate} disabled={!currentCameraParams || !onnxDepthMap} className={!isCalibrated ? styles['highlight'] : ''}>
+          <Tooltip text="Auto-detect horizon using depth data (requires depth map)" position="bottom">
+            <button style={{ marginRight: 10 }} onClick={handleAutoCalibrate} disabled={!currentCameraParams || !onnxDepthMap} className={!isCalibrated ? styles['highlight'] : ''}>
               Auto-Calibrate
             </button>
           </Tooltip>
-          <Tooltip text="Manually calibrate the horizon for accurate measurements. Click on the flat horizontal line where the sky meets the ground - like where the ocean meets the sky, or where a flat field meets the sky, or where distant mountains meet the sky. This tells the app what 'level' means in your view so measurements are accurate." position="bottom">
-            <button style={{marginRight:10}} onClick={()=>setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>
+          <Tooltip text="Manually calibrate by clicking the horizon line where sky meets ground" position="bottom">
+            <button style={{ marginRight: 10 }} onClick={() => setCalibrateMode(true)} disabled={!currentCameraParams || calibrateMode}>
               Manual Calibrate
             </button>
           </Tooltip>
           <Tooltip text="Measure distances along a path (P key)" position="bottom">
-            <button style={{marginRight:10}} onClick={() => setIsPolylineToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            <button style={{ marginRight: 10 }} onClick={() => setIsPolylineToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
               Polyline Tool
             </button>
           </Tooltip>
           <Tooltip text="Measure area on the ground plane (A key)" position="bottom">
-            <button style={{marginRight:10}} onClick={() => setIsAreaToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            <button style={{ marginRight: 10 }} onClick={() => setIsAreaToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
               Area Tool
             </button>
           </Tooltip>
           <Tooltip text="Measure volume on the ground plane (V key)" position="bottom">
-            <button style={{marginRight:10}} onClick={() => setIsVolumeToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
+            <button style={{ marginRight: 10 }} onClick={() => setIsVolumeToolActive(true)} disabled={!currentCameraParams || !isCalibrated}>
               Volume Tool
             </button>
           </Tooltip>

@@ -1,0 +1,83 @@
+
+> polecheck-desktop@1.0.0 dev
+> npm run clean && npm run dev:vite
+
+
+> polecheck-desktop@1.0.0 clean
+> rimraf dist dist-electron
+
+
+> polecheck-desktop@1.0.0 dev:vite
+> vite
+
+npm : [33mThe CJS build of Vite's Node API is deprecated. See 
+https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+At C:\Users\Caitl\AppData\Local\Temp\ps-script-e79edf2e-5fe9-4e30-bfe9-9b232baa889f.ps1:7 char:1
++ npm run dev 2>&1 | tee dev_log.txt
++ ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33mThe CJS bu...e details.[39m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+  VITE v5.4.20  ready in 336 ms
+
+  GP£  Local:   http://127.0.0.1:5173/
+vite v5.4.20 building for development...
+
+watching for file changes...
+vite v5.4.20 building for development...
+
+watching for file changes...
+
+build started...
+
+build started...
+transforming...
+transforming...
+G£ô 1 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-electron/preload.cjs  16.04 kB Göé gzip: 6.21 kB Göé map: 8.96 kB
+dist-electron/preload.cjs  16.04 kB Göé gzip: 6.21 kB Göé map: 8.96 kB
+built in 442ms.
+node_modules/@protobufjs/inquire/index.js (12:18): Use of eval in "node_modules/@protobufjs/inquire/index.js" is 
+strongly discouraged as it poses security risks and may cause issues with minification.
+G£ô 92 modules transformed.
+rendering chunks...
+computing gzip size...
+dist-electron/main.js  992.55 kB Göé gzip: 242.14 kB Göé map: 565.42 kB
+built in 1549ms.
+
+[dotenv@17.2.3] injecting env (0) from .env -- tip: =ƒôí add observability to secrets: https://dotenvx.com/ops
+[env:main] loaded C:\Users\Caitl\Desktop\Machine Learning\Cursor Projects\Street Spec Desktop\.env VITE? true GOOGLE? true
+[model] Selected model filename: depth_anything_v2_metric_vkitti_vits.onnx
+[model] Candidate search paths: [
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\dist-electron\\src\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\dist-electron\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\src\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\src\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\app.asar.unpacked\\src\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\app.asar.unpacked\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\node_modules\\electron\\dist\\resources\\src\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\node_modules\\electron\\dist\\resources\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\node_modules\\electron\\dist\\resources\\app.asar.unpacked\\src\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx',
+  'C:\\Users\\Caitl\\Desktop\\Machine Learning\\Cursor Projects\\Street Spec Desktop\\node_modules\\electron\\dist\\resources\\app.asar.unpacked\\assets\\models\\depth_anything_v2_metric_vkitti_vits.onnx'
+]
+[model] Resolved model path: C:\Users\Caitl\Desktop\Machine Learning\Cursor Projects\Street Spec Desktop\src\assets\models\depth_anything_v2_metric_vkitti_vits.onnx
+[model] __dirname: C:\Users\Caitl\Desktop\Machine Learning\Cursor Projects\Street Spec Desktop\dist-electron
+[model] app.getAppPath(): C:\Users\Caitl\Desktop\Machine Learning\Cursor Projects\Street Spec Desktop
+[model] app.isPackaged: false
+[model] Loading ONNX model...
+[memory] Before model load - RSS: 94MB, Heap: 13/20MB
+[model] GPU preference from settings: false
+[model] Attempting to initialize session with providers: cpu
+[model] Model loaded successfully
+[model] Execution providers in use: cpu
+[model] Input names: [ 'input' ]
+[model] Output names: [ 'output' ]
+[memory] After model load - RSS: 284MB, Heap: 13/20MB
+[electron] Successfully loaded dev server on attempt 1
+ERROR: The process "6252" not found.
+

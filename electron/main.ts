@@ -54,11 +54,48 @@ const fetch = async (...args: FetchArgs): FetchReturn => {
 })();
 // --- CommonJS __dirname is automatically available ---
 
+function migrateLegacyUserData(): void {
+  try {
+    const newUserDataPath = app.getPath('userData');
+    const appDataPath = app.getPath('appData');
+    const legacyDirs = [
+      join(appDataPath, 'PoleCheck Desktop'),
+      join(appDataPath, 'polecheck-desktop')
+    ];
+
+    for (const legacyDir of legacyDirs) {
+      if (legacyDir === newUserDataPath) continue;
+      const legacyConfig = join(legacyDir, 'config.json');
+      if (!existsSync(legacyConfig)) continue;
+
+      if (!existsSync(newUserDataPath)) {
+        fs.mkdirSync(newUserDataPath, { recursive: true });
+      }
+
+      const newConfig = join(newUserDataPath, 'config.json');
+      if (!existsSync(newConfig)) {
+        fs.copyFileSync(legacyConfig, newConfig);
+        console.log('[migrate] Copied legacy PoleCheck config to Street Spec user data');
+      }
+
+      const legacyStoreDir = join(legacyDir, 'store');
+      const newStoreDir = join(newUserDataPath, 'store');
+      if (existsSync(legacyStoreDir) && !existsSync(newStoreDir)) {
+        fs.cpSync(legacyStoreDir, newStoreDir, { recursive: true });
+        console.log('[migrate] Copied legacy PoleCheck store to Street Spec user data');
+      }
+    }
+  } catch (error) {
+    console.warn('[migrate] Failed to migrate legacy user data', error);
+  }
+}
+
 const DEFAULT_DEPTH_API_MAX_RETRIES = 5;
 const DEFAULT_DEPTH_API_RETRY_DELAY_MS = 1000;
 
 let store: ElectronStoreInstance | null = null;
 const storeReady: Promise<ElectronStoreInstance> = (async () => {
+  migrateLegacyUserData();
   const { default: Store } = await import('electron-store');
   store = new Store({
     defaults: {
@@ -1068,7 +1105,7 @@ async function createWindow() {
   }
 
   win = new BrowserWindow({
-    title: 'PoleCheck Desktop',
+    title: 'Street Spec Desktop',
     width: 1200,
     height: 800,
     webPreferences: {

@@ -135,7 +135,7 @@ class ErrorHandlerService implements ErrorHandler {
     }
 
     // In production, you might want to send to a logging service
-    if (process.env.NODE_ENV === 'production') {
+    if ((process.env as any).NODE_ENV === 'production') {
       this.sendToLoggingService(logEntry);
     }
   }
@@ -179,7 +179,7 @@ class ErrorHandlerService implements ErrorHandler {
       <div class="error-header">
         <span class="error-icon">!</span>
         <span class="error-title">${title}</span>
-        <button class="error-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        <button class="error-close" onclick="this.parentElement.parentElement.remove()">Dismiss</button>
       </div>
       <div class="error-message">${userMessage}</div>
     `;
@@ -399,7 +399,7 @@ class ErrorHandlerService implements ErrorHandler {
         action: 'cleanup',
         maxRetries: 1,
         delayMs: 1000,
-        fallback: 'reduce_quality'
+        fallback: null
       },
       'GEOMETRY_INVALID_POINT': {
         action: 'user_action',

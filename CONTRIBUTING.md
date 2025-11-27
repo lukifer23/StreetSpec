@@ -1,6 +1,6 @@
-# Contributing to PoleCheck Desktop
+# Contributing to Street Spec Desktop
 
-Thank you for your interest in contributing to PoleCheck Desktop. This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to Street Spec Desktop. This document provides guidelines for contributing to the project.
 
 ## Development Setup
 
@@ -72,3 +72,4 @@ When reporting bugs or requesting features:
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.
+

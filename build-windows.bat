@@ -1,6 +1,6 @@
 @echo off
 echo ========================================
-echo PoleCheck Desktop - Windows Build Script
+echo Street Spec Desktop - Windows Build Script
 echo ========================================
 
 echo.
@@ -107,12 +107,12 @@ echo 1. Double-click the installer file in release/ directory
 echo 2. Follow the setup wizard
 echo 3. Choose installation location and options
 echo 4. Desktop shortcut will be created automatically
-echo 5. Launch PoleCheck Desktop from desktop or start menu
+echo 5. Launch Street Spec Desktop from desktop or start menu
     echo.
     echo ========================================
     echo First Run Instructions:
     echo ========================================
-    echo 1. Open PoleCheck Desktop
+    echo 1. Open Street Spec Desktop
     echo 2. Set up your Google Maps API key in Settings
     echo 3. Start measuring objects in Street View!
     echo.
@@ -136,7 +136,7 @@ echo OK: Application bundled
 echo OK: Windows installer created
 echo OK: Desktop shortcut configured
 echo.
-echo PoleCheck Desktop is ready for distribution!
+echo Street Spec Desktop is ready for distribution!
 echo.
 
 pause 

@@ -498,10 +498,12 @@ export const useRootStore = create<RootState>()(
           }
 
           set((state) => {
-            const previous = state.measurementHistory.past.pop()!;
-            state.measurementHistory.future.unshift([...state.measurementHistory.present]);
-            state.measurementHistory.present = previous;
-            state.measurements = [...previous];
+            const previous = state.measurementHistory.past.pop();
+            if (previous) {
+              state.measurementHistory.future.unshift(state.measurementHistory.present.slice() as any);
+              state.measurementHistory.present = previous;
+              state.measurements = previous.slice();
+            }
           });
 
           pushNotification({
@@ -519,10 +521,12 @@ export const useRootStore = create<RootState>()(
           }
 
           set((state) => {
-            const next = state.measurementHistory.future.shift()!;
-            state.measurementHistory.past.push([...state.measurementHistory.present]);
-            state.measurementHistory.present = next;
-            state.measurements = [...next];
+            const next = state.measurementHistory.future.shift();
+            if (next) {
+              state.measurementHistory.past.push((state.measurementHistory.present as unknown as Measurement[]).slice());
+              state.measurementHistory.present = next as any;
+              state.measurements = (next as unknown as Measurement[]).slice();
+            }
           });
 
           pushNotification({

@@ -340,10 +340,10 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     }
 
     const { heading = 0, pitch = 0, vFov = 90 } = cameraParams;
-    const calibrationOffset = zoomBiasTable 
-      ? getEffectiveCalibrationOffset(cameraParams, zoomBiasTable)
-      : (cameraParams.calibrationPitchOffsetDeg ?? 0);
-    const effectivePitch = pitch - calibrationOffset;
+    const calibrationResult = zoomBiasTable
+      ? getEffectiveCalibrationPitchOffset(cameraParams, zoomBiasTable)
+      : { offset: cameraParams.calibrationPitchOffsetDeg ?? 0, confidence: 0.8 };
+    const effectivePitch = pitch - calibrationResult.offset;
 
     // Clamp inputs to reasonable ranges
     const clampedHeading = Number.isFinite(heading) ? heading % 360 : 0;
@@ -428,7 +428,7 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
     // Our calculation results in +Z forward, +Y up, +X right relative to camera view. Let's keep this.
     const normalized = normalizeVector3D(vector);
     if (!normalized) {
-      return null;
+      return { x: 0, y: 0, z: 1 }; // Return default forward vector
     }
     
     // Validate normalized vector
@@ -436,7 +436,7 @@ export function screenToWorld(screenPoint: Point, cameraParams: CameraParams, vi
         return { x: 0, y: 0, z: 1 }; // Return default forward vector
     }
     
-    normalized[calibrationAppliedSymbol] = true;
+    (normalized as CalibratedVector3)[calibrationAppliedSymbol] = true;
     return normalized;
 }
 
@@ -859,7 +859,10 @@ function houghLineFit(
       const rhoIdx = Math.floor((rho + maxRho) / (2 * maxRho) * NUM_RHO);
       
       if (rhoIdx >= 0 && rhoIdx < NUM_RHO) {
-        accumulator[rhoIdx]![thetaIdx]++;
+        if (!accumulator[rhoIdx]) {
+          accumulator[rhoIdx] = new Array(NUM_THETA).fill(0);
+        }
+        accumulator[rhoIdx]![thetaIdx] = (accumulator[rhoIdx]![thetaIdx] || 0) + 1;
       }
     }
   }
@@ -870,9 +873,12 @@ function houghLineFit(
   let bestThetaIdx = 0;
   
   for (let rhoIdx = 0; rhoIdx < NUM_RHO; rhoIdx++) {
+    const rhoAccumulator = accumulator[rhoIdx];
+    if (!rhoAccumulator) continue;
+
     for (let thetaIdx = 0; thetaIdx < NUM_THETA; thetaIdx++) {
-      const votes = accumulator[rhoIdx]![thetaIdx];
-      if (votes > maxVotes) {
+      const votes = rhoAccumulator[thetaIdx];
+      if (votes !== undefined && votes > maxVotes) {
         maxVotes = votes;
         bestRhoIdx = rhoIdx;
         bestThetaIdx = thetaIdx;
@@ -955,7 +961,7 @@ const horizonTracker = new HorizonTracker();
  */
 function detectHorizonFromGradient(
   onnxDepthMap: OnnxDepthMap | null,
-  viewWidth: number,
+  _viewWidth: number,
   viewHeight: number
 ): { horizonY: number; confidence: number } | null {
   if (!onnxDepthMap) return null;
@@ -1229,6 +1235,9 @@ function ransacLineFit(
   // Adaptive threshold based on depth variation
   const adaptiveThreshold = threshold * (1 + depthRange / 100);
 
+  // Target depth for horizon detection (used in sampling and thresholding)
+  const depthTarget = minDepth + depthRange * 0.5;
+
   // Progressive sampling: start with small random samples, expand if needed
   const sampleIndices = Array.from({ length: points.length }, (_, i) => i);
   
@@ -1255,7 +1264,6 @@ function ransacLineFit(
       idx2 = Math.floor(Math.random() * points.length);
     } else {
       // Second half: depth-guided sampling (horizon points often have similar depths)
-      const depthTarget = minDepth + depthRange * 0.5;
       const depthSorted = [...points]
         .map((p, i) => ({ point: p, idx: i, depthDiff: Math.abs(p.depth - depthTarget) }))
         .sort((a, b) => a.depthDiff - b.depthDiff)
@@ -1555,7 +1563,7 @@ export function validateAndNormalizePlaneNormal(
 }
 
 /**
- * Validate complete plane equation: n·x + d = 0
+ * Validate complete plane equation: n dot x + d = 0
  * Returns true if plane is valid for intersection calculations
  */
 export function validatePlaneEquation(
@@ -1675,7 +1683,7 @@ export function intersectRayWithPlane(
     return null; // Ray is parallel to plane
   }
 
-  // Calculate intersection distance: t = -(n·o + d) / (n·v)
+  // Calculate intersection distance: t = -(n dot o + d) / (n dot v)
   const dotON = dotProduct(rayOrigin, normal);
   const t = -(dotON + planeD) / dotVN;
 

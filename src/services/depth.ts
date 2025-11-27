@@ -96,7 +96,6 @@ const NUMERIC_PRECISION = 6;
 const depthCacheRegistry = new UnifiedCache<CachedDepthMap>({
   name: 'depth-maps',
   maxSize: MAX_CACHE_SIZE,
-  maxMemoryBytes: MAX_MEMORY_MB * 1024 * 1024,
   ttl: 0, // No TTL by default (LRU handles eviction)
   evictionStrategy: 'lru'
 });
@@ -126,16 +125,7 @@ function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transf
 
   // Add transform signature if available
   if (transform) {
-    cacheParams.transform = {
-      originalWidth: transform.originalWidth,
-      originalHeight: transform.originalHeight,
-      resizedWidth: transform.resizedWidth,
-      resizedHeight: transform.resizedHeight,
-      scaleX: transform.scaleX,
-      scaleY: transform.scaleY,
-      offsetX: transform.offsetX,
-      offsetY: transform.offsetY
-    };
+    cacheParams['transform'] = transform;
   }
 
   // Generate normalized key using UnifiedCache method

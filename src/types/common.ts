@@ -233,10 +233,10 @@ export interface ErrorHandler {
 }
 
 export interface RecoveryStrategy {
-  action: 'retry' | 'wait' | 'reload' | 'cleanup' | 'fix_config' | 'user_action' | 'generate_depth' | 'refresh' | 'repair';
+  action: 'retry' | 'wait' | 'reload' | 'cleanup' | 'fix_config' | 'user_action' | 'generate_depth' | 'refresh' | 'repair' | 'reduce_quality';
   maxRetries: number;
   delayMs: number;
-  fallback: 'offline_mode' | 'cache_only' | 'fallback_model' | 'use_cached_depth' | 'reduce_quality' | 'use_ground_plane' | 'approximate' | 'export_manual' | 'use_backup' | 'reduce_features' | null;
+  fallback: 'offline_mode' | 'cache_only' | 'fallback_model' | 'use_cached_depth' | 'use_ground_plane' | 'approximate' | 'export_manual' | 'use_backup' | 'reduce_features' | null;
 }
 
 export interface SerializedError {

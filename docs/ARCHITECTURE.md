@@ -1,8 +1,8 @@
-# PoleCheck Desktop - Architecture Documentation
+# Street Spec Desktop - Architecture Documentation
 
 ## Overview
 
-PoleCheck Desktop is an Electron-based desktop application for accurate measurements in Google Street View imagery. This document describes the technical architecture, code organization, and design patterns.
+Street Spec Desktop is an Electron-based desktop application for accurate measurements in Google Street View imagery. This document describes the technical architecture, code organization, and design patterns.
 
 ## Technology Stack
 
@@ -24,7 +24,7 @@ PoleCheck Desktop is an Electron-based desktop application for accurate measurem
 ## Project Structure
 
 ```
-PoleCheck Desktop/
+Street Spec Desktop/
 ├── electron/              # Electron main process
 │   ├── main.ts           # Main process entry point
 │   └── preload.ts        # Preload script (IPC bridge)
@@ -369,4 +369,5 @@ See [docs/roadmap.md](./roadmap.md) for planned improvements including:
 - Enhanced accessibility
 - Performance optimizations
 - Advanced features
+
 

@@ -106,7 +106,7 @@ export const GenStatusIndicator = React.memo<{
     } else if (mapGenerationError) {
       return `Error: ${mapGenerationError}`;
     } else if (onnxDepthMap) {
-      return `✓ Depth map ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
+      return `Depth map ready (${onnxDepthMap.width}x${onnxDepthMap.height})`;
     } else {
       return 'Depth map not generated';
     }
@@ -270,7 +270,7 @@ const CameraHUD = React.memo(() => {
   const bias = depthBias;
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && cameraParams && showDebugOverlay) {
+    if ((process.env as any).NODE_ENV === 'development' && cameraParams && showDebugOverlay) {
       console.debug('[CameraHUD] render snapshot', {
         fov,
         vFov,
@@ -322,7 +322,7 @@ const MapView: React.FC<{
   }), [targetCoords]);
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
+    if ((process.env as any).NODE_ENV === 'development') {
       console.debug('[MapView] store slices updated', {
         targetCoords,
         isGeneratingMap,
@@ -615,7 +615,7 @@ const MapView: React.FC<{
           borderRadius: '8px',
           color: '#6c757d'
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠</div>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>!</div>
           <h3 style={{ margin: '0 0 8px 0', color: '#495057' }}>Map Loading Error</h3>
           <p style={{ margin: '0 0 16px 0', maxWidth: '400px' }}>
             Unable to load Google Maps. This might be due to network issues or missing API key.

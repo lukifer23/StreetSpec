@@ -37,5 +37,5 @@
   <circle cx="256" cy="320" r="8" fill="#FFD700" stroke="#FFFFFF" stroke-width="2"/>
 
   <!-- App name hint -->
-  <text x="256" y="380" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="24" font-weight="bold">PoleCheck</text>
+  <text x="256" y="380" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="24" font-weight="bold">Street Spec</text>
 </svg>

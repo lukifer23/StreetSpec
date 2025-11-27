@@ -70,6 +70,13 @@ export class UnifiedCache<T> {
         // Handle nested objects (like Point, Vector3)
         if ('x' in value && 'y' in value) {
           const point = value as { x: number; y: number; z?: number };
+          const normalizeNumber = (value: number, precision: number): string => {
+            if (!Number.isFinite(value)) {
+              return 'inf';
+            }
+            const rounded = Math.round(value * Math.pow(10, precision)) / Math.pow(10, precision);
+            return rounded.toString();
+          };
           normalized[key] = `${normalizeNumber(point.x, precision)}_${normalizeNumber(point.y, precision)}${point.z !== undefined ? `_${normalizeNumber(point.z, precision)}` : ''}`;
         } else {
           normalized[key] = JSON.stringify(value);
@@ -87,16 +94,6 @@ export class UnifiedCache<T> {
     return `${prefix}_${keyString}`;
   }
 
-  /**
-   * Normalize number for cache key
-   */
-  private static normalizeNumber(value: number, precision: number): string {
-    if (!Number.isFinite(value)) {
-      return 'inf';
-    }
-    const rounded = Math.round(value * Math.pow(10, precision)) / Math.pow(10, precision);
-    return rounded.toString();
-  }
 
   /**
    * Get value from cache
@@ -253,13 +250,6 @@ export class UnifiedCache<T> {
 /**
  * Helper function to normalize number for cache keys
  */
-function normalizeNumber(value: number, precision: number): string {
-  if (!Number.isFinite(value)) {
-    return 'inf';
-  }
-  const rounded = Math.round(value * Math.pow(10, precision)) / Math.pow(10, precision);
-  return rounded.toString();
-}
 
 /**
  * Global cache registry for statistics and management

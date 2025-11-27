@@ -125,9 +125,9 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             onChange={e => handleChange('depthQuality', e.target.value as 'low' | 'medium' | 'high')}
             title="Image resolution for depth estimation - lower quality is faster but less accurate"
           >
-            <option value="low">Low (320×320) - Fast</option>
-            <option value="medium">Medium (480×480) - Balanced</option>
-            <option value="high">High (640×640) - Accurate</option>
+            <option value="low">Low (320x320) - Fast</option>
+            <option value="medium">Medium (480x480) - Balanced</option>
+            <option value="high">High (640x640) - Accurate</option>
           </select>
         </div>
 

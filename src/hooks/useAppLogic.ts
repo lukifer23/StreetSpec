@@ -140,25 +140,59 @@ export const useAppLogic = (apiKey: string) => {
 
   // Load Google Maps API
   useEffect(() => {
-    const key = apiKey || (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY : undefined) || (window as any).electronAPI?.getEnv()?.VITE_GOOGLE_MAPS_API_KEY;
+    let key = apiKey;
+    try {
+      if (!key) {
+        key = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY : undefined) ||
+              (window as any).electronAPI?.getEnv?.()?.VITE_GOOGLE_MAPS_API_KEY ||
+              '';
+      }
+    } catch (error) {
+      console.error('Error accessing API key in useAppLogic:', error);
+      key = '';
+    }
     console.debug('[maps] Loader init key present?', Boolean(key), 'apiKey prop?', Boolean(apiKey), 'env?', (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ? 'set' : 'empty');
+
     if (!key) {
+      console.error('[Google Maps] API key is missing');
       setError("Error: Google Maps API Key is missing. Please check your .env file.");
       return;
     }
+
+    if (!key.startsWith('AIza')) {
+      console.error('[Google Maps] API key format appears invalid');
+      setError("Error: Google Maps API Key format appears invalid. Key should start with 'AIza'.");
+      return;
+    }
+
     setError(null);
-    const loader = new Loader({
-      apiKey: key,
-      version: "quarterly",
-      libraries: ["places", "geometry"],
-      language: 'en',
-      region: 'US'
-    });
+
+    let loader: any;
+    try {
+      loader = new Loader({
+        apiKey: key,
+        version: "quarterly",
+        libraries: ["places", "geometry"],
+        language: 'en',
+        region: 'US'
+      });
+      console.log('[Google Maps] Loader created successfully');
+    } catch (initError) {
+      console.error('[Google Maps] Failed to create loader:', initError);
+      setError(`Failed to initialize Google Maps loader: ${initError?.message || 'Unknown error'}`);
+      return;
+    }
 
     loader.load().then(() => {
+      console.log('[Google Maps] API loaded successfully');
       setIsApiLoaded(true);
-    }).catch(() => {
-      setError("Failed to load Google Maps. Please check the console and API Key.");
+    }).catch((error: any) => {
+      console.error('[Google Maps] Failed to load API:', error);
+      // Don't crash the app - set error state instead
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      setError(`Failed to load Google Maps. Please check your API key and network connection. Error: ${errorMessage}`);
+      // Still set loaded to true so the app can continue without Maps
+      setIsApiLoaded(true);
     });
   }, [apiKey, setError]);
 

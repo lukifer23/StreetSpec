@@ -39,7 +39,7 @@ const VolumeTool: React.FC = () => {
     if (!isVolumeToolActive || !cameraParams) return;
 
     // Get click position relative to the MapView canvas
-    const mapView = document.querySelector('[data-testid="map-view"]') as HTMLElement;
+    const mapView = document.querySelector('[datxtestid="map-view"]') as HTMLElement;
     if (!mapView) return;
 
     const rect = mapView.getBoundingClientRect();
@@ -170,7 +170,7 @@ const VolumeTool: React.FC = () => {
       const handleClick = (event: MouseEvent) => {
         // Only handle clicks on the map area
         const target = event.target as HTMLElement;
-        if (target.closest('[data-testid="map-view"]')) {
+        if (target.closest('[datxtestid="map-view"]')) {
           handleCanvasClick(event);
         }
       };
@@ -223,7 +223,7 @@ const VolumeTool: React.FC = () => {
 
     const volumeMeasurement: Omit<Measurement, 'id' | 'timestamp' | 'name'> = {
       kind: 'volume',
-      label: `Volume (base ${baseAnalysis.length.toFixed(1)}m × ${baseAnalysis.width.toFixed(1)}m, height ${height.toFixed(1)}m)`,
+      label: `Volume (base ${baseAnalysis.length.toFixed(1)}m x ${baseAnalysis.width.toFixed(1)}m, height ${height.toFixed(1)}m)`,
       startPoint: points[0]!,
       endPoint: points[points.length - 1]!,
       distance: displayVolumeValue ?? volume,
@@ -349,7 +349,7 @@ const VolumeTool: React.FC = () => {
                 Volume: {displayVolumeValue.toFixed(2)} {volumeUnit}
               </div>
               <div className={styles['dimensions']}>
-                Base dimensions: {displayLengthValue.toFixed(1)} × {displayWidthValue.toFixed(1)} {lengthUnit}
+                Base dimensions: {displayLengthValue.toFixed(1)} x {displayWidthValue.toFixed(1)} {lengthUnit}
               </div>
               <div className={styles['baseArea']}>
                 Base area: {displayBaseAreaValue.toFixed(2)} {areaUnit}

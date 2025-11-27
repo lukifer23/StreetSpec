@@ -1,9 +1,9 @@
 {
-  "name": "polecheck-desktop",
+  "name": "streetspec-desktop",
   "private": true,
   "version": "1.0.0",
-  "description": "Desktop application for measuring objects in Google Street View imagery using computer vision and camera geometry.",
-  "author": "PoleCheck Team <support@polecheck.app>",
+  "description": "Street Spec Desktop – measure objects in Google Street View imagery with depth fusion and geometry.",
+  "author": "Street Spec Team <support@streetspec.app>",
   "type": "commonjs",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -109,9 +109,9 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.polecheck.desktop",
-    "productName": "PoleCheck Desktop",
-    "copyright": "Copyright © 2024 PoleCheck Team",
+    "appId": "com.streetspec.desktop",
+    "productName": "Street Spec Desktop",
+    "copyright": "Copyright © 2024 Street Spec Team",
     "asar": true,
     "asarUnpack": [
       "**/*.onnx"
@@ -123,8 +123,8 @@
     "fileAssociations": [
       {
         "ext": "ssp",
-        "name": "PoleCheck Project File",
-        "description": "PoleCheck Desktop Project File",
+        "name": "Street Spec Project File",
+        "description": "Street Spec Desktop Project File",
         "icon": "assets/icon.ico"
       }
     ],
@@ -174,15 +174,15 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "PoleCheck-Desktop-${name}-${version}.${ext}",
+      "artifactName": "StreetSpec-Desktop-${name}-${version}.${ext}",
       "sign": false,
       "signDlls": false,
       "verifyUpdateCodeSignature": false,
       "requestedExecutionLevel": "asInvoker",
-      "publisherName": "PoleCheck Team"
+      "publisherName": "Street Spec Team"
     },
     "portable": {
-      "artifactName": "PoleCheck-Desktop-Portable-${version}.exe"
+      "artifactName": "StreetSpec-Desktop-Portable-${version}.exe"
     },
     "nsis": {
       "oneClick": false,
@@ -190,12 +190,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "PoleCheck Desktop",
+      "shortcutName": "Street Spec Desktop",
       "displayLanguageSelector": false,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "menuCategory": "Measurement Tools",
-      "artifactName": "PoleCheck-Desktop-Setup-${version}.${ext}",
+      "artifactName": "StreetSpec-Desktop-Setup-${version}.${ext}",
       "perMachine": false,
       "license": null,
       "language": "1033",

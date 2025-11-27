@@ -25,10 +25,10 @@ export const CameraParamsSchema = z.object({
   calibrationPitchOffsetDeg: z.number().finite().min(-90).max(90).optional(),
   cameraHeight: z.number().finite().min(0).max(100).optional(),
   distortion: z.object({
-    k1: z.number().finite().optional(),
-    k2: z.number().finite().optional(),
-    p1: z.number().finite().optional(),
-    p2: z.number().finite().optional(),
+    k1: z.number().finite(),
+    k2: z.number().finite(),
+    p1: z.number().finite(),
+    p2: z.number().finite(),
     k3: z.number().finite().optional()
   }).optional()
 });

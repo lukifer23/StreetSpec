@@ -62,13 +62,24 @@ export default defineConfig(({ mode }) => {
           entry: 'electron/main.ts',
           onstart(options) {
             options.startup();
-            // Suppress Windows taskkill "process not found" errors
-            const originalWrite = process.stdout.write.bind(process.stdout);
+            // Improved suppression of Windows taskkill "process not found" errors
+            const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+            const originalStderrWrite = process.stderr.write.bind(process.stderr);
+
             process.stdout.write = (chunk: any, encoding?: any) => {
               if (typeof chunk === 'string' && chunk.includes('ERROR: The process') && chunk.includes('not found')) {
-                return true; // Suppress this specific error message
+                console.log('[vite-plugin-electron] Suppressed process not found error');
+                return true;
               }
-              return originalWrite(chunk, encoding);
+              return originalStdoutWrite(chunk, encoding);
+            };
+
+            process.stderr.write = (chunk: any, encoding?: any) => {
+              if (typeof chunk === 'string' && chunk.includes('ERROR: The process') && chunk.includes('not found')) {
+                console.log('[vite-plugin-electron] Suppressed process not found error');
+                return true;
+              }
+              return originalStderrWrite(chunk, encoding);
             };
           },
           vite: {

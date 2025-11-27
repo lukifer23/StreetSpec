@@ -241,7 +241,7 @@ export function createValidationError(field: string, reason: string, details?: u
     `Invalid input: ${reason}`,
     ErrorSeverity.LOW,
     ErrorCategory.UNKNOWN,
-    { field, reason, ...details },
+    details ? { field, reason, ...(details as object) } : { field, reason },
     false,
     0
   );

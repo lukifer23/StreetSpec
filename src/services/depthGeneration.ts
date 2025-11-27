@@ -146,7 +146,7 @@ export async function generateDepthMap(
       if (!response.ok) {
         throw createNetworkError(
           `Static API request failed: ${response.status} ${response.statusText}`,
-          { status: response.status, statusText: response.statusText, url }
+          { status: response.status, statusText: response.statusText, url: apiUrl }
         );
       }
 
@@ -251,7 +251,7 @@ export async function generateBatchDepthMaps(
   const uncachedParams: CameraParams[] = [];
 
   cacheChecks.forEach((check, index) => {
-    if (check.status === 'fulfilled' && check.value.cached) {
+    if (check.status === 'fulfilled' && check.value.cached && check.value.result) {
       cachedResults.push(check.value.result);
     } else {
       uncachedParams.push(cameraParamsList[index]!);

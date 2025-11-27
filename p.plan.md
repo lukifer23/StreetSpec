@@ -1,4 +1,4 @@
-### PoleCheck Desktop – Commercial-Grade P0/P1 Plan (Windows 11 x64)
+### Street Spec Desktop – Commercial-Grade P0/P1 Plan (Windows 11 x64)
 
 #### Assumptions
 
@@ -74,3 +74,4 @@
 - [x] QA scripts for rate-limit/network; banners and fallbacks verified
 - [x] Enhance main-process JSONL logging; diagnostics panel (opt-in ready)
 - [x] Document API key handling and Street View ToS constraints
+

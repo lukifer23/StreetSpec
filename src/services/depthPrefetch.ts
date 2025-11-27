@@ -10,7 +10,7 @@ import { ErrorSeverity, ErrorCategory } from '../types/common';
  * Improves perceived performance by pre-generating depth maps for likely next panoramas
  */
 
-interface PrefetchOptions {
+export interface PrefetchOptions {
   maxConcurrent?: number;
   enableCache?: boolean;
   quality?: 'low' | 'medium' | 'high';

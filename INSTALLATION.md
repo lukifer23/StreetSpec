@@ -1,4 +1,4 @@
-# PoleCheck Desktop - Installation Guide
+# Street Spec Desktop - Installation Guide
 
 ## System Requirements
 
@@ -19,7 +19,7 @@
 - **GPU:** DirectX 11 compatible (optional, for GPU acceleration)
 
 ### Required Runtime Dependencies
-PoleCheck Desktop includes all necessary runtime dependencies bundled with the installer. No additional software installation is required, including:
+Street Spec Desktop includes all necessary runtime dependencies bundled with the installer. No additional software installation is required, including:
 - ✅ Node.js runtime (bundled)
 - ✅ ONNX Runtime (bundled)
 - ✅ Visual C++ Redistributables (bundled with Electron)
@@ -30,7 +30,7 @@ PoleCheck Desktop includes all necessary runtime dependencies bundled with the i
 ### Option 1: NSIS Installer (Recommended)
 
 1. **Download the installer**
-   - Download `PoleCheck-Desktop-Setup-{version}.exe` from the releases page
+   - Download `StreetSpec-Desktop-Setup-{version}.exe` from the releases page
 
 2. **Run the installer**
    - Double-click the installer executable
@@ -39,24 +39,24 @@ PoleCheck Desktop includes all necessary runtime dependencies bundled with the i
 
 3. **Follow the installation wizard**
    - Click "Next" on the welcome screen
-   - Choose installation directory (default: `C:\Users\<YourUsername>\AppData\Local\Programs\polecheck-desktop`)
+   - Choose installation directory (default: `C:\Users\<YourUsername>\AppData\Local\Programs\streetspec-desktop`)
    - Select components to install (all are required)
    - Choose whether to create desktop and Start Menu shortcuts
    - Click "Install" to begin installation
    - Wait for installation to complete (typically 30-60 seconds)
 
 4. **Launch the application**
-   - Check "Run PoleCheck Desktop" to launch immediately after installation
-   - Or find "PoleCheck Desktop" in your Start Menu
+   - Check "Run Street Spec Desktop" to launch immediately after installation
+   - Or find "Street Spec Desktop" in your Start Menu
 
 ### Option 2: Portable Version
 
 1. **Download the portable executable**
-   - Download `PoleCheck-Desktop-Portable-{version}.exe` from the releases page
+   - Download `StreetSpec-Desktop-Portable-{version}.exe` from the releases page
 
 2. **Extract and run**
-   - Extract the portable executable to any folder (e.g., `C:\PoleCheck-Desktop`)
-   - Double-click `PoleCheck-Desktop-Portable-{version}.exe` to run
+   - Extract the portable executable to any folder (e.g., `C:\StreetSpec-Desktop`)
+   - Double-click `StreetSpec-Desktop-Portable-{version}.exe` to run
    - No installation required - all files are self-contained
 
 **Note:** Portable version stores settings and cache in the same directory as the executable.
@@ -64,18 +64,18 @@ PoleCheck Desktop includes all necessary runtime dependencies bundled with the i
 ### Option 3: ZIP Archive
 
 1. **Download the ZIP archive**
-   - Download `PoleCheck-Desktop-{version}.zip` from the releases page
+   - Download `StreetSpec-Desktop-{version}.zip` from the releases page
 
 2. **Extract and run**
    - Extract the ZIP file to any location
    - Navigate to the extracted folder
-   - Run `PoleCheck Desktop.exe`
+   - Run `Street Spec Desktop.exe`
 
 ## First-Time Setup
 
 After installation, you'll need to configure your Google Maps API key:
 
-1. **Launch PoleCheck Desktop**
+1. **Launch Street Spec Desktop**
    - Open the application from Start Menu or desktop shortcut
 
 2. **Access Settings**
@@ -100,8 +100,8 @@ After installation, you'll need to configure your Google Maps API key:
 To verify your installation is complete:
 
 1. **Check installation directory**
-   - Default: `C:\Users\<YourUsername>\AppData\Local\Programs\polecheck-desktop`
-   - Should contain: `PoleCheck Desktop.exe`, `resources/`, `locales/`
+   - Default: `C:\Users\<YourUsername>\AppData\Local\Programs\streetspec-desktop`
+   - Should contain: `Street Spec Desktop.exe`, `resources/`, `locales/`
 
 2. **Check model files**
    - Navigate to `resources/app.asar.unpacked/assets/models/`
@@ -150,7 +150,7 @@ To verify your installation is complete:
 
 ### NSIS Installer Version
 1. Open Windows Settings → Apps → Apps & features
-2. Search for "PoleCheck Desktop"
+2. Search for "Street Spec Desktop"
 3. Click "Uninstall"
 4. Follow the uninstaller prompts
 5. Choose whether to keep user data (projects, settings, cache)
@@ -160,9 +160,9 @@ Simply delete the folder containing the portable executable.
 
 ### Manual Cleanup (if needed)
 If uninstallation leaves files behind:
-1. Delete installation directory: `C:\Users\<YourUsername>\AppData\Local\Programs\polecheck-desktop`
-2. Delete user data: `C:\Users\<YourUsername>\AppData\Roaming\polecheck-desktop`
-3. Delete cache: `C:\Users\<YourUsername>\AppData\Local\polecheck-desktop`
+1. Delete installation directory: `C:\Users\<YourUsername>\AppData\Local\Programs\streetspec-desktop`
+2. Delete user data: `C:\Users\<YourUsername>\AppData\Roaming\streetspec-desktop`
+3. Delete cache: `C:\Users\<YourUsername>\AppData\Local\streetspec-desktop`
 
 ## Updating
 
@@ -191,4 +191,5 @@ For installation issues or questions:
 ## License
 
 See the application's license file (if provided) or repository LICENSE file for terms of use.
+
 

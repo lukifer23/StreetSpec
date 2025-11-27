@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { ErrorSeverity, ErrorCategory } from '../types/common';
 import type { AppError } from '../types/common';
 import styles from './ErrorDisplay.module.css';
 
@@ -16,7 +17,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
   onRetry,
   autoDismiss = true,
   dismissDelay = 8000
-}) => {
+}): React.ReactElement | null => {
   const [isVisible, setIsVisible] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -28,6 +29,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
       }, dismissDelay);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [autoDismiss, dismissDelay, error.severity, onDismiss]);
 
   const handleDismiss = useCallback(() => {
@@ -56,19 +58,20 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
     <div className={`${styles['errorDisplay']} ${styles[severityClass]}`} role="alert">
       <div className={styles['errorHeader']}>
         <div className={styles['errorIcon']}>
-          {error.severity === 'critical' && '🚨'}
-          {error.severity === 'error' && '⚠️'}
-          {error.severity === 'warning' && '⚡'}
-          {error.severity === 'info' && 'ℹ️'}
+          {error.severity === ErrorSeverity.CRITICAL && '!!'}
+          {error.severity === ErrorSeverity.HIGH && '!'}
+          {error.severity === ErrorSeverity.MEDIUM && '!'}
+          {error.severity === ErrorSeverity.LOW && 'i'}
         </div>
         <div className={styles['errorContent']}>
           <div className={styles['errorTitle']}>
-            {error.category === 'network' && 'Network Error'}
-            {error.category === 'validation' && 'Validation Error'}
-            {error.category === 'calculation' && 'Calculation Error'}
-            {error.category === 'system' && 'System Error'}
-            {error.category === 'user' && 'User Error'}
-            {!error.category && 'Error'}
+            {error.category === ErrorCategory.NETWORK && 'Network Error'}
+            {error.category === ErrorCategory.GEOMETRY && 'Geometry Error'}
+            {error.category === ErrorCategory.MEASUREMENT && 'Measurement Error'}
+            {error.category === ErrorCategory.STORAGE && 'Storage Error'}
+            {error.category === ErrorCategory.UI && 'UI Error'}
+            {error.category === ErrorCategory.SYSTEM && 'System Error'}
+            {error.category === ErrorCategory.UNKNOWN && 'Error'}
           </div>
           <div className={styles['errorMessage']}>
             {error.userFriendlyMessage || error.message}
@@ -81,7 +84,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
               className={styles['retryButton']}
               title="Retry operation"
             >
-              🔄 Retry
+              Retry
             </button>
           )}
           <button
@@ -90,38 +93,32 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({
             title="Dismiss"
             aria-label="Dismiss error"
           >
-            ×
+            Dismiss
           </button>
         </div>
       </div>
 
-      {(error.details || error.stack || error.context) && (
+      {(error.details || error.stack) && (
         <div className={styles['errorDetails']}>
           <button
             onClick={toggleExpand}
             className={styles['expandButton']}
             aria-expanded={isExpanded}
           >
-            {isExpanded ? '▼' : '▶'} Details
+            {isExpanded ? 'Hide' : 'Show'} Details
           </button>
           {isExpanded && (
             <div className={styles['detailsContent']}>
-              {error.details && (
+              {error.details ? (
                 <div className={styles['detailSection']}>
                   <strong>Details:</strong>
                   <pre>{JSON.stringify(error.details, null, 2)}</pre>
                 </div>
-              )}
+              ) : null}
               {error.stack && (
                 <div className={styles['detailSection']}>
                   <strong>Stack Trace:</strong>
                   <pre className={styles['stackTrace']}>{error.stack}</pre>
-                </div>
-              )}
-              {error.context && (
-                <div className={styles['detailSection']}>
-                  <strong>Context:</strong>
-                  <pre>{JSON.stringify(error.context, null, 2)}</pre>
                 </div>
               )}
             </div>
@@ -171,4 +168,3 @@ export const ErrorList: React.FC<ErrorListProps> = ({
     </div>
   );
 };
-

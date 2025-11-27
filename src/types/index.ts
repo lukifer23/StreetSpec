@@ -52,6 +52,6 @@ export {
 
 // Electron types
 export type {
-  ElectronAPI
+  IElectronAPI as ElectronAPI
 } from './electron';
 

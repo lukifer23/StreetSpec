@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
 import { join } from 'path';
 
-test.describe('PoleCheck Desktop IPC E2E Tests', () => {
+test.describe('Street Spec Desktop IPC E2E Tests', () => {
   let app: any;
   let mainWindow: any;
 
@@ -280,3 +280,4 @@ test.describe('PoleCheck Desktop IPC E2E Tests', () => {
     });
   });
 });
+

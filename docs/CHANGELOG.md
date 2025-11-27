@@ -1,4 +1,4 @@
-# PoleCheck Desktop - Changelog
+# Street Spec Desktop - Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -88,4 +88,5 @@ All notable changes to this project will be documented in this file.
 ## Previous Versions
 
 See git history for previous changes and version history.
+
 

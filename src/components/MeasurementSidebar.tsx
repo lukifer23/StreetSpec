@@ -9,6 +9,13 @@ import { pushNotification } from '../stores/notificationStore';
 import { List } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
 
+interface MeasurementRowProps {
+  measurements: Measurement[];
+  defaultUnit: UnitSystem;
+  onRename: (id: string, newName: string) => void;
+  onDelete: (id: string) => void;
+}
+
 const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string => {
   switch (measurement.kind) {
     case 'distance':
@@ -84,7 +91,7 @@ const MeasurementItem: React.FC<MeasurementItemProps> = ({
         className={styles['deleteButton']}
         title="Delete Measurement"
       >
-        ×
+        Delete
       </button>
     </li>
   );
@@ -131,7 +138,7 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
   // Calibration state at time of capture
   const calOffset = measurement.cameraParams?.calibrationPitchOffsetDeg ?? 0;
   const isCalibrated = Math.abs(calOffset) > 1e-6;
-  parts.push(isCalibrated ? `Cal ${calOffset.toFixed(2)}°` : 'Uncalibrated');
+  parts.push(isCalibrated ? `Cal ${calOffset.toFixed(2)} deg` : 'Uncalibrated');
 
   return parts.length > 0 ? parts.join(' | ') : undefined;
 };
@@ -282,7 +289,7 @@ const MeasurementSidebar: React.FC = () => {
               className={styles['undoButton']}
               title="Undo (Ctrl+Z)"
             >
-              ↶
+              Undo
             </button>
             <button
               onClick={() => redoMeasurement()}
@@ -290,7 +297,7 @@ const MeasurementSidebar: React.FC = () => {
               className={styles['redoButton']}
               title="Redo (Ctrl+Y)"
             >
-              ↷
+              Redo
             </button>
           </div>
           {measurements.length > 0 && (
@@ -331,22 +338,25 @@ const MeasurementSidebar: React.FC = () => {
               onDelete: deleteMeasurement
             }}
             className={styles['virtualizedList']}
-            rowComponent={({ index, style, rowProps }) => (
-              <div style={style}>
-                <MeasurementItem
-                  measurement={rowProps?.measurements?.[index]}
-                  defaultUnit={rowProps?.defaultUnit}
-                  onRename={rowProps?.onRename}
-                  onDelete={rowProps?.onDelete}
-                />
-              </div>
-            )}
+            rowComponent={({ index, style, ...rowProps }) => {
+              const props = rowProps as MeasurementRowProps;
+              return (
+                <div style={style}>
+                  <MeasurementItem
+                    measurement={props.measurements[index]!}
+                    defaultUnit={props.defaultUnit}
+                    onRename={props.onRename}
+                    onDelete={props.onDelete}
+                  />
+                </div>
+              );
+            }}
           />
         </div>
       )}
       
       <div className={styles['sidebarFooter']}>
-        <div>PoleCheck Desktop v0.0.1</div>
+        <div>Street Spec Desktop v0.0.1</div>
         <div className={styles['shortcuts']}>
           <span title="Start height measurement (M key)">M: Measure</span>
           <span title="Toggle measurement units (U key)">U: Units</span>
