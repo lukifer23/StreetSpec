@@ -37,6 +37,8 @@ Street Spec Desktop is a cross-platform application for measuring objects in Goo
     - Manual horizon calibration
     - Automatic horizon detection using depth data
     - Confidence scoring for all measurements
+*   **Bring Your Own Key (BYO Key):** Securely input your own Google Maps API Key in settings.
+*   **Building Insights:** Fetch roof area and solar potential data using Google Solar API.
 *   **Performance Optimized:**
     - Virtualized measurement lists for large datasets
     - Compressed depth caching with LRU eviction
@@ -113,11 +115,12 @@ See [docs/roadmap.md](./docs/roadmap.md) for detailed development plans and rema
    ```
 
 3. **Configure environment variables**
-   Copy `.env.example` to `.env` in the project root and add a Google Maps API key that has the Maps JavaScript API, Places API, Street View Static API, and Street View depth access enabled. Provide the key for both the renderer `VITE_GOOGLE_MAPS_API_KEY` and Electron main process `GOOGLE_MAPS_API_KEY` so depth requests work everywhere:
-   ```env
-   VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
-   GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
-   ```
+    Copy `.env.example` to `.env` in the project root. You can provide a default Google Maps API key here, or skip this and enter it directly in the application settings (Settings -> API Key).
+    If using `.env`, ensure the key has Maps JavaScript, Places, Street View Static, Street View Depth, and Solar APIs enabled:
+    ```env
+    VITE_GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
+    GOOGLE_MAPS_API_KEY=YOUR_API_KEY_HERE
+    ```
 
 4. **Run the application in development mode**
    ```bash

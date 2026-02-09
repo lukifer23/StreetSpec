@@ -266,9 +266,9 @@ async function cleanupModelSession(): Promise<void> {
   if (sessionMutex.locked) {
     return; // Cleanup already in progress
   }
-  
+
   sessionMutex.locked = true;
-  
+
   try {
     // Wait for any active inference to complete with timeout
     const MAX_WAIT_TIME = 5000; // 5 seconds max wait
@@ -276,7 +276,7 @@ async function cleanupModelSession(): Promise<void> {
     while (sessionInUse && (Date.now() - startWait) < MAX_WAIT_TIME) {
       await sleep(100);
     }
-    
+
     if (sessionInUse) {
       console.warn('[model] Session still in use after timeout, forcing cleanup');
       sessionInUse = false; // Force release
@@ -287,13 +287,13 @@ async function cleanupModelSession(): Promise<void> {
         console.log('[model] Cleaning up ONNX session...');
         const sessionToRelease = depthSession;
         depthSession = null; // Clear reference immediately to prevent reuse
-        
+
         // Release session with timeout
         const releasePromise = sessionToRelease.release();
         const timeoutPromise = sleep(2000).then(() => {
           throw new Error('Session release timeout');
         });
-        
+
         await Promise.race([releasePromise, timeoutPromise]);
         sessionLoadAttempts = 0;
         logMemoryUsage('After session cleanup');
@@ -342,15 +342,15 @@ async function performMemoryCleanup(): Promise<void> {
 
 async function reloadModelSession(): Promise<boolean> {
   await cleanupModelSession();
-  
+
   if (sessionLoadAttempts >= MAX_SESSION_LOAD_ATTEMPTS) {
     console.error('[model] Max session load attempts reached');
     return false;
   }
-  
+
   sessionLoadAttempts++;
   console.log(`[model] Attempting to reload session (attempt ${sessionLoadAttempts}/${MAX_SESSION_LOAD_ATTEMPTS})`);
-  
+
   try {
     await loadModel();
     return depthSession !== null;
@@ -691,7 +691,8 @@ async function extractErrorMessage(response: Response): Promise<string | undefin
 }
 
 async function getRawDepthData(panoId: string, options: DepthFetchOptions = {}): Promise<DepthDataFetchResult> {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY ?? process.env.VITE_GOOGLE_MAPS_API_KEY;
+  const storeKey = store?.get('settings.googleMapsApiKey') as string | undefined;
+  const apiKey = storeKey || process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
     return {
       status: 'error',
@@ -1174,7 +1175,7 @@ async function createWindow() {
       const timeoutPromise = sleep(timeoutMs).then(() => {
         throw new Error(`Operation timed out after ${timeoutMs}ms`);
       });
-      
+
       try {
         return await Promise.race([
           handler(event, ...args),
@@ -1203,7 +1204,7 @@ async function createWindow() {
   // Depth inference handler with improved error handling and memory management
   ipcMain.handle('infer-depth', withTimeout(async (event: IpcMainInvokeEvent, imageDataUrl: unknown) => {
     console.log('[infer-depth] request received');
-    
+
     // Validate input using Zod schema
     let validatedImageDataUrl: string;
     try {
@@ -1213,22 +1214,22 @@ async function createWindow() {
       event.sender.send('main-process-message', { type: 'error', message: errorMessage });
       return null;
     }
-    
+
     // Acquire session lock with timeout
     const LOCK_TIMEOUT_MS = 10000; // 10 seconds max wait
     const lockStartTime = Date.now();
     while (sessionMutex.locked && (Date.now() - lockStartTime) < LOCK_TIMEOUT_MS) {
       await sleep(50);
     }
-    
+
     if (sessionMutex.locked) {
-      event.sender.send('main-process-message', { 
-        type: 'error', 
-        message: 'Depth inference timeout: session is locked' 
+      event.sender.send('main-process-message', {
+        type: 'error',
+        message: 'Depth inference timeout: session is locked'
       });
       return null;
     }
-    
+
     // Acquire the lock
     sessionMutex.locked = true;
 
@@ -1236,14 +1237,14 @@ async function createWindow() {
       console.warn('[infer-depth] No depth session available, attempting reload...');
       const reloadSuccess = await reloadModelSession();
       if (!reloadSuccess) {
-        event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not available and could not be reloaded.'});
+        event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not available and could not be reloaded.' });
         return null;
       }
     }
 
     // Verify session is still valid before use
     if (!depthSession) {
-      event.sender.send('main-process-message', { type: 'error', message: 'Depth model session is not available.'});
+      event.sender.send('main-process-message', { type: 'error', message: 'Depth model session is not available.' });
       return null;
     }
 
@@ -1254,11 +1255,11 @@ async function createWindow() {
     try {
       console.time('[infer-depth] preprocess');
       logMemoryUsage('Before inference');
-      
+
       // Process image data and run inference
       const base64Data = validatedImageDataUrl.split(',')[1];
       if (!base64Data) throw new Error('Invalid image data');
-      
+
       const imageBuffer = Buffer.from(base64Data, 'base64');
       const image = sharp(imageBuffer);
 
@@ -1278,28 +1279,28 @@ async function createWindow() {
 
       const float32Data = new Float32Array(modelInputShape[1] * modelInputShape[2] * modelInputShape[3]);
       for (let i = 0; i < modelInputShape[2] * modelInputShape[3]; i++) {
-         float32Data[i] = resizedBuffer[i * 3] / 255.0;         // R channel
-         float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
-         float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
-       }
+        float32Data[i] = resizedBuffer[i * 3] / 255.0;         // R channel
+        float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
+        float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
+      }
       console.timeEnd('[infer-depth] preprocess');
 
       // Create tensor from the processed float data
       const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape);
       const feeds: Record<string, ort.Tensor> = {};
-      
+
       // Verify session is still valid
       if (!sessionRef || sessionRef !== depthSession) {
         inputTensor.dispose();
         throw new Error('Session was invalidated during inference preparation');
       }
-      
+
       feeds[sessionRef.inputNames[0]] = inputTensor;
-      
+
       console.time('[infer-depth] inference');
       const results = await sessionRef.run(feeds);
       console.timeEnd('[infer-depth] inference');
-      
+
       // Clean up input tensor immediately after inference
       inputTensor.dispose();
 
@@ -1324,7 +1325,7 @@ async function createWindow() {
       if (!w || !h || !(outputTensor.data instanceof Float32Array) || (outputTensor.data as Float32Array).length === 0) {
         throw new Error('ONNX output tensor invalid');
       }
-      
+
       // Parameters describing how the image was resized prior to inference
       const transform = {
         originalWidth,
@@ -1340,17 +1341,17 @@ async function createWindow() {
       const scale = (settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1) as number;
       const bias = (settings.depthBias ?? MODEL_CALIBRATIONS[selectedModelFilename]?.bias ?? 0) as number;
       // calibrationBiasByZoom is persisted for horizon pitch; kept for future mapping refinements
-      
+
       // Extract data before disposing tensor
       const outputData = Array.from(outputTensor.data as Float32Array, (v) => v * scale + bias);
-      
+
       // Dispose output tensor to free memory
       outputTensor.dispose();
-      
+
       logMemoryUsage('After inference');
       sessionMutex.locked = false;
       sessionInUse = false;
-      
+
       return {
         data: outputData,
         width: w,
@@ -1362,20 +1363,20 @@ async function createWindow() {
       logMemoryUsage('After inference failure');
       sessionMutex.locked = false;
       sessionInUse = false;
-      
+
       // Attempt to recover from session errors
       if (error instanceof Error && (error.message.includes('session') || error.message.includes('Session'))) {
         console.warn('[infer-depth] Session error detected, attempting cleanup and reload...');
         await cleanupModelSession();
         // Don't immediately reload - let next request trigger reload
       }
-      
+
       // Ensure session is marked as potentially invalid
       if (error instanceof Error && (error.message.includes('disposed') || error.message.includes('released'))) {
         depthSession = null;
         sessionInUse = false;
       }
-      
+
       event.sender.send('main-process-message', { type: 'error', message: `Depth inference failed: ${error}` });
       return null;
     }
@@ -1579,7 +1580,7 @@ async function createWindow() {
         error: errorMessage
       };
     }
-    
+
     const storeInstance = getStore();
     const previousValue = Boolean(storeInstance.get('settings.useGPU', false));
     const desiredValue = Boolean(validatedEnableGpu);
@@ -1629,15 +1630,15 @@ async function createWindow() {
     try {
       // Validate using Zod schema
       const validatedLogEntry = validateIPCInvoke('log-error', logEntry) as Record<string, unknown>;
-      
+
       const logDir = join(app.getPath('userData'), 'logs');
       const logFile = join(logDir, `error-${new Date().toISOString().split('T')[0]}.log`);
-      
+
       // Create logs directory if it doesn't exist
       if (!existsSync(logDir)) {
         await fs.promises.mkdir(logDir, { recursive: true });
       }
-      
+
       // Format log entry with validation
       const logEntryObj = validatedLogEntry;
       const logLine = JSON.stringify({
@@ -1647,7 +1648,7 @@ async function createWindow() {
         arch: process.arch,
         timestamp: new Date().toISOString()
       }) + '\n';
-      
+
       // Validate log line size (prevent log file bloat)
       if (logLine.length > 10000) {
         console.warn('[log-error] Log entry too large, truncating');
@@ -1663,15 +1664,15 @@ async function createWindow() {
       } else {
         await fs.promises.appendFile(logFile, logLine, 'utf8');
       }
-      
+
       // Also log to console for debugging
       console.error('[ERROR LOG]', logEntry);
-      
+
       // Clean up old log files (keep last 30 days) - don't await to avoid blocking
       cleanupOldLogs(logDir, 30).catch(err => {
         console.warn('[log-error] Cleanup failed:', err);
       });
-      
+
       return true;
     } catch (error) {
       console.error('[log-error] Failed to write error log:', error);
@@ -1712,7 +1713,7 @@ async function createWindow() {
       };
 
       const logLine = JSON.stringify(entry) + '\n';
-      
+
       // Validate log line size
       if (logLine.length > 5000) {
         console.warn('[log-telemetry] Entry too large, skipping');
@@ -1734,12 +1735,12 @@ async function cleanupOldLogs(logDir: string, daysToKeep: number): Promise<void>
     const files = await fs.promises.readdir(logDir);
     const now = Date.now();
     const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
-    
+
     for (const file of files) {
       if (file.startsWith('error-') && file.endsWith('.log')) {
         const filePath = join(logDir, file);
         const stats = await fs.promises.stat(filePath);
-        
+
         if (now - stats.mtimeMs > maxAge) {
           await fs.promises.unlink(filePath);
           console.log(`[cleanup] Deleted old log file: ${file}`);
@@ -1805,19 +1806,19 @@ let isQuitting = false;
 app.on('window-all-closed', async () => {
   console.log('[shutdown] window-all-closed event triggered');
   win = null;
-  
+
   if (isQuitting) {
     return; // Cleanup already in progress
   }
-  
+
   isQuitting = true;
-  
+
   try {
     await cleanupModelSession();
   } catch (error) {
     console.error('[shutdown] Error during cleanup:', error);
   }
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -1845,7 +1846,7 @@ process.on('unhandledRejection', async (reason: any, _promise: Promise<any>) => 
   if (win && !isQuitting) {
     const wc = win.webContents;
     if (!wc.isDestroyed()) {
-        wc.send('main-process-message', { type: 'error', message: `Unhandled Rejection: ${reason}` });
+      wc.send('main-process-message', { type: 'error', message: `Unhandled Rejection: ${reason}` });
     }
   }
 });

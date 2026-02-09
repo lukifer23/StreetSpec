@@ -25,6 +25,21 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         <h2>Settings</h2>
 
         <div className={styles['field']}>
+          <label htmlFor="apiKey">Google Maps API Key</label>
+          <input
+            id="apiKey"
+            type="password"
+            value={form.googleMapsApiKey ?? ''}
+            onChange={e => handleChange('googleMapsApiKey', e.target.value)}
+            placeholder="Paste your API key here"
+            title="Your personal Google Maps API Key (requires Maps JS, Street View, and Solar APIs enabled)"
+          />
+          <div className={styles['hint']}>
+            Required for Street View, depth data, and building insights.
+          </div>
+        </div>
+
+        <div className={styles['field']}>
           <label htmlFor="unit">Default Unit</label>
           <select
             id="unit"
@@ -159,7 +174,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <select
             id="kernel"
             value={form.depthKernelSize ?? 5}
-            onChange={e => handleChange('depthKernelSize', parseInt(e.target.value, 10) as 3|5|7)}
+            onChange={e => handleChange('depthKernelSize', parseInt(e.target.value, 10) as 3 | 5 | 7)}
             title="Neighborhood size for robust depth sampling"
           >
             <option value={3}>3</option>

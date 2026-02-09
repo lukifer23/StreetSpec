@@ -169,12 +169,12 @@ export const useAppLogic = (apiKey: string) => {
 
   // Load Google Maps API
   useEffect(() => {
-    let key = apiKey;
+    let key = settings.googleMapsApiKey || apiKey;
     try {
       if (!key) {
         key = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY : undefined) ||
-              (window as any).electronAPI?.getEnv?.()?.VITE_GOOGLE_MAPS_API_KEY ||
-              '';
+          (window as any).electronAPI?.getEnv?.()?.VITE_GOOGLE_MAPS_API_KEY ||
+          '';
       }
     } catch (error) {
       console.error('Error accessing API key in useAppLogic:', error);
@@ -358,22 +358,22 @@ export const useAppLogic = (apiKey: string) => {
   }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams, updateSettings, setIsCalibrated]);
 
   const handleCalibrateClick = useCallback((pixelY: number, viewH: number) => {
-     if (
-       !currentCameraParams ||
-       !currentCameraParams.vFov ||
-       currentCameraParams.pitch === undefined
-     ) {
-       setCalibrateMode(false);
-       return;
-     }
-     const verticalFov = currentCameraParams.vFov;
-     const angle = pixelOffsetToVerticalAngle(pixelY, viewH, verticalFov);
-     const offset = -(currentCameraParams.pitch + angle);
-     const newSettings = { ...settings, calibrationPitchOffsetDeg: offset };
-     updateSettings({ calibrationPitchOffsetDeg: offset });
-     window.electronAPI?.invoke('save-settings', newSettings).catch(() => {});
-     setCalibrateMode(false);
-     setIsCalibrated(true);
+    if (
+      !currentCameraParams ||
+      !currentCameraParams.vFov ||
+      currentCameraParams.pitch === undefined
+    ) {
+      setCalibrateMode(false);
+      return;
+    }
+    const verticalFov = currentCameraParams.vFov;
+    const angle = pixelOffsetToVerticalAngle(pixelY, viewH, verticalFov);
+    const offset = -(currentCameraParams.pitch + angle);
+    const newSettings = { ...settings, calibrationPitchOffsetDeg: offset };
+    updateSettings({ calibrationPitchOffsetDeg: offset });
+    window.electronAPI?.invoke('save-settings', newSettings).catch(() => { });
+    setCalibrateMode(false);
+    setIsCalibrated(true);
     pushNotification({
       kind: 'success',
       message: `Manual calibration saved. Pitch offset ${offset.toFixed(2)} deg.`,
@@ -437,14 +437,14 @@ export const useAppLogic = (apiKey: string) => {
         const zoomKey = Math.max(0, Math.min(4, Math.round(currentCameraParams.zoom ?? 1)));
         const calibrationBiasByZoom = { ...(settings.calibrationBiasByZoom ?? {}) } as Record<number, number>;
         calibrationBiasByZoom[zoomKey] = result.pitchOffset;
-        
+
         // Also store at fractional zoom levels for smoother interpolation
         const fractionalZoom = currentCameraParams.zoom ?? 1;
         if (Math.abs(fractionalZoom - zoomKey) > 0.1) {
           const fractionalKey = Math.round(fractionalZoom * 10) / 10;
           calibrationBiasByZoom[fractionalKey] = result.pitchOffset;
         }
-        
+
         const newSettings = { ...settings, calibrationPitchOffsetDeg: result.pitchOffset, calibrationBiasByZoom } as typeof settings;
         updateSettings({ calibrationPitchOffsetDeg: result.pitchOffset, calibrationBiasByZoom });
         await window.electronAPI?.invoke('save-settings', newSettings);
@@ -636,14 +636,14 @@ export const useAppLogic = (apiKey: string) => {
       setOnnxDepthMap(result.depthMap);
       setMapGenerationError(null);
       setDepthGenProgress({ stage: 'complete', quality: 'high' });
-      
+
       // Clear progress after brief delay
       setTimeout(() => setDepthGenProgress(undefined), 2000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setMapGenerationError(errorMessage);
       setDepthGenProgress(undefined);
-      
+
       // Show user-friendly error notification
       pushNotification({
         kind: 'error',

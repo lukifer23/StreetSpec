@@ -1,9 +1,9 @@
 // Common type definitions for the application
 
 export interface Vector3 {
-    x: number;
-    y: number;
-    z: number;
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface Coordinates {
@@ -133,26 +133,26 @@ export type DepthDataErrorCode =
 
 export type DepthDataFetchResult =
   | {
-      status: 'success';
-      data: DecodedDepthData;
-      source: 'json' | 'protobuf' | 'legacy';
-      fetchedAt: number;
-      attempts: number;
-    }
+    status: 'success';
+    data: DecodedDepthData;
+    source: 'json' | 'protobuf' | 'legacy';
+    fetchedAt: number;
+    attempts: number;
+  }
   | {
-      status: 'rate-limit';
-      code: 'RATE_LIMIT';
-      message: string;
-      retryAfterMs?: number;
-      attempts: number;
-    }
+    status: 'rate-limit';
+    code: 'RATE_LIMIT';
+    message: string;
+    retryAfterMs?: number;
+    attempts: number;
+  }
   | {
-      status: 'error';
-      code: DepthDataErrorCode;
-      message: string;
-      details?: unknown;
-      attempts: number;
-    };
+    status: 'error';
+    code: DepthDataErrorCode;
+    message: string;
+    details?: unknown;
+    attempts: number;
+  };
 
 // Application settings interface
 export interface AppSettings {
@@ -176,6 +176,7 @@ export interface AppSettings {
   depthApiMaxRetries?: number;
   depthQuality?: 'low' | 'medium' | 'high';
   enableDepthCache?: boolean;
+  googleMapsApiKey?: string;
 }
 
 // Comprehensive error handling system
@@ -261,31 +262,31 @@ export const ERROR_CODES = {
   NETWORK_UNREACHABLE: 'NETWORK_UNREACHABLE',
   API_RATE_LIMITED: 'API_RATE_LIMITED',
   API_UNAUTHORIZED: 'API_UNAUTHORIZED',
-  
+
   // Model errors
   MODEL_LOAD_FAILED: 'MODEL_LOAD_FAILED',
   MODEL_INFERENCE_FAILED: 'MODEL_INFERENCE_FAILED',
   MODEL_MEMORY_ERROR: 'MODEL_MEMORY_ERROR',
-  
+
   // Geometry errors
   GEOMETRY_INVALID_POINT: 'GEOMETRY_INVALID_POINT',
   GEOMETRY_CALCULATION_FAILED: 'GEOMETRY_CALCULATION_FAILED',
   GEOMETRY_DEPTH_INTERSECTION_FAILED: 'GEOMETRY_DEPTH_INTERSECTION_FAILED',
-  
+
   // Measurement errors
   MEASUREMENT_INVALID_CAMERA: 'MEASUREMENT_INVALID_CAMERA',
   MEASUREMENT_NO_DEPTH_DATA: 'MEASUREMENT_NO_DEPTH_DATA',
   MEASUREMENT_CALCULATION_FAILED: 'MEASUREMENT_CALCULATION_FAILED',
-  
+
   // Storage errors
   STORAGE_SAVE_FAILED: 'STORAGE_SAVE_FAILED',
   STORAGE_LOAD_FAILED: 'STORAGE_LOAD_FAILED',
   STORAGE_CORRUPTED: 'STORAGE_CORRUPTED',
-  
+
   // UI errors
   UI_RENDER_FAILED: 'UI_RENDER_FAILED',
   UI_INTERACTION_FAILED: 'UI_INTERACTION_FAILED',
-  
+
   // System errors
   SYSTEM_MEMORY_LOW: 'SYSTEM_MEMORY_LOW',
   SYSTEM_RESOURCE_UNAVAILABLE: 'SYSTEM_RESOURCE_UNAVAILABLE',

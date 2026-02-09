@@ -1,21 +1,15 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useRootStore, useMeasurementActions, useSettingsActions } from '../stores/rootStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { Measurement } from '../types/common';
 import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
 import type { UnitSystem } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-// Import react-window v2 - uses List component (FixedSizeList was v1 API)
 import { List } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
+import { fetchBuildingInsights, type SolarBuildingInsights } from '../services/solar';
 
-interface MeasurementRowProps {
-  measurements: Measurement[];
-  defaultUnit: UnitSystem;
-  onRename: (id: string, newName: string) => void;
-  onDelete: (id: string) => void;
-}
-
+// Helper functions
 const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string => {
   switch (measurement.kind) {
     case 'distance':
@@ -31,72 +25,6 @@ const formatPrimaryLine = (measurement: Measurement, defaultUnit: UnitSystem): s
   }
 };
 
-interface MeasurementItemProps {
-  measurement: Measurement;
-  defaultUnit: UnitSystem;
-  onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
-}
-
-const MeasurementItem: React.FC<MeasurementItemProps> = ({
-  measurement,
-  defaultUnit,
-  onRename,
-  onDelete
-}) => {
-  // Handle undefined measurement gracefully
-  if (!measurement) {
-    return <li className={styles['measurementItem']}>Loading...</li>;
-  }
-
-  const secondary = formatSecondaryLine(measurement, defaultUnit);
-
-  // Visual validation indicators
-  const confidence = measurement.confidence ?? 0;
-  const confidenceColor = confidence >= 0.7 ? '#28a745' : confidence >= 0.4 ? '#ffc107' : '#dc3545';
-  const confidenceLabel = confidence >= 0.7 ? 'High' : confidence >= 0.4 ? 'Medium' : 'Low';
-
-  return (
-    <li className={styles['measurementItem']}>
-      <input
-        type="text"
-        placeholder="Add Name..."
-        value={measurement.name || ''}
-        onChange={(event) => onRename(measurement.id, event.target.value)}
-        className={styles['nameInput']}
-        title="Rename Measurement"
-        maxLength={100}
-      />
-      <div className={styles['measurementSummary']}>
-        <div className={styles['measurementValue']}>
-          {formatPrimaryLine(measurement, defaultUnit)}
-          {measurement.confidence !== undefined && (
-            <span 
-              className={styles['confidenceBadge']}
-              style={{ backgroundColor: confidenceColor }}
-              title={`Confidence: ${confidenceLabel} (${Math.round(confidence * 100)}%)`}
-            >
-              {Math.round(confidence * 100)}%
-            </span>
-          )}
-        </div>
-        {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
-      </div>
-      <button
-        onClick={() => {
-          if (window.confirm('Delete this measurement?')) {
-            onDelete(measurement.id);
-          }
-        }}
-        className={styles['deleteButton']}
-        title="Delete Measurement"
-      >
-        Delete
-      </button>
-    </li>
-  );
-};
-
 const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem): string | undefined => {
   const parts: string[] = [];
 
@@ -105,7 +33,7 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
   }
 
   if (measurement.kind === 'area' && Number.isFinite(measurement.perimeterMeters)) {
-    const display = getLengthDisplay(measurement, defaultUnit, measurement.perimeterMeters);
+    const display = getLengthDisplay(measurement, defaultUnit, measurement.perimeterMeters!);
     if (display.value !== undefined) {
       parts.push(`Perimeter ${display.value.toFixed(2)} ${display.unitLabel}`);
     }
@@ -143,6 +71,78 @@ const formatSecondaryLine = (measurement: Measurement, defaultUnit: UnitSystem):
   return parts.length > 0 ? parts.join(' | ') : undefined;
 };
 
+// Sub-components
+interface MeasurementItemProps {
+  measurement: Measurement;
+  defaultUnit: UnitSystem;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+}
+
+const MeasurementItem: React.FC<MeasurementItemProps> = ({
+  measurement,
+  defaultUnit,
+  onRename,
+  onDelete
+}) => {
+  if (!measurement) {
+    return <li className={styles['measurementItem']}>Loading...</li>;
+  }
+
+  const secondary = formatSecondaryLine(measurement, defaultUnit);
+  const confidence = measurement.confidence ?? 0;
+  const confidenceColor = confidence >= 0.7 ? '#28a745' : confidence >= 0.4 ? '#ffc107' : '#dc3545';
+  const confidenceLabel = confidence >= 0.7 ? 'High' : confidence >= 0.4 ? 'Medium' : 'Low';
+
+  return (
+    <li className={styles['measurementItem']}>
+      <input
+        type="text"
+        placeholder="Add Name..."
+        value={measurement.name || ''}
+        onChange={(event) => onRename(measurement.id, event.target.value)}
+        className={styles['nameInput']}
+        title="Rename Measurement"
+        maxLength={100}
+      />
+      <div className={styles['measurementSummary']}>
+        <div className={styles['measurementValue']}>
+          {formatPrimaryLine(measurement, defaultUnit)}
+          {measurement.confidence !== undefined && (
+            <span
+              className={styles['confidenceBadge']}
+              style={{ backgroundColor: confidenceColor }}
+              title={`Confidence: ${confidenceLabel} (${Math.round(confidence * 100)}%)`}
+            >
+              {Math.round(confidence * 100)}%
+            </span>
+          )}
+        </div>
+        {secondary && <div className={styles['measurementMeta']}>{secondary}</div>}
+      </div>
+      <button
+        onClick={() => {
+          if (window.confirm('Delete this measurement?')) {
+            onDelete(measurement.id);
+          }
+        }}
+        className={styles['deleteButton']}
+        title="Delete Measurement"
+      >
+        Delete
+      </button>
+    </li>
+  );
+};
+
+interface MeasurementRowProps {
+  measurements: Measurement[];
+  defaultUnit: UnitSystem;
+  onRename: (id: string, newName: string) => void;
+  onDelete: (id: string) => void;
+}
+
+// Main Component
 const MeasurementSidebar: React.FC = () => {
   const { measurements, settings } = useRootStore(
     useShallow(
@@ -152,12 +152,20 @@ const MeasurementSidebar: React.FC = () => {
       })
     )
   );
+
   const { deleteMeasurement, renameMeasurement, clearMeasurements } = useMeasurementActions();
   const undoMeasurement = useRootStore((state) => state.undoMeasurement);
   const redoMeasurement = useRootStore((state) => state.redoMeasurement);
   const canUndo = useRootStore((state) => state.canUndo());
   const canRedo = useRootStore((state) => state.canRedo());
   const { toggleUnit } = useSettingsActions();
+
+  const currentCameraParams = useRootStore(state => state.currentCameraParams);
+
+  // Building Insights State
+  const [buildingInsights, setBuildingInsights] = useState<SolarBuildingInsights | null>(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+
   const handleUnitToggle = useCallback(() => {
     toggleUnit();
     if (window.electronAPI?.invoke) {
@@ -167,6 +175,47 @@ const MeasurementSidebar: React.FC = () => {
       });
     }
   }, [toggleUnit]);
+
+  const handleGetBuildingInsights = useCallback(async () => {
+    if (!currentCameraParams?.lat || !currentCameraParams?.lng) {
+      return;
+    }
+
+    if (!settings.googleMapsApiKey) {
+      pushNotification({
+        kind: 'warning',
+        message: 'Please configure your Google Maps API Key in Settings to use Building Insights.',
+        timeoutMs: 5000
+      });
+      return;
+    }
+
+    setIsLoadingInsights(true);
+    setBuildingInsights(null);
+    try {
+      const data = await fetchBuildingInsights(currentCameraParams.lat, currentCameraParams.lng, settings.googleMapsApiKey);
+      if (data) {
+        setBuildingInsights(data);
+        pushNotification({
+          kind: 'success',
+          message: `Found building info for ${data.name || 'current location'}`,
+        });
+      } else {
+        pushNotification({
+          kind: 'info',
+          message: 'No building data found at this exact location.',
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      pushNotification({
+        kind: 'error',
+        message: 'Failed to fetch building insights.',
+      });
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  }, [currentCameraParams, settings.googleMapsApiKey]);
 
   const handleClearMeasurements = useCallback(async () => {
     clearMeasurements();
@@ -187,7 +236,7 @@ const MeasurementSidebar: React.FC = () => {
       });
       return;
     }
-    
+
     const header = [
       'ID',
       'Timestamp',
@@ -209,6 +258,7 @@ const MeasurementSidebar: React.FC = () => {
       'Source',
       'Confidence'
     ].join(',');
+
     const rows = measurements.map((m) => {
       const display = getDisplayValue(m, settings.defaultUnit);
       const valueString =
@@ -241,6 +291,7 @@ const MeasurementSidebar: React.FC = () => {
 
       return formatCsvRow(raw);
     });
+
     const csvContent = [header, ...rows].join('\n');
 
     try {
@@ -275,8 +326,8 @@ const MeasurementSidebar: React.FC = () => {
       <div className={styles['sidebarHeader']}>
         <h4>Measurements</h4>
         <div className={styles['sidebarControls']}>
-          <button 
-            onClick={handleUnitToggle} 
+          <button
+            onClick={handleUnitToggle}
             className={styles['unitToggle']}
             title={`Toggle units (${settings.defaultUnit === 'metric' ? 'Imperial' : 'Metric'})`}
           >
@@ -302,16 +353,16 @@ const MeasurementSidebar: React.FC = () => {
           </div>
           {measurements.length > 0 && (
             <>
-              <button 
-                onClick={handleExportCSV} 
-                className={styles['sidebarButton']} 
+              <button
+                onClick={handleExportCSV}
+                className={styles['sidebarButton']}
                 title="Export as CSV (Ctrl+E)"
               >
                 Export
               </button>
-              <button 
-                onClick={handleClearMeasurements} 
-                className={`${styles['sidebarButton']} ${styles['dangerButton']}`} 
+              <button
+                onClick={handleClearMeasurements}
+                className={`${styles['sidebarButton']} ${styles['dangerButton']}`}
                 title="Clear All Measurements (Ctrl+Shift+Delete)"
               >
                 Clear All
@@ -321,6 +372,30 @@ const MeasurementSidebar: React.FC = () => {
         </div>
       </div>
 
+      {/* Building Insights Section */}
+      {settings.googleMapsApiKey && (
+        <div className={styles['solarSection']}>
+          <button
+            className={styles['sidebarButton']}
+            onClick={handleGetBuildingInsights}
+            disabled={isLoadingInsights || !currentCameraParams?.lat}
+            style={{ width: '100%', marginBottom: '10px' }}
+          >
+            {isLoadingInsights ? 'Loading...' : 'Get Building Insights'}
+          </button>
+
+          {buildingInsights && (
+            <div className={styles['buildingStats']} style={{ fontSize: '0.85rem', padding: '10px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
+              <strong>Building Dimensions</strong><br />
+              Max Height: {buildingInsights.solarPotential.roofSegmentStats[0]?.planeHeightAtCenterMeters?.toFixed(1) ?? '--'} m<br />
+              Roof Area: {buildingInsights.solarPotential.wholeRoofStats.areaMeters2.toFixed(0)} m²<br />
+              Max Panels: {buildingInsights.solarPotential.maxArrayPanelsCount}<br />
+              <small style={{ opacity: 0.7 }}>Date: {buildingInsights.imageryDate}</small>
+            </div>
+          )}
+        </div>
+      )}
+
       {measurements.length === 0 ? (
         <div className={styles['noMeasurements']}>
           No measurements yet.
@@ -328,18 +403,19 @@ const MeasurementSidebar: React.FC = () => {
       ) : (
         <div className={styles['measurementList']}>
           <List
-            defaultHeight={400}
-            rowCount={measurements.length}
-            rowHeight={80}
-            rowProps={{
+            height={400}
+            itemCount={measurements.length}
+            itemSize={80}
+            itemData={{
               measurements,
               defaultUnit: settings.defaultUnit,
               onRename: renameMeasurement,
               onDelete: deleteMeasurement
             }}
             className={styles['virtualizedList']}
-            rowComponent={({ index, style, ...rowProps }) => {
-              const props = rowProps as MeasurementRowProps;
+          >
+            {({ index, style, data }) => {
+              const props = data as MeasurementRowProps;
               return (
                 <div style={style}>
                   <MeasurementItem
@@ -351,10 +427,10 @@ const MeasurementSidebar: React.FC = () => {
                 </div>
               );
             }}
-          />
+          </List>
         </div>
       )}
-      
+
       <div className={styles['sidebarFooter']}>
         <div>Street Spec Desktop v0.0.1</div>
         <div className={styles['shortcuts']}>
