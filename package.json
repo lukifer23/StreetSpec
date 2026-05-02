@@ -60,7 +60,7 @@
     "react-window": "^2.2.0",
     "react-window-infinite-loader": "^2.0.0",
     "sharp": "^0.34.1",
-    "uuid": "^11.1.0",
+    "uuid": "^14.0.0",
     "ws": "^8.18.3",
     "zod": "^3.25.76",
     "zustand": "^5.0.7"
