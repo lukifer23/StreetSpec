@@ -1,3 +1,21 @@
+# Changelog
+
+## September 2026 — public baseline repair
+
+- Document the project's sale, expired disclosure NDA, public availability and excluded confidential tuning/data. Accuracy was verified privately; public results may vary.
+- Repair compiled startup, IPC registration, React list compatibility, offline navigation and production inline styling.
+- Update vulnerable dependencies, remove obsolete Spectron, use Node 22 and run actual Electron checks.
+- Rebuild the corrupted ONNX graph from verified public weights with the metric head/normalization; preserve image aspect ratio and convert axial depth to ray range.
+- Correct horizon/height pitch signs, winding-sensitive volume centroids and SI/imperial constants.
+- Repair depth-cache key/compression/transform handling and stale asynchronous depth results.
+- Preserve complete IPC payloads and startup measurements; avoid truncating saved projects; deep-copy undo history; acknowledge project saves/deletes/revision restores.
+- Make Settings scrollable and keyboard usable, provide offline configuration guidance and manual workspace saving, and show the actual app version.
+- Update setup/CI/package configuration, remove the unsupported file association and correct documentation.
+
+Earlier entries below are historical implementation notes, not current accuracy, readiness or coverage evidence. See [REVIEW.md](REVIEW.md).
+
+---
+
 # Street Spec Desktop - Changelog
 
 All notable changes to this project will be documented in this file.

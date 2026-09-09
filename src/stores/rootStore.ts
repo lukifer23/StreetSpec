@@ -225,15 +225,9 @@ const notifyMeasurementsTrimmed = (removed: number, limit: number) => {
 const MAX_HISTORY_SIZE = 50;
 
 function saveToHistory(state: RootState): void {
-  const current = [...state.measurements];
+  const current: Measurement[] = JSON.parse(JSON.stringify(state.measurements));
   
-  // Only save if measurements actually changed
-  const lastState = state.measurementHistory.present;
-  if (lastState.length === current.length && 
-      lastState.every((m, i) => m.id === current[i]?.id && 
-                               m.timestamp === current[i]?.timestamp)) {
-    return; // No change, skip history entry
-  }
+  const lastState = current;
 
   // Add current state to past, clear future
   state.measurementHistory.past.push([...lastState]);
@@ -337,11 +331,12 @@ export const useRootStore = create<RootState>()(
 
         // Settings actions
         setSettings: (settings) => set((state) => {
-          state.settings = settings;
+          state.settings = { ...state.settings, ...settings };
         }),
 
         updateSettings: async (updates) => {
           const state = get();
+          const previousSettings = state.settings;
           const newSettings = { ...state.settings, ...updates };
           
           // Update local state
@@ -354,67 +349,38 @@ export const useRootStore = create<RootState>()(
             try {
               const success = await window.electronAPI.invoke('save-settings', newSettings);
               if (!success) {
-                console.warn('[store] Failed to persist settings to Electron store');
+                pushNotification({ kind: 'error', message: 'Settings could not be saved.' });
                 // Rollback on failure
                 set((state) => {
-                  state.settings = state.settings; // Trigger reactivity
+                  state.settings = previousSettings;
                 });
               }
             } catch (error) {
+              set((draft) => { draft.settings = previousSettings; });
+              pushNotification({ kind: 'error', message: 'Settings could not be saved.' });
               console.error('[store] Error saving settings:', error);
             }
           }
         },
 
-        toggleUnit: () => set((state) => {
-          state.settings.defaultUnit = state.settings.defaultUnit === 'metric' ? 'imperial' : 'metric';
-        }),
+        toggleUnit: () => {
+          void get().updateSettings({ defaultUnit: get().settings.defaultUnit === 'metric' ? 'imperial' : 'metric' });
+        },
 
         saveCurrentProject: async () => {
           const state = get();
-          if (!state.currentProjectId) return;
-          const project = state.projects[state.currentProjectId];
-          if (project) {
-            // Create a validated copy before saving
-            const projectToSave: Project = {
-              id: project.id,
-              name: project.name || 'Untitled',
-              measurements: [...state.measurements],
-              revisionHistory: project.revisionHistory || []
-            };
-            
-            // Validate project before saving
-            if (projectToSave.measurements.length > 10000) {
-              console.warn('[store] Project measurements exceed limit, truncating');
-              projectToSave.measurements = projectToSave.measurements.slice(-10000);
+          try {
+            if (await window.electronAPI.invoke('save-measurements', state.measurements) !== true) throw new Error('Measurements were not saved');
+            const project = state.currentProjectId ? state.projects[state.currentProjectId] : null;
+            if (project) {
+              const snapshot = { ...project, measurements: [...state.measurements] };
+              if (await window.electronAPI.invoke('save-project', snapshot) !== true) throw new Error('Project was not saved');
+              set(state => { if (state.projects[snapshot.id]) state.projects[snapshot.id] = snapshot; });
             }
-            
-            // Update local state
-            set((state) => {
-              if (state.projects[projectToSave.id]) {
-                state.projects[projectToSave.id] = projectToSave;
-              }
-            });
-            
-            // Save to IPC with error handling
-            if (window.electronAPI?.invoke) {
-              try {
-                const success = await window.electronAPI.invoke('save-project', projectToSave);
-                if (!success) {
-                  console.error('[store] Failed to save project to Electron store');
-                  pushNotification({
-                    kind: 'error',
-                    message: 'Failed to save project. Changes may not persist.'
-                  });
-                }
-              } catch (error) {
-                console.error('[store] Error saving project:', error);
-                pushNotification({
-                  kind: 'error',
-                  message: `Error saving project: ${error instanceof Error ? error.message : 'unknown error'}`
-                });
-              }
-            }
+            pushNotification({ kind: 'success', message: 'Measurements saved.' });
+          } catch (error) {
+            pushNotification({ kind: 'error', message: 'Save failed. Keep the app open and retry saving.' });
+            console.error('[store] Save failed:', error);
           }
         },
 
@@ -479,15 +445,8 @@ export const useRootStore = create<RootState>()(
         }),
 
         setMeasurements: (measurements) => set((state) => {
-          saveToHistory(state);
-          const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
-            measurements,
-            state.settings.measurementHistoryLimit
-          );
-
-          state.measurements = trimmed;
-          state.measurementHistory.present = [...state.measurements];
-          notifyMeasurementsTrimmed(removed, effectiveLimit);
+          state.measurements = [...measurements];
+          state.measurementHistory = { past: [], present: [...measurements], future: [] };
         }),
 
         // Undo/Redo actions
@@ -594,7 +553,6 @@ export const useRootStore = create<RootState>()(
             try {
               const projectsRaw = await window.electronAPI.invoke('get-projects');
               set((state) => {
-                const limit = state.settings.measurementHistoryLimit;
                 const sanitizedProjects: Record<string, Project> = {};
 
                 if (projectsRaw && typeof projectsRaw === 'object' && !Array.isArray(projectsRaw)) {
@@ -616,14 +574,14 @@ export const useRootStore = create<RootState>()(
                     const rawMeasurements = Array.isArray((value as any)?.measurements)
                       ? ((value as any).measurements as Measurement[])
                       : [];
-                    const { trimmed } = trimMeasurementsArray(rawMeasurements, limit);
+
 
                     const name = typeof (value as any)?.name === 'string' && (value as any).name.length <= 200
                       ? (value as any).name
                       : 'Untitled';
                     
                     const revisionHistory = Array.isArray((value as any)?.revisionHistory)
-                      ? ((value as any).revisionHistory as Revision[]).slice(0, 100) // Limit revision history
+                      ? ((value as any).revisionHistory as Revision[])
                       : [];
 
                     sanitizedProjects[id] = {
@@ -631,7 +589,7 @@ export const useRootStore = create<RootState>()(
                         ? (value as any).id
                         : id,
                       name,
-                      measurements: trimmed,
+                      measurements: rawMeasurements,
                       revisionHistory,
                     };
                   }
@@ -651,133 +609,76 @@ export const useRootStore = create<RootState>()(
           }
         },
 
-        createProject: (name) => set((state) => {
-          const id = uuidv4();
-          const newProject: Project = {
-            id,
-            name,
-            measurements: [...state.measurements],
-            revisionHistory: [],
-          };
-          state.projects[id] = newProject;
-          state.currentProjectId = id;
-
-          if (window.electronAPI?.invoke) {
-            window.electronAPI.invoke('save-project', newProject);
+        createProject: async (name) => {
+          const project: Project = { id: uuidv4(), name: name.trim(), measurements: [...get().measurements], revisionHistory: [] };
+          try {
+            if (await window.electronAPI.invoke('save-project', project) !== true) throw new Error('Storage rejected project');
+            set(state => { state.projects[project.id] = project; state.currentProjectId = project.id; });
+          } catch (error) {
+            pushNotification({ kind: 'error', message: 'Project could not be created. Measurements are still in the workspace.' });
           }
-        }),
+        },
 
         loadProject: (id) => {
-          const state = get();
-          const project = state.projects[id];
-          if (project) {
-            // Validate project ID
-            if (typeof id !== 'string' || id.length === 0) {
-              console.error('[store] Invalid project ID for loading');
-              return;
-            }
-            
-            const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
-              project.measurements ?? [],
-              state.settings.measurementHistoryLimit
-            );
-
-            // Update project in state
-            set((state) => {
-              if (state.projects[id]) {
-                state.projects[id].measurements = trimmed;
-              }
-              state.measurements = trimmed.slice();
-              state.currentProjectId = id;
-            });
-
-            notifyMeasurementsTrimmed(removed, effectiveLimit);
-          } else {
-            console.warn('[store] Project not found:', id);
-          }
+          const project = get().projects[id];
+          if (!project) return;
+          set(state => {
+            state.measurements = [...project.measurements];
+            state.currentProjectId = id;
+            state.measurementHistory = { past: [], present: [...project.measurements], future: [] };
+          });
         },
 
-        deleteProject: (id) => set((state) => {
-          delete state.projects[id];
-          if (state.currentProjectId === id) {
-            state.currentProjectId = null;
+        deleteProject: async (id) => {
+          try {
+            if (await window.electronAPI.invoke('delete-project', id) !== true) throw new Error('Storage rejected deletion');
+            set(state => {
+              delete state.projects[id];
+              if (state.currentProjectId === id) state.currentProjectId = null;
+            });
+          } catch (error) {
+            pushNotification({ kind: 'error', message: 'Project could not be deleted.' });
           }
-          
-          if (window.electronAPI?.invoke) {
-            window.electronAPI.invoke('delete-project', id);
-          }
-        }),
+        },
 
         saveRevision: async () => {
-          const state = get();
-          const { currentProjectId, projects, measurements } = state;
-          if (!currentProjectId) return;
-
-          const project = projects[currentProjectId];
+          const { currentProjectId, projects, measurements } = get();
+          const project = currentProjectId ? projects[currentProjectId] : null;
           if (!project) return;
-
-          // Limit revision history size
-          const MAX_REVISIONS = 100;
-          const revisionHistory = [...(project.revisionHistory || [])];
-          if (revisionHistory.length >= MAX_REVISIONS) {
-            revisionHistory.shift(); // Remove oldest
+          if (project.revisionHistory.length >= 100) {
+            pushNotification({ kind: 'error', message: 'This project has 100 revisions. Create a new project to continue archiving without deleting existing revisions.' });
+            return;
           }
-
-          const newRevision: Revision = {
-            timestamp: Date.now(),
-            measurements: [...measurements],
-          };
-
-          revisionHistory.push(newRevision);
-
-          // Update project
-          const updatedProject: Project = {
-            ...project,
-            measurements: [...measurements],
-            revisionHistory
-          };
-
-          set((state) => {
-            if (state.projects[currentProjectId]) {
-              state.projects[currentProjectId] = updatedProject;
-            }
-          });
-
-          // Save to IPC
-          if (window.electronAPI?.invoke) {
-            try {
-              const success = await window.electronAPI.invoke('save-project', updatedProject);
-              if (!success) {
-                console.error('[store] Failed to save revision');
-              }
-            } catch (error) {
-              console.error('[store] Error saving revision:', error);
-            }
+          const updatedProject = { ...project, measurements: [...measurements], revisionHistory: [...project.revisionHistory, { timestamp: Date.now(), measurements: [...measurements] }] };
+          try {
+            if (await window.electronAPI.invoke('save-project', updatedProject) !== true) throw new Error('Storage rejected revision');
+            set(state => { if (state.projects[project.id]) state.projects[project.id] = updatedProject; });
+            pushNotification({ kind: 'success', message: 'Revision saved.' });
+          } catch (error) {
+            pushNotification({ kind: 'error', message: 'Revision could not be saved.' });
           }
         },
 
-        revertToRevision: (timestamp) => set((state) => {
-          const { currentProjectId, projects } = state;
-          if (!currentProjectId) return;
-
-          const project = projects[currentProjectId];
-          if (!project) return;
-
-          const revision = project.revisionHistory.find(r => r.timestamp === timestamp);
-          if (!revision) return;
-
-          const { trimmed, removed, effectiveLimit } = trimMeasurementsArray(
-            revision.measurements ?? [],
-            state.settings.measurementHistoryLimit
-          );
-
-          state.measurements = trimmed;
-          notifyMeasurementsTrimmed(removed, effectiveLimit);
-
-          if (window.electronAPI?.invoke) {
-            window.electronAPI.invoke('save-project', project);
+        revertToRevision: async (timestamp) => {
+          const { currentProjectId, projects } = get();
+          const project = currentProjectId ? projects[currentProjectId] : null;
+          const revision = project?.revisionHistory.find(r => r.timestamp === timestamp);
+          if (!project || !revision) return;
+          const updatedProject = { ...project, measurements: [...revision.measurements] };
+          try {
+            if (await window.electronAPI.invoke('save-project', updatedProject) !== true) throw new Error('Storage rejected revision restore');
+            set(state => {
+              if (state.projects[project.id]) state.projects[project.id] = updatedProject;
+              if (state.currentProjectId === project.id) {
+                saveToHistory(state);
+                state.measurements = [...revision.measurements];
+                state.measurementHistory.present = [...revision.measurements];
+              }
+            });
+          } catch (error) {
+            pushNotification({ kind: 'error', message: 'Revision could not be restored.' });
           }
-        }),
+        },
 
         // UI actions
         setIsSettingsOpen: (isOpen) => set((state) => {
@@ -920,14 +821,13 @@ export const useRootStore = create<RootState>()(
                 state.settings = { ...state.settings, ...importedState.settings };
               }
               if (importedState.projects && typeof importedState.projects === 'object') {
-                const limit = state.settings.measurementHistoryLimit;
                 const sanitizedProjects: Record<string, Project> = {};
 
                 for (const [projectId, value] of Object.entries(importedState.projects as Record<string, any>)) {
                   const rawMeasurements = Array.isArray((value as any)?.measurements)
                     ? ((value as any).measurements as Measurement[])
                     : [];
-                  const { trimmed } = trimMeasurementsArray(rawMeasurements, limit);
+                  const trimmed = rawMeasurements;
 
                   const name = typeof (value as any)?.name === 'string' ? (value as any).name : 'Untitled';
                   const revisionHistory = Array.isArray((value as any)?.revisionHistory)

@@ -29,9 +29,9 @@ export function deriveScaleAndBias(samples: CalibrationSample[]): { scale: numbe
 }
 
 // Default calibration values for bundled depth models.
-// Values are derived from sample scenes with known distances.
+// Identity defaults: no field-calibration dataset is bundled.
 export const MODEL_CALIBRATIONS: Record<string, { scale: number; bias: number }> = {
-  'depth_anything_v2_metric_vkitti_vits.onnx': { scale: 1.07, bias: 0 },
+  'depth_anything_v2_metric_vkitti_vits.onnx': { scale: 1, bias: 0 },
   'depth_anything_v2_vit_tiny_metric_outdoor.onnx': { scale: 1, bias: 0 },
 };
 

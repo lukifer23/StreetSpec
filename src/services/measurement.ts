@@ -25,6 +25,7 @@ import {
 type MeasurementFusionSettings = Pick<AppSettings, 'depthKernelSize' | 'depthUseBilinear' | 'depthEdgeRejectThreshold'>;
 
 interface MeasurementOptions {
+  isCalibrated?: boolean;
   onnxDepthMap?: OnnxDepthMap | null;
   fusionSettings?: MeasurementFusionSettings;
   fusedStart?: ReturnType<typeof fusedWorldPoint>;
@@ -126,7 +127,7 @@ export function createMeasurement(
   const pitch = Math.abs(cameraParams.pitch || 0);
   const MAX_RELIABLE_PITCH = 75; // degrees
   if (pitch > MAX_RELIABLE_PITCH) {
-      errorMessage = (errorMessage || '') + Extreme camera pitch ( deg) may significantly affect accuracy. ;
+      errorMessage = (errorMessage ?? '') + `Extreme camera pitch (${pitch} deg) may significantly affect accuracy. `;
   }
 
   // 1. Estimate World Points with confidence scoring

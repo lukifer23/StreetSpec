@@ -63,7 +63,11 @@ function calculatePolygonCentroid(points: GroundFramePoint[], area: number): Gro
     centroidY += (points[i]!.y + points[j]!.y) * cross;
   }
 
-  const scale = 1 / (6 * area);
+  const signedArea = points.reduce((sum, p, i) => {
+    const next = points[(i + 1) % n]!;
+    return sum + p.x * next.y - next.x * p.y;
+  }, 0) / 2;
+  const scale = 1 / (6 * signedArea);
   return {
     x: centroidX * scale,
     y: centroidY * scale,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import styles from './SettingsPanel.module.css';
 import type { AppSettings } from '../types/common';
 
@@ -9,6 +9,12 @@ interface Props {
 }
 
 const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
+  const dialogRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>('input, select, button')?.focus();
+    return () => previous?.focus();
+  }, []);
   const [form, setForm] = useState<AppSettings>({ ...initial });
 
   const handleChange = (key: keyof AppSettings, value: any) => {
@@ -21,8 +27,16 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
 
   return (
     <div className={styles['backdrop']} onClick={onClose}>
-      <div className={styles['modal']} onClick={e => e.stopPropagation()}>
-        <h2>Settings</h2>
+      <form ref={dialogRef} className={styles['modal']} role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()} onSubmit={e => { e.preventDefault(); handleSubmit(); }} onKeyDown={e => {
+        if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+        if (e.key === 'Tab') {
+          const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input, select, button') ?? []);
+          const first = controls[0], last = controls[controls.length - 1];
+          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+        }
+      }}>
+        <h2 id="settings-title">Settings</h2>
 
         <div className={styles['field']}>
           <label htmlFor="apiKey">Google Maps API Key</label>
@@ -81,8 +95,9 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <label htmlFor="cameraHeight">Camera Height (m)</label>
           <input
             id="cameraHeight"
-            type="number"
-            min={0}
+            max={100}
+            type="number" required
+            min={0.1}
             step={0.1}
             value={form.cameraHeight ?? 2.5}
             onChange={e => handleChange('cameraHeight', parseFloat(e.target.value))}
@@ -94,7 +109,9 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <label htmlFor="depthScale">Depth Scale</label>
           <input
             id="depthScale"
-            type="number"
+            min={0.1}
+            max={10}
+            type="number" required
             step={0.01}
             value={form.depthScale ?? 1}
             onChange={e => handleChange('depthScale', parseFloat(e.target.value))}
@@ -106,7 +123,9 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <label htmlFor="depthBias">Depth Bias (m)</label>
           <input
             id="depthBias"
-            type="number"
+            min={-1000}
+            max={1000}
+            type="number" required
             step={0.01}
             value={form.depthBias ?? 0}
             onChange={e => handleChange('depthBias', parseFloat(e.target.value))}
@@ -118,8 +137,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <label htmlFor="depthApiMaxRetries">Street View Depth Retries</label>
           <input
             id="depthApiMaxRetries"
-            type="number"
-            min={1}
+            type="number" min={1}
             max={10}
             step={1}
             value={form.depthApiMaxRetries ?? 5}
@@ -140,9 +158,9 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
             onChange={e => handleChange('depthQuality', e.target.value as 'low' | 'medium' | 'high')}
             title="Image resolution for depth estimation - lower quality is faster but less accurate"
           >
-            <option value="low">Low (320x320) - Fast</option>
-            <option value="medium">Medium (480x480) - Balanced</option>
-            <option value="high">High (640x640) - Accurate</option>
+            <option value="low">Low (320 px longest side)</option>
+            <option value="medium">Medium (480 px longest side)</option>
+            <option value="high">High (640 px longest side)</option>
           </select>
         </div>
 
@@ -198,8 +216,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <label htmlFor="edgeThresh">Depth Edge Reject Threshold</label>
           <input
             id="edgeThresh"
-            type="number"
-            min={0}
+            type="number" min={0}
             max={1}
             step={0.05}
             value={form.depthEdgeRejectThreshold ?? 0.35}
@@ -212,8 +229,7 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
           <label htmlFor="history">Measurement History Limit</label>
           <input
             id="history"
-            type="number"
-            min={10}
+            type="number" min={10}
             max={10000}
             value={form.measurementHistoryLimit}
             onChange={e => handleChange('measurementHistoryLimit', parseInt(e.target.value, 10))}
@@ -244,10 +260,10 @@ const SettingsPanel: React.FC<Props> = ({ initial, onSave, onClose }) => {
         </div>
 
         <div className={styles['actions']}>
-          <button className={styles['secondary']} onClick={onClose}>Cancel</button>
-          <button className={styles['primary']} onClick={handleSubmit}>Save</button>
+          <button type="button" className={styles['secondary']} onClick={onClose}>Cancel</button>
+          <button type="submit" className={styles['primary']}>Save</button>
         </div>
-      </div>
+      </form>
     </div>
   );
 };

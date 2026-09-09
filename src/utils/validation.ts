@@ -198,17 +198,23 @@ const ProjectSchema = z.object({
 const AppSettingsSchema = z.object({
   defaultUnit: z.enum(['metric', 'imperial']).optional(),
   autoSave: z.boolean().optional(),
-  theme: z.enum(['light', 'dark']).optional(),
+  theme: z.enum(['light', 'dark', 'system']).optional(),
   language: z.string().length(2).optional(), // ISO 639-1 code
   measurementHistoryLimit: z.number().int().min(1).max(10000).optional(),
   useGPU: z.boolean().optional(),
+  cameraHeight: z.number().finite().min(0.1).max(100).optional(),
+  depthQuality: z.enum(['low', 'medium', 'high']).optional(),
+  enableDepthCache: z.boolean().optional(),
+  autoCalibrateDepth: z.boolean().optional(),
+  showDebugOverlay: z.boolean().optional(),
+  googleMapsApiKey: z.string().max(500).optional(),
   calibrationPitchOffsetDeg: z.number().finite().min(-90).max(90).optional(),
   calibrationBiasByZoom: z.record(z.number().finite()).optional(),
   telemetryOptIn: z.boolean().optional(),
   depthScale: z.number().finite().min(0.1).max(10).optional(),
   depthBias: z.number().finite().min(-1000).max(1000).optional(),
   depthApiMaxRetries: z.number().int().min(1).max(10).optional(),
-  depthKernelSize: z.enum(['3', '5', '7', '9']).optional(),
+  depthKernelSize: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(9)]).optional(),
   depthUseBilinear: z.boolean().optional(),
   depthEdgeRejectThreshold: z.number().min(0).max(1).optional()
 }).passthrough(); // Allow additional properties for forward compatibility

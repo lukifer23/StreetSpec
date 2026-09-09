@@ -1,3 +1,5 @@
+> Historical planning/implementation record. Current behavior, validation and public-release boundaries are documented in [README.md](../README.md) and the September 2026 review. This file is not a current readiness or accuracy claim.
+
 # Code and Documentation Unification Summary
 
 This document summarizes the comprehensive unification and streamlining work completed for Street Spec Desktop.

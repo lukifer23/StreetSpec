@@ -30,7 +30,7 @@ describe('rateLimiter.executeWithRateLimit', () => {
     const executionTimes: number[] = [];
 
     // Execute requests beyond the rate limit
-    Array.from({ length: testConfig.maxRequests + 1 }, (_, index) =>
+    const requests = Array.from({ length: testConfig.maxRequests + 1 }, (_, index) =>
       rateLimiter.executeWithRateLimit(TEST_CATEGORY, async () => {
         executionTimes.push(Date.now());
         return index;
@@ -38,17 +38,17 @@ describe('rateLimiter.executeWithRateLimit', () => {
     );
 
     // Wait for initial processing to complete
-    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(0);
     expect(executionTimes).toHaveLength(testConfig.maxRequests);
 
     jest.advanceTimersByTime(testConfig.windowMs - 1);
-    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(0);
     expect(executionTimes).toHaveLength(testConfig.maxRequests);
 
     jest.advanceTimersByTime(1);
-    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(0);
 
-    await allPromise;
+    await Promise.all(requests);
 
     expect(executionTimes).toHaveLength(testConfig.maxRequests + 1);
     expect(executionTimes[testConfig.maxRequests]).toBeGreaterThanOrEqual(testConfig.windowMs);

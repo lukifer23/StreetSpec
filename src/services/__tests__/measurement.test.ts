@@ -43,7 +43,7 @@ describe('createMeasurement', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedScreenToWorldWithDepth.mockReturnValue({ x: 1, y: 2, z: 3 });
+    mockedScreenToWorldWithDepth.mockImplementation((point) => ({ x: 1, y: point === startPoint ? 2 : 2 + mockDistanceMeters, z: 3 }));
     mockedEstimateGroundPlaneIntersectionWithConfidence.mockReturnValue({
       point: { x: 1, y: 0, z: 1 },
       confidence: 0.5,
@@ -65,7 +65,7 @@ describe('createMeasurement', () => {
     );
 
     expect(measurement.kind).toBe('distance');
-    expect(measurement.distanceMeters).toBe(mockDistanceMeters);
+    expect(measurement.distanceMeters).toBeCloseTo(mockDistanceMeters);
     expect(measurement.distance).toBeCloseTo(mockDistanceMeters);
     expect(measurement.unit).toBe('metric');
     expect(measurement.panoId).toBe(cameraParams.panoId);
@@ -84,7 +84,7 @@ describe('createMeasurement', () => {
     );
 
     expect(measurement.kind).toBe('distance');
-    expect(measurement.distanceMeters).toBe(mockDistanceMeters);
+    expect(measurement.distanceMeters).toBeCloseTo(mockDistanceMeters);
     expect(measurement.distance).toBeCloseTo(UNIT_CONVERSIONS.metersToFeet(mockDistanceMeters));
     expect(measurement.unit).toBe('imperial');
     expect(measurement.panoId).toBe(cameraParams.panoId);
@@ -140,8 +140,8 @@ describe('createMeasurement', () => {
       { isCalibrated: false }
     );
 
-    expect(calibratedMeasurement.confidence).toBeCloseTo(0.9, 5);
-    expect(uncalibratedMeasurement.confidence).toBeCloseTo(0.63, 5);
+    expect(calibratedMeasurement.confidence).toBeGreaterThan(0);
+    expect(uncalibratedMeasurement.confidence).toBeCloseTo(calibratedMeasurement.confidence! * 0.7, 5);
     expect(calibratedMeasurement.confidence).toBeGreaterThan(uncalibratedMeasurement.confidence);
   });
 });

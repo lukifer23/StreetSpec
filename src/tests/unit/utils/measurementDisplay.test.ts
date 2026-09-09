@@ -53,7 +53,7 @@ describe('measurementDisplay utilities', () => {
 
     expect(display.unitSystem).toBe('imperial');
     expect(display.unitLabel).toBe('sq ft');
-    expect(display.value).toBeCloseTo(53.8195, 4);
+    expect(display.value).toBeCloseTo(53.8195520835486, 10);
   });
 
   it('converts volumes to the display unit system', () => {
@@ -66,7 +66,7 @@ describe('measurementDisplay utilities', () => {
 
     expect(display.unitSystem).toBe('imperial');
     expect(display.unitLabel).toBe('cu ft');
-    expect(display.value).toBeCloseTo(70.6294, 4);
+    expect(display.value).toBeCloseTo(70.6293334429772, 10);
   });
 
   it('summarizes segment distances when available', () => {

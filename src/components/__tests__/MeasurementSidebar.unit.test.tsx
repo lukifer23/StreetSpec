@@ -10,7 +10,7 @@ describe('MeasurementSidebar unit toggling', () => {
   beforeEach(() => {
     const invokeMock = window.electronAPI.invoke as jest.Mock;
     invokeMock.mockReset();
-    invokeMock.mockImplementation(() => Promise.resolve(undefined));
+    invokeMock.mockImplementation((channel) => Promise.resolve(channel === 'save-settings' ? true : undefined));
 
     // Initialize store with default state first
     act(() => {

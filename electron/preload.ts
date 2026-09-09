@@ -20,19 +20,6 @@ try {
   // ignore
 }
 
-// Type declaration for window.electronAPI with type-safe IPC
-// Note: Types are imported for type checking, runtime validation uses require()
-declare global {
-  interface Window {
-    electronAPI: {
-      invoke: <T extends IPCChannel>(channel: T, data?: IPCRequest<T>) => Promise<unknown>;
-      sendMessage: (channel: string, data: unknown) => void;
-      onMainProcessMessage: (callback: (data: unknown) => void) => () => void;
-      getEnv: () => { VITE_GOOGLE_MAPS_API_KEY?: string };
-    }
-  }
-}
-
 // Validate required Electron APIs
 if (!contextBridge) {
   throw new Error('contextBridge is not available');
@@ -64,41 +51,6 @@ const validChannels = {
   receive: ['main-process-message']
 } as const;
 
-// Input sanitization utilities
-function sanitizeString(input: unknown, maxLength: number = 10000): string | null {
-  if (typeof input !== 'string') return null;
-  if (input.length > maxLength) return null;
-  // Remove control characters except newlines and tabs
-  return input.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
-}
-
-function sanitizeObject(input: unknown, maxDepth: number = 10): unknown {
-  if (maxDepth <= 0) return null;
-  if (input === null || input === undefined) return input;
-  if (typeof input === 'string') return sanitizeString(input);
-  if (typeof input === 'number') return Number.isFinite(input) ? input : null;
-  if (typeof input === 'boolean') return input;
-  if (Array.isArray(input)) {
-    return input.slice(0, 1000).map(item => sanitizeObject(item, maxDepth - 1));
-  }
-  if (typeof input === 'object') {
-    const sanitized: Record<string, unknown> = {};
-    const entries = Object.entries(input).slice(0, 100);
-    for (const [key, value] of entries) {
-      const sanitizedKey = sanitizeString(key, 200);
-      if (sanitizedKey) {
-        sanitized[sanitizedKey] = sanitizeObject(value, maxDepth - 1);
-      }
-    }
-    return sanitized;
-  }
-  return null;
-}
-
-// Import validation utilities - using dynamic import for ESM/TypeScript module
-// We'll validate at runtime, but the actual validation happens in main process
-// For preload, we rely on the channel whitelist validation
-
 // Create the electronAPI object with type-safe IPC
 const electronAPI = {
   invoke: async (channel: string, data?: unknown) => {
@@ -107,8 +59,8 @@ const electronAPI = {
       throw new Error(`Invalid invoke channel: ${channel}`);
     }
     
-    // Sanitize input data - full validation happens in main process
-    const sanitizedData = data !== undefined ? sanitizeObject(data) : undefined;
+    // Preserve payloads intact; the main process validates channel-specific bounds.
+    const sanitizedData = data;
     
     try {
       const result = await ipcRenderer.invoke(channel, sanitizedData);
@@ -126,7 +78,7 @@ const electronAPI = {
     }
     
     // Sanitize input data
-    const sanitizedData = sanitizeObject(data);
+    const sanitizedData = data;
     
     try {
       ipcRenderer.send(channel, sanitizedData);
@@ -149,7 +101,7 @@ const electronAPI = {
     const listener = (_event: IpcRendererEvent, data: any) => {
       try {
         // Sanitize received data before passing to callback
-        const sanitizedData = sanitizeObject(data);
+        const sanitizedData = data;
         callback(sanitizedData);
       } catch (error) {
         console.error('[preload] Error in main process message callback:', error);

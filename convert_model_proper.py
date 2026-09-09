@@ -1,141 +1,61 @@
-import torch
+# /// script
+# requires-python = ">=3.11,<3.13"
+# dependencies = ["torch==2.5.1", "torchvision==0.20.1", "onnx==1.17.0", "onnxruntime==1.20.1", "opencv-python-headless==4.10.0.84", "numpy<2"]
+# ///
+"""Export existing VKITTI metric weights; validate ONNX against PyTorch. No training."""
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
 import onnx
 import onnxruntime as ort
-import os
-import sys
-import cv2
-import numpy as np
+import torch
 
-# Add the Depth-Anything-V2 directory to the path
-sys.path.append('./Depth-Anything-V2')
 
-from depth_anything_v2.dpt import DepthAnythingV2
-
-def convert_depth_model():
-    """
-    Convert the downloaded Depth Anything V2 PyTorch model to ONNX format
-    using the proper model architecture
-    """
-    print("Starting proper model conversion...")
-    
-    # Check if PyTorch model exists
-    pytorch_model_path = "./models_temp/depth_anything_v2_metric_vkitti_vits.pth"
-    if not os.path.exists(pytorch_model_path):
-        print("ERROR: PyTorch model not found. Please download it first.")
-        return False
-    
-    try:
-        # Load the PyTorch model weights
-        print("Loading PyTorch model weights...")
-        state_dict = torch.load(pytorch_model_path, map_location='cpu')
-        
-        # Create the model with proper architecture
-        print("Creating model with proper architecture...")
-        
-        # Model configuration for VITS (Small) model
-        # Based on the actual DepthAnythingV2 implementation
-        encoder = 'vits'
-        features = 64
-        out_channels = [48, 96, 192, 384]
-        use_bn = False
-        use_clstoken = False
-        
-        model = DepthAnythingV2(
-            encoder=encoder,
-            features=features,
-            out_channels=out_channels,
-            use_bn=use_bn,
-            use_clstoken=use_clstoken
-        )
-        
-        # Load the state dict
-        model.load_state_dict(state_dict)
-        model.eval()
-        
-        print(f"Model loaded successfully!")
-        print(f"   Encoder: {encoder}")
-        print(f"   Features: {features}")
-        print(f"   Out Channels: {out_channels}")
-        print(f"   Model parameters: {sum(p.numel() for p in model.parameters()):,}")
-        
-        # Create dummy input (the model expects RGB images)
-        # The model requires input size to be multiple of 14 (patch size)
-        input_size = 518  # Standard size that works with patch size 14
-        dummy_input = torch.randn(1, 3, input_size, input_size)
-        
-        # Define output path
-        output_path = "./src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx"
-        
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        print(f"Converting to ONNX format...")
-        print(f"   Input size: {dummy_input.shape}")
-        print(f"   Output path: {output_path}")
-        
-        # Export to ONNX
-        torch.onnx.export(
-            model,
-            dummy_input,
-            output_path,
-            export_params=True,
-            opset_version=11,
-            do_constant_folding=True,
-            input_names=['input'],
-            output_names=['output'],
-            dynamic_axes={
-                'input': {0: 'batch_size', 2: 'height', 3: 'width'},
-                'output': {0: 'batch_size', 2: 'height', 3: 'width'}
-            }
-        )
-        
-        print("ONNX model exported successfully!")
-        
-        # Verify the ONNX model
-        print("Verifying ONNX model...")
-        onnx_model = onnx.load(output_path)
-        onnx.checker.check_model(onnx_model)
-        print("ONNX model verification passed!")
-        
-        # Test inference with ONNX Runtime
-        print("Testing ONNX inference...")
-        ort_session = ort.InferenceSession(output_path)
-        
-        # Test with dummy input
-        test_input = dummy_input.numpy()
-        result = ort_session.run(None, {'input': test_input})
-        print(f"ONNX inference test passed! Output shape: {result[0].shape}")
-        
-        # Test with a real image to verify functionality
-        print("Testing with sample image...")
-        test_image = np.random.randint(0, 255, (518, 518, 3), dtype=np.uint8)
-        test_image_tensor = torch.from_numpy(test_image).permute(2, 0, 1).unsqueeze(0).float() / 255.0
-        
-        # Test PyTorch inference
+def main():
+    parser = argparse.ArgumentParser(__doc__)
+    parser.add_argument('--source', type=Path, required=True, help='Pinned upstream Depth-Anything-V2 checkout')
+    parser.add_argument('--weights', type=Path, default=Path('models_temp/depth_anything_v2_metric_vkitti_vits.pth'))
+    parser.add_argument('--output', type=Path, default=Path('src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx'))
+    args = parser.parse_args()
+    sys.path.insert(0, str(args.source.resolve() / 'metric_depth'))
+    from depth_anything_v2.dpt import DepthAnythingV2
+    torch.set_num_threads(4)
+    torch.manual_seed(0)
+    model = DepthAnythingV2(encoder='vits', features=64, out_channels=[48, 96, 192, 384], max_depth=80)
+    model.load_state_dict(torch.load(args.weights, map_location='cpu', weights_only=True), strict=True)
+    model.eval()
+    candidate = args.output.with_suffix('.candidate.onnx')
+    example = torch.randn(1, 3, 518, 518)
+    torch.onnx.export(model, example, candidate, opset_version=17, input_names=['input'], output_names=['output'])
+    onnx.checker.check_model(str(candidate))
+    session = ort.InferenceSession(str(candidate), providers=['CPUExecutionProvider'])
+    checks = []
+    for height, width in [(518, 518), (518, 518)]:
+        sample = torch.randn(1, 3, height, width)
         with torch.no_grad():
-            pytorch_result = model(test_image_tensor)
-            print(f"PyTorch inference: {pytorch_result.shape}")
-        
-        # Test ONNX inference
-        onnx_result = ort_session.run(None, {'input': test_image_tensor.numpy()})
-        print(f"ONNX inference: {onnx_result[0].shape}")
-        
-        print(f"\nConversion complete!")
-        print(f"Model saved to: {output_path}")
-        print(f"Model size: {os.path.getsize(output_path) / (1024*1024):.1f} MB")
-        
-        return True
-        
-    except Exception as e:
-        print(f"ERROR: Conversion failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return False
+            expected = model(sample).numpy()
+        actual = session.run(None, {'input': sample.numpy()})[0]
+        np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-3)
+        assert np.isfinite(actual).all() and (actual >= 0).all() and (actual <= 80).all()
+        checks.append({'shape': list(actual.shape), 'max_absolute_error': float(np.max(np.abs(actual-expected)))})
+    candidate.replace(args.output)
+    provenance = {
+        'source': 'https://github.com/DepthAnything/Depth-Anything-V2',
+        'source_commit': subprocess.check_output(['git', '-C', str(args.source), 'rev-parse', 'HEAD'], text=True).strip(),
+        'weights_sha256': hashlib.sha256(args.weights.read_bytes()).hexdigest(),
+        'onnx_sha256': hashlib.sha256(args.output.read_bytes()).hexdigest(),
+        'architecture': 'metric_depth/depth_anything_v2/dpt.py, vits, max_depth=80',
+        'input': 'RGB NCHW, (pixel / 255 - [0.485,0.456,0.406]) / [0.229,0.224,0.225], fixed 518x518 with aspect-preserving letterbox',
+        'output': 'metric camera-axis depth in meters; field accuracy is not certified',
+        'validation': checks,
+    }
+    args.output.with_suffix('.json').write_text(json.dumps(provenance, indent=2)+'\n')
+    print(json.dumps(provenance, indent=2))
 
-if __name__ == "__main__":
-    success = convert_depth_model()
-    if success:
-        print("\nReady to integrate with your Electron app!")
-    else:
-        print("\nConversion failed. Please check the error messages above.")
-        sys.exit(1) 
+if __name__ == '__main__':
+    main()

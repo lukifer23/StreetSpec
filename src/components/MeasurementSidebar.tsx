@@ -5,7 +5,7 @@ import type { Measurement } from '../types/common';
 import { formatCsvRow, getDisplayValue, getLengthDisplay, getSegmentSummary } from '../utils/measurementDisplay';
 import type { UnitSystem } from '../utils/units';
 import { pushNotification } from '../stores/notificationStore';
-import { List } from 'react-window';
+import { FixedSizeList as List } from 'react-window';
 import styles from './MeasurementSidebar.module.css';
 import { fetchBuildingInsights, type SolarBuildingInsights } from '../services/solar';
 
@@ -403,6 +403,7 @@ const MeasurementSidebar: React.FC = () => {
       ) : (
         <div className={styles['measurementList']}>
           <List
+            width="100%"
             height={400}
             itemCount={measurements.length}
             itemSize={80}
@@ -432,7 +433,7 @@ const MeasurementSidebar: React.FC = () => {
       )}
 
       <div className={styles['sidebarFooter']}>
-        <div>Street Spec Desktop v0.0.1</div>
+        <div>Street Spec Desktop v{typeof __VERSION__ === 'undefined' ? 'development' : __VERSION__}</div>
         <div className={styles['shortcuts']}>
           <span title="Start height measurement (M key)">M: Measure</span>
           <span title="Toggle measurement units (U key)">U: Units</span>

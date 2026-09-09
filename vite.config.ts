@@ -15,8 +15,8 @@ export default defineConfig(({ mode }) => {
     name: 'csp-transform',
     transformIndexHtml(html) {
       if (isProduction) {
-        // Production CSP: strict, no unsafe-eval or unsafe-inline
-        const productionCSP = "default-src 'self'; img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://streetviewpixels.googleapis.com; style-src 'self' https://fonts.googleapis.com; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com; connect-src 'self' https://maps.googleapis.com https://streetviewpixels.googleapis.com https://maps.gstatic.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'self' blob:";
+        // Restrict scripts; allow inline styles used by React and Google Maps.
+        const productionCSP = "default-src 'self'; img-src 'self' data: blob: https://maps.googleapis.com https://maps.gstatic.com https://streetviewpixels.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' https://maps.googleapis.com https://maps.gstatic.com; connect-src 'self' https://maps.googleapis.com https://streetviewpixels.googleapis.com https://maps.gstatic.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; worker-src 'self' blob:";
         return html.replace(
           /<meta http-equiv="Content-Security-Policy" content="[^"]*">/,
           `<meta http-equiv="Content-Security-Policy" content="${productionCSP}">`

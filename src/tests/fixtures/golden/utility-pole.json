@@ -10,14 +10,15 @@
     "height": 1080
   },
   "basePoint": {
-    "x": 800,
-    "y": 650
+    "x": 960.0,
+    "y": 442.21854951263566
   },
   "topPoint": {
-    "x": 820,
-    "y": 450
+    "x": 960.0,
+    "y": -237.35590834446464
   },
   "baseDistanceMeters": 25,
   "expectedHeightMeters": 12,
-  "tolerancePercent": 3
+  "tolerancePercent": 3,
+  "provenance": "Analytic pinhole projection, camera height 2.5m, positive-up camera pitch; synthetic regression fixture, not field accuracy evidence."
 }

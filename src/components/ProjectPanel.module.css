@@ -14,7 +14,8 @@
   border-radius: var(--overlay-radius, 14px);
   box-shadow: var(--overlay-shadow, 0 22px 55px rgba(5, 10, 20, 0.55));
   backdrop-filter: blur(var(--overlay-blur, 14px));
-  overflow: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
   z-index: 22;
 }
 
@@ -144,7 +145,7 @@
   border-color: rgba(255, 255, 255, 0.18);
 }
 
-.projectList li span {
+.projectList li button:first-child {
   flex: 1 1 auto;
   cursor: pointer;
   color: inherit;
@@ -153,7 +154,7 @@
   letter-spacing: 0.01em;
 }
 
-.projectList li span:hover {
+.projectList li button:first-child:hover {
   text-decoration: underline;
 }
 
@@ -216,3 +217,5 @@
     max-height: calc(100vh - 32px);
   }
 }
+
+.projectList li button:first-child { color: inherit; border-color: transparent; text-align: left; overflow-wrap: anywhere; }

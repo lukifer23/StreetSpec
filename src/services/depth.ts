@@ -67,6 +67,7 @@ async function checkMemoryUsage(): Promise<void> {
 }
 
 interface CachedDepthMap {
+  depthType?: OnnxDepthMap['depthType'];
   width: number;
   height: number;
   data: number[] | string;
@@ -81,9 +82,9 @@ interface CachedDepthMap {
 }
 
 // Cache configuration
-const CACHE_VERSION = '1.3'; // Updated version for optimized compression and predictive caching
+const CACHE_VERSION = '2.0'; // Updated version for optimized compression and predictive caching
 const CACHE_PREFIX = `depth_cache_${CACHE_VERSION}_`;
-const MAX_CACHE_SIZE = 150; // Increased cache size with better compression
+export const MAX_CACHE_SIZE = 150; // Increased cache size with better compression
 const MAX_MEMORY_MB = 300; // Maximum memory usage in MB (increased with better compression)
 const COMPRESSION_THRESHOLD = 512; // Compress data larger than 512 bytes (lowered for better space efficiency)
 const MEMORY_CHECK_INTERVAL = 30000; // Check memory every 30 seconds
@@ -146,7 +147,7 @@ function generateCacheKey(params: CameraParams, transform?: OnnxDepthMap['transf
  */
 function compressDepthData(
   data: number[]
-): { payload: number[] | string; isCompressed: boolean; sizeBytes: number; compressionRatio: number } {
+): { payload: number[] | string; isCompressed: boolean; sizeBytes: number; compressionRatio: number; compressionFormat?: 'standard' | 'utf16' } {
   const jsonString = JSON.stringify(data);
   const originalSize = jsonString.length * 2; // UTF-16 estimate
   
@@ -167,7 +168,8 @@ function compressDepthData(
         payload: utf16Compressed,
         isCompressed: true,
         sizeBytes: utf16Size,
-        compressionRatio
+        compressionRatio,
+        compressionFormat: 'utf16'
       };
     } else {
       // Standard compression for smaller or when it's better
@@ -176,7 +178,8 @@ function compressDepthData(
         payload: standardCompressed,
         isCompressed: true,
         sizeBytes: standardSize,
-        compressionRatio
+        compressionRatio,
+        compressionFormat: 'standard'
       };
     }
   }
@@ -254,7 +257,8 @@ function decompressDepthData(
  */
 export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDepthMap['transform']): Promise<OnnxDepthMap | null> {
   try {
-    const cacheKey = generateCacheKey(params, transform);
+    const cacheKey = generateCacheKey(params);
+    void transform;
     if (!cacheKey) return null;
 
     // Check unified cache first (in-memory)
@@ -274,6 +278,7 @@ export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDe
             data,
             width: unifiedCacheEntry.width,
             height: unifiedCacheEntry.height,
+            depthType: unifiedCacheEntry.depthType,
             transform: unifiedCacheEntry.transform
           };
         }
@@ -285,7 +290,8 @@ export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDe
           data,
           width: unifiedCacheEntry.width,
           height: unifiedCacheEntry.height,
-          transform: unifiedCacheEntry.transform
+          depthType: unifiedCacheEntry.depthType,
+            transform: unifiedCacheEntry.transform
         };
       }
     }
@@ -319,7 +325,7 @@ export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDe
         ...cached,
         data: compressedData.payload,
         compressed: compressedData.isCompressed,
-        compressionFormat: compressedData.isCompressed ? (compressedData.sizeBytes < 50000 ? 'standard' : 'utf16') : undefined,
+        compressionFormat: compressedData.compressionFormat,
         sizeBytes: compressedData.sizeBytes,
         compressionRatio: compressedData.compressionRatio
       };
@@ -332,6 +338,7 @@ export async function getCachedDepthMap(params: CameraParams, transform?: OnnxDe
         data,
         width: cached.width,
         height: cached.height,
+        depthType: cached.depthType,
         transform: cached.transform
       };
     }
@@ -352,20 +359,19 @@ export async function cacheDepthMap(
   options?: { isPredictive?: boolean; ttl?: number }
 ): Promise<void> {
   try {
-    const cacheKey = generateCacheKey(params, depthMap.transform);
+    const cacheKey = generateCacheKey(params);
     if (!cacheKey) return;
 
     // Compress data with enhanced algorithm
     const compressionResult = compressDepthData(depthMap.data);
-    const compressionFormat = compressionResult.isCompressed 
-      ? (compressionResult.sizeBytes < 50000 ? 'standard' : 'utf16')
-      : undefined;
+    const compressionFormat = compressionResult.compressionFormat;
 
     const now = Date.now();
     const toStore: CachedDepthMap = {
       data: compressionResult.payload,
       width: depthMap.width,
       height: depthMap.height,
+      depthType: depthMap.depthType,
       transform: depthMap.transform,
       lastUsed: now,
       compressed: compressionResult.isCompressed,
@@ -487,6 +493,7 @@ export async function clearDepthCache(): Promise<void> {
       typeof key === 'string' && key.startsWith(CACHE_PREFIX)
     ) as string[];
     
+    depthCacheRegistry.clear();
     // Clear from both IndexedDB and unified cache
     await Promise.all(cacheKeys.map(key => {
       depthCacheRegistry.delete(key);

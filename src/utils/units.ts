@@ -9,8 +9,8 @@ export type VolumeUnit = 'cu m' | 'cu ft';
  * Unit conversion constants
  */
 export const UNIT_CONVERSIONS_CONSTANTS = {
-  SQUARE_METERS_TO_SQUARE_FEET: 10.7639,
-  CUBIC_METERS_TO_CUBIC_FEET: 35.3147,
+  SQUARE_METERS_TO_SQUARE_FEET: 1 / (0.3048 ** 2),
+  CUBIC_METERS_TO_CUBIC_FEET: 1 / (0.3048 ** 3),
 } as const;
 
 /**

@@ -73,3 +73,17 @@ describe('volume base analysis utilities', () => {
     expect(projected[1]!.y).toBeCloseTo(0, 6);
   });
 });
+
+
+test('translated footprints retain centroid and dimensions under reversed winding', () => {
+  const points = createRectangleWorldPoints(6, 2, 28).map(p => ({ ...p, x: p.x + 17, z: p.z - 23 }));
+  const forward = analyzeVolumeBase(points, 0)!;
+  const reverse = analyzeVolumeBase([...points].reverse(), 0)!;
+  for (const result of [forward, reverse]) {
+    expect(result.centroid.x).toBeCloseTo(17, 8);
+    expect(result.centroid.y).toBeCloseTo(-23, 8);
+    expect(result.area).toBeCloseTo(12, 8);
+    expect(result.length).toBeCloseTo(6, 8);
+    expect(result.width).toBeCloseTo(2, 8);
+  }
+});

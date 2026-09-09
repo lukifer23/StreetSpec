@@ -121,3 +121,15 @@ docs/_build/
 
 # Local development
 .local/
+
+# Confidential assets are excluded; only verified public baseline weights are allowlisted.
+private-data/
+private-models/
+confidential/
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.onnx
+!models_temp/depth_anything_v2_metric_vkitti_vits.pth
+!src/assets/models/depth_anything_v2_metric_vkitti_vits.onnx

@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import { inflateSync } from 'node:zlib';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parse as parseProto } from 'protobufjs';
+import { validateIPCInvoke } from '../src/utils/validation';
 import { MODEL_CALIBRATIONS } from '../src/services/depthCalibration';
 import type { DecodedDepthData, DepthDataFetchResult, DepthDataErrorCode, DepthPlane } from '../src/types/common';
 
@@ -97,7 +98,7 @@ let store: ElectronStoreInstance | null = null;
 const storeReady: Promise<ElectronStoreInstance> = (async () => {
   migrateLegacyUserData();
   const { default: Store } = await import('electron-store');
-  store = new Store({
+  store = new Store<Record<string, any>>({
     defaults: {
       projects: {},
       measurements: [],
@@ -181,7 +182,7 @@ const storeReady: Promise<ElectronStoreInstance> = (async () => {
           telemetryOptIn: { type: 'boolean' },
           depthScale: { type: 'number' },
           depthBias: { type: 'number' },
-          depthKernelSize: { type: 'number', enum: [3, 5, 7] },
+          depthKernelSize: { type: 'number', enum: [3, 5, 7, 9] },
           depthUseBilinear: { type: 'boolean' },
           depthEdgeRejectThreshold: { type: 'number', minimum: 0, maximum: 1 },
           autoCalibrateDepth: { type: 'boolean' },
@@ -191,7 +192,7 @@ const storeReady: Promise<ElectronStoreInstance> = (async () => {
       }
     }
   });
-  return store;
+  return store!;
 })();
 
 const getStore = (): ElectronStoreInstance => {
@@ -864,7 +865,7 @@ const preloadScriptPath = join(__dirname, 'preload.cjs');
 // Determine the correct path for index.html
 // In dev, vite-plugin-electron sets VITE_DEV_SERVER_URL.
 // In prod, index.html is in the 'dist' folder adjacent to 'dist-electron'.
-const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173'; // Get the potential URL from vite-plugin-electron or default
+const devServerUrl = process.env.VITE_DEV_SERVER_URL; // Explicit development URL; otherwise load compiled files.
 const indexHtmlPath = join(__dirname, '../dist/index.html'); // Path to index.html relative to main.cjs
 
 // --- Model selection logic ---
@@ -1045,7 +1046,7 @@ async function loadModel(): Promise<void> {
           executionProviders: providers
         };
 
-        depthSession = await ort.InferenceSession.create(modelPath, sessionOptions);
+        depthSession = await ort.InferenceSession.create(modelPath!, sessionOptions);
         providersUsed = providers;
         break;
       } catch (error) {
@@ -1166,14 +1167,18 @@ async function createWindow() {
     win?.webContents.send('main-process-message', { type: 'status', message: 'Main process ready, window loaded.' });
   });
 
+}
+
+function registerIpcHandlers() {
   // Helper function to add timeout to IPC handlers
   function withTimeout<T>(
     handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<T>,
     timeoutMs: number = 30000
   ): (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<T | null> {
     return async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<T | null> => {
-      const timeoutPromise = sleep(timeoutMs).then(() => {
-        throw new Error(`Operation timed out after ${timeoutMs}ms`);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs);
       });
 
       try {
@@ -1191,14 +1196,11 @@ async function createWindow() {
           return null;
         }
         throw error;
+      } finally {
+        clearTimeout(timer);
       }
     };
   }
-
-  // Import validation utilities
-  // Note: In production, validation.ts is compiled to JS and can be required
-  // For now, we'll use a try-catch to handle both dev and prod scenarios
-  const { validateIPCInvoke } = require('../src/utils/validation');
 
   // Set up IPC handlers with Zod schema validation
   // Depth inference handler with improved error handling and memory management
@@ -1235,9 +1237,11 @@ async function createWindow() {
 
     if (!depthSession) {
       console.warn('[infer-depth] No depth session available, attempting reload...');
+      sessionMutex.locked = false; // The reload owns the mutex while creating its session.
       const reloadSuccess = await reloadModelSession();
       if (!reloadSuccess) {
         event.sender.send('main-process-message', { type: 'error', message: 'Depth model is not available and could not be reloaded.' });
+        sessionMutex.locked = false;
         return null;
       }
     }
@@ -1245,6 +1249,7 @@ async function createWindow() {
     // Verify session is still valid before use
     if (!depthSession) {
       event.sender.send('main-process-message', { type: 'error', message: 'Depth model session is not available.' });
+      sessionMutex.locked = false;
       return null;
     }
 
@@ -1268,25 +1273,28 @@ async function createWindow() {
       const originalWidth = metadata.width ?? modelInputShape[3];
       const originalHeight = metadata.height ?? modelInputShape[2];
 
-      // Resize to the model's expected input while ignoring aspect ratio
-      const resizedWidth = modelInputShape[3];
-      const resizedHeight = modelInputShape[2];
+      // Preserve aspect ratio and track padding for the verified public model contract.
+      const resizeScale = Math.min(518 / originalWidth, 518 / originalHeight);
+      const resizedWidth = 518;
+      const resizedHeight = 518;
+      const inputShape: [number, number, number, number] = [1, 3, resizedHeight, resizedWidth];
       const resizedBuffer = await image
-        .resize(resizedWidth, resizedHeight, { fit: 'fill' })
+        .resize(resizedWidth, resizedHeight, { fit: 'contain', kernel: 'cubic', background: { r: 124, g: 116, b: 104 } })
+        .toColourspace('srgb')
         .removeAlpha()
         .raw()
         .toBuffer();
 
-      const float32Data = new Float32Array(modelInputShape[1] * modelInputShape[2] * modelInputShape[3]);
-      for (let i = 0; i < modelInputShape[2] * modelInputShape[3]; i++) {
-        float32Data[i] = resizedBuffer[i * 3] / 255.0;         // R channel
-        float32Data[modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 1] / 255.0; // G channel
-        float32Data[2 * modelInputShape[2] * modelInputShape[3] + i] = resizedBuffer[i * 3 + 2] / 255.0; // B channel
+      const float32Data = new Float32Array(3 * resizedHeight * resizedWidth);
+      for (let i = 0; i < resizedHeight * resizedWidth; i++) {
+        float32Data[i] = (resizedBuffer[i * 3] / 255.0 - 0.485) / 0.229;         // R channel
+        float32Data[resizedHeight * resizedWidth + i] = (resizedBuffer[i * 3 + 1] / 255.0 - 0.456) / 0.224; // G channel
+        float32Data[2 * resizedHeight * resizedWidth + i] = (resizedBuffer[i * 3 + 2] / 255.0 - 0.406) / 0.225; // B channel
       }
       console.timeEnd('[infer-depth] preprocess');
 
       // Create tensor from the processed float data
-      const inputTensor = new ort.Tensor('float32', float32Data, modelInputShape);
+      const inputTensor = new ort.Tensor('float32', float32Data, inputShape);
       const feeds: Record<string, ort.Tensor> = {};
 
       // Verify session is still valid
@@ -1332,10 +1340,10 @@ async function createWindow() {
         originalHeight,
         resizedWidth,
         resizedHeight,
-        scaleX: resizedWidth / originalWidth,
-        scaleY: resizedHeight / originalHeight,
-        offsetX: 0,
-        offsetY: 0
+        scaleX: resizeScale,
+        scaleY: resizeScale,
+        offsetX: Math.floor((resizedWidth - Math.round(originalWidth * resizeScale)) / 2),
+        offsetY: Math.floor((resizedHeight - Math.round(originalHeight * resizeScale)) / 2)
       };
       const settings = (getStore() as any).get('settings', {} as any) as any;
       const scale = (settings.depthScale ?? MODEL_CALIBRATIONS[selectedModelFilename]?.scale ?? 1) as number;
@@ -1354,6 +1362,7 @@ async function createWindow() {
 
       return {
         data: outputData,
+        depthType: 'axial',
         width: w,
         height: h,
         transform
@@ -1784,8 +1793,10 @@ app.whenReady().then(async () => {
   }
 
   try {
+    registerIpcHandlers();
     await createWindow();
-  } catch (_error) {
+  } catch (error) {
+    console.error('[startup] Failed to create application window', error);
     app.quit();
     return;
   }

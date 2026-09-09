@@ -1,3 +1,4 @@
+import { MAX_CACHE_SIZE } from '../../../services/depth';
 import { describe, it, expect, afterEach } from '@jest/globals';
 import {
   getCachedDepthMap,
@@ -32,6 +33,7 @@ describe('Depth Service with fake-indexeddb', () => {
 
   afterEach(async () => {
     // Completely clear the in-memory database after each test
+    await clearDepthCache();
     await clear();
   });
 
@@ -110,7 +112,7 @@ describe('Depth Service with fake-indexeddb', () => {
 
     it('should enforce cache size limit by removing the oldest entries', async () => {
       // 1. Fill the cache to capacity (100) with older items
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < MAX_CACHE_SIZE; i++) {
         const params = { ...mockCameraParams, panoId: `pano-${i}` };
         await cacheDepthMap(params, mockDepthMap);
         // Introduce a small delay to ensure distinct lastUsed timestamps
@@ -118,10 +120,10 @@ describe('Depth Service with fake-indexeddb', () => {
       }
 
       let stats = await getCacheStats();
-      expect(stats.count).toBe(100);
+      expect(stats.count).toBe(MAX_CACHE_SIZE);
 
       // 2. Add 5 new items, which should trigger eviction
-      for (let i = 100; i < 105; i++) {
+      for (let i = MAX_CACHE_SIZE; i < MAX_CACHE_SIZE + 5; i++) {
         const params = { ...mockCameraParams, panoId: `pano-${i}` };
         await cacheDepthMap(params, mockDepthMap);
         await new Promise(res => setTimeout(res, 1));
@@ -129,7 +131,7 @@ describe('Depth Service with fake-indexeddb', () => {
 
       // 3. Verify the cache size is still at the limit
       stats = await getCacheStats();
-      expect(stats.count).toBe(100);
+      expect(stats.count).toBe(MAX_CACHE_SIZE);
 
       // 4. Verify that the oldest items have been removed
       const oldestPanoResult = await getCachedDepthMap({ ...mockCameraParams, panoId: 'pano-0' });

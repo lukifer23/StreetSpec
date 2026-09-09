@@ -68,11 +68,6 @@ function App() {
     [depthFetchStatus]
   );
 
-  // Display error state
-  if (error) {
-    return <div className={styles['loadingPlaceholder']}>{error}</div>;
-  }
-
   const statusBannerClass = bannerPresentation
     ? bannerPresentation.tone === 'error'
       ? styles['statusBannerError']
@@ -140,7 +135,7 @@ function App() {
           {isApiLoaded ? (
             <SearchBox />
           ) : (
-            <div className={styles['loadingPlaceholder']} style={{height: 'auto', width: '400px'}}>Loading Search...</div>
+            <div className={styles['loadingPlaceholder']} style={{height: 'auto', width: '400px'}}>{error ? 'Search requires a configured API key' : 'Loading Search…'}</div>
           )}
         </div>
       }
@@ -258,12 +253,15 @@ function App() {
               </ErrorBoundary>
             </ErrorBoundary>
           ) : (
-            <div className={styles['loadingPlaceholder']}>Loading Map...</div>
+            <div className={styles['loadingPlaceholder']} role={error ? 'alert' : 'status'}>
+              <p>{error || 'Loading Map...'}</p>
+              {error && <button onClick={() => setIsSettingsOpen(true)}>Configure API Key</button>}
+            </div>
           )}
         </div>
       }
       calibrationNotification={
-        currentCameraParams && settings.calibrationPitchOffsetDeg === 0 ? (
+        currentCameraParams && !isCalibrated ? (
           <div className={styles['calibrationNotification']}>
             <p>For accurate measurements, please calibrate the horizon first.</p>
             <button onClick={() => setCalibrateMode(true)}>Calibrate Now</button>

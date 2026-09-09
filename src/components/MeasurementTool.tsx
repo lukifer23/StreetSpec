@@ -900,8 +900,8 @@ const MeasurementTool: React.FC = () => {
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null): boolean => {
-      const el = target as HTMLElement | null;
-      if (!el) return false;
+      if (!(target instanceof HTMLElement)) return false;
+      const el = target;
       const tag = el.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
       if (el.isContentEditable) return true;

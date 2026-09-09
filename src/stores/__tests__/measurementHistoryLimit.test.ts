@@ -69,7 +69,7 @@ describe('measurement history limit enforcement', () => {
     });
   });
 
-  it('trims persisted measurements when using setMeasurements', () => {
+  it('preserves all persisted measurements when hydrating the workspace', () => {
     const importedMeasurements: Measurement[] = [
       createExistingMeasurement('id-1', 'm1', 1),
       createExistingMeasurement('id-2', 'm2', 2),
@@ -82,18 +82,15 @@ describe('measurement history limit enforcement', () => {
     });
 
     const measurements = useRootStore.getState().measurements;
-    expect(measurements).toHaveLength(2);
-    expect(measurements.map((m) => m.id)).toEqual(['id-3', 'id-4']);
+    expect(measurements).toHaveLength(4);
+    expect(measurements.map((m) => m.id)).toEqual(['id-1', 'id-2', 'id-3', 'id-4']);
+    expect(useRootStore.getState().canUndo()).toBe(false);
 
     const notifications = useNotificationStore.getState().notifications;
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0]).toMatchObject({
-      message: 'Removed 2 older measurements to keep history within the limit of 2.',
-      kind: 'info',
-    });
+    expect(notifications).toHaveLength(0);
   });
 
-  it('trims loaded project measurements and updates the project store', () => {
+  it('preserves archived project measurements regardless of the active history limit', () => {
     const projectMeasurements: Measurement[] = [
       createExistingMeasurement('id-1', 'm1', 1),
       createExistingMeasurement('id-2', 'm2', 2),
@@ -118,18 +115,14 @@ describe('measurement history limit enforcement', () => {
     });
 
     const store = useRootStore.getState();
-    expect(store.measurements).toHaveLength(2);
-    expect(store.measurements.map((m) => m.id)).toEqual(['id-2', 'id-3']);
+    expect(store.measurements).toHaveLength(3);
+    expect(store.measurements.map((m) => m.id)).toEqual(['id-1', 'id-2', 'id-3']);
 
     const project = store.projects['project1'];
-    expect(project.measurements).toHaveLength(2);
-    expect(project.measurements.map((m) => m.id)).toEqual(['id-2', 'id-3']);
+    expect(project.measurements).toHaveLength(3);
+    expect(project.measurements.map((m) => m.id)).toEqual(['id-1', 'id-2', 'id-3']);
 
     const notifications = useNotificationStore.getState().notifications;
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0]).toMatchObject({
-      message: 'Removed 1 older measurement to keep history within the limit of 2.',
-      kind: 'info',
-    });
+    expect(notifications).toHaveLength(0);
   });
 });

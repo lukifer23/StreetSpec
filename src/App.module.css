@@ -58,3 +58,6 @@
   height: 100%;
   color: #6c757d;
 }
+.header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid #ddd; }
+.loadingPlaceholder { flex-direction: column; gap: 16px; padding: 20px; box-sizing: border-box; text-align: center; }
+@media (prefers-reduced-motion: reduce) { .highlight { animation: none; } }

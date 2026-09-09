@@ -98,6 +98,7 @@ export interface ImageTransform {
 }
 
 export interface OnnxDepthMap {
+  depthType?: 'axial' | 'radial';
   data: number[]; // Flattened Float32 array
   width: number;
   height: number;
@@ -329,9 +330,9 @@ export interface ValidationResult {
 
 // Unit conversion utilities
 export const UNIT_CONVERSIONS = {
-  metersToFeet: (meters: number): number => meters * 3.28084,
+  metersToFeet: (meters: number): number => meters / 0.3048,
   feetToMeters: (feet: number): number => feet * 0.3048,
-  metersToInches: (meters: number): number => meters * 39.3701,
+  metersToInches: (meters: number): number => meters / 0.0254,
   inchesToMeters: (inches: number): number => inches * 0.0254
 } as const;
 

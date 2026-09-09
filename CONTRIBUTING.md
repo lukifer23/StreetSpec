@@ -1,75 +1,11 @@
-# Contributing to Street Spec Desktop
+# Contributing
 
-Thank you for your interest in contributing to Street Spec Desktop. This document provides guidelines for contributing to the project.
+Read [README.md](README.md) and [the public-release boundary](docs/PUBLIC_RELEASE.md) first. The project was sold, its disclosure NDAs have expired, and confidential tuned checkpoints/data remain excluded. Do not attach customer data, API keys, private imagery or proprietary model assets to issues or commits.
 
-## Development Setup
+Use Node 22.16+ in the 22.x series, Git LFS and `npm ci`. Make focused root-cause repairs with no placeholder product behavior. Use synthetic inputs only where they meaningfully test mathematical invariants; label them as synthetic. Native runtime checks must execute the real application/model. Unit-test doubles are not evidence of external-service or field accuracy.
 
-1. Follow the setup instructions in [README.md](./README.md#setup-and-installation)
-2. Ensure you have Node.js 18+ and Git LFS installed
-3. Run `npm install` to install dependencies
-4. Set up your Google Maps API key in `.env`
+Run `npm run validate`, `npm run test:e2e` for affected desktop paths, and `npm run build` for packaging changes. Record what was actually tested and any external gates. Update the README and relevant docs with the final behavior.
 
-## Code Quality Standards
+The upstream repository maintains **only `main`**. Coordinate direct maintainer changes on main; outside contributors may propose changes from their own forks. Do not create long-lived upstream feature or dependency-bot branches. Dependency alerts remain enabled and require review; automatic security-update branches are disabled.
 
-### Pre-commit Requirements
-Before submitting changes, ensure:
-
-```bash
-npm run validate  # Runs type checking, linting, and tests
-```
-
-This command executes:
-- TypeScript type checking (`npm run typecheck:strict`)
-- ESLint linting (`npm run lint`)
-- All test suites (`npm run test:all`)
-
-### Code Style
-- Use TypeScript with strict type checking
-- Follow ESLint configuration (zero warnings/errors required)
-- Use CSS Modules for component styling
-- Write descriptive commit messages
-
-### Testing Requirements
-- Add unit tests for new services and utilities
-- Add integration tests for new workflows
-- Maintain existing test coverage
-- Update tests when modifying existing functionality
-
-## Development Workflow
-
-1. Create a feature branch from `main`
-2. Make your changes
-3. Run the validation suite
-4. Commit with descriptive messages
-5. Push your branch
-6. Create a pull request
-
-## Project Structure
-
-- `src/components/`: React UI components
-- `src/services/`: Business logic and utilities
-- `src/stores/`: Zustand state management
-- `src/types/`: TypeScript type definitions
-- `src/tests/`: Test files organized by type
-- `electron/`: Electron main process code
-
-## Pull Request Guidelines
-
-- Provide clear description of changes
-- Reference any related issues
-- Ensure all tests pass
-- Update documentation if needed
-- Keep PRs focused and reasonably sized
-
-## Reporting Issues
-
-When reporting bugs or requesting features:
-- Use the GitHub issue templates
-- Provide clear reproduction steps
-- Include system information (OS, Node version)
-- Attach relevant logs or screenshots
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
-
+For reports, include reproduction steps, platform, version and sanitized logs. Follow the licensing status described in the README; this guide does not supply a missing application license or grant rights to excluded assets.

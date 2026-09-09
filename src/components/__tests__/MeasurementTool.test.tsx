@@ -27,6 +27,11 @@ describe('MeasurementTool interactions', () => {
     });
     HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
       clearRect: jest.fn(),
+      save: jest.fn(),
+      restore: jest.fn(),
+      scale: jest.fn(),
+      translate: jest.fn(),
+      measureText: jest.fn(() => ({ width: 30 })),
       beginPath: jest.fn(),
       arc: jest.fn(),
       fill: jest.fn(),
@@ -63,8 +68,8 @@ describe('MeasurementTool interactions', () => {
     });
   };
 
-  it('refuses keyboard activation when calibration is missing', () => {
-    prepareStore({ currentCameraParams: mockCameraParams });
+  it('allows keyboard activation without calibration and explains reduced accuracy', () => {
+    prepareStore({ currentCameraParams: mockCameraParams, depthData: mockDepthData });
     render(<MeasurementTool />);
 
     fireEvent.keyDown(window, { key: 'm' });
@@ -72,8 +77,8 @@ describe('MeasurementTool interactions', () => {
     const notifications = useNotificationStore.getState().notifications;
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({
-      message: 'Please calibrate the horizon first. Use Manual Calibrate on the horizon line.',
-      kind: 'warning',
+      message: 'Measuring without horizon calibration. Results may be less accurate. You can calibrate anytime for best accuracy.',
+      kind: 'info',
     });
     expect(screen.queryByText(/Step 1: Click object BASE/i)).not.toBeInTheDocument();
   });

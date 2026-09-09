@@ -1,0 +1,27 @@
+{
+  "source": "https://github.com/DepthAnything/Depth-Anything-V2",
+  "source_commit": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf",
+  "weights_sha256": "9203e538d35255c90dda4b7fedb47ff33fe725497bcca3b1e53b3a65ee63f0cb",
+  "onnx_sha256": "86022f9c30c96179d2ad5f2d0e8de1ac2862b6494d541b75ef1a975f52e452ec",
+  "architecture": "metric_depth/depth_anything_v2/dpt.py, vits, max_depth=80",
+  "input": "RGB NCHW, (pixel / 255 - [0.485,0.456,0.406]) / [0.229,0.224,0.225], fixed 518x518 with aspect-preserving letterbox",
+  "output": "metric camera-axis depth in meters; field accuracy is not certified",
+  "validation": [
+    {
+      "shape": [
+        1,
+        518,
+        518
+      ],
+      "max_absolute_error": 1.621246337890625e-05
+    },
+    {
+      "shape": [
+        1,
+        518,
+        518
+      ],
+      "max_absolute_error": 2.193450927734375e-05
+    }
+  ]
+}

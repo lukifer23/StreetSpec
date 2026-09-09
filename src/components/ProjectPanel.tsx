@@ -27,7 +27,7 @@ const ProjectItem = memo<ProjectItemProps>(({ project, isActive, onLoad, onDelet
 
   return (
     <li className={isActive ? styles['active'] : ''}>
-      <span onClick={handleLoad}>{project.name}</span>
+      <button onClick={handleLoad} aria-current={isActive ? 'true' : undefined}>{project.name}</button>
       <button onClick={handleDelete}>Delete</button>
     </li>
   );
@@ -103,9 +103,9 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
   }, [projects, currentProjectId, handleLoadProject, handleDeleteProject]);
 
   return (
-    <div className={styles['container']}>
+    <div className={styles['container']} role="dialog" aria-modal="true" aria-labelledby="projects-title">
       <div className={styles['header']}>
-        <h3>Projects</h3>
+        <h3 id="projects-title">Projects</h3>
         <button onClick={handleClose} className={styles['closeButton']}>Close</button>
       </div>
       <div className={styles['newProject']}>
@@ -114,12 +114,15 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ onClose }) => {
           value={newProjectName}
           onChange={(e) => setNewProjectName(e.target.value)}
           placeholder="New project name"
+          aria-label="New project name"
+          maxLength={200}
         />
-        <button onClick={handleCreateProject}>Create</button>
+        <button disabled={!newProjectName.trim()} onClick={handleCreateProject}>Create</button>
       </div>
       <ul className={styles['projectList']}>
         {projectList}
       </ul>
+      <button onClick={handleSaveProject}>Save Measurements</button>
       {currentProjectId && (
         <div>
           <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>

@@ -29,9 +29,7 @@ describe('Golden Scenes - Height Accuracy', () => {
   } else {
     for (const fx of fixtures) {
       it(`${fx.name}: geometric baseline accuracy test @ ${fx.baseDistanceMeters}m`, () => {
-        // TODO: Create fixtures with proper depth data for accurate testing
-        // The geometric calculation requires precise camera calibration that
-        // is difficult to mock without real Street View data
+        // Analytic projected scenes verify geometry, not real-world accuracy.
         const h = calculateEstimatedHeight(
           fx.basePoint,
           fx.topPoint,

@@ -381,6 +381,15 @@ export function estimateDistanceToPoint(
     mappedX = Math.max(0, Math.min(depthMap.width - 1, mappedX));
     mappedY = Math.max(0, Math.min(depthMap.height - 1, mappedY));
 
+    // Metric depth is camera-axis Z, while world rays require radial distance.
+    const toRange = (value: number): number => {
+      if (depthMap.depthType !== 'axial') return value;
+      const direction = screenToWorld({ x: pixelX, y: pixelY }, cameraParams, viewportWidth, viewportHeight);
+      const forward = screenToWorld({ x: viewportWidth / 2, y: viewportHeight / 2 }, cameraParams, viewportWidth, viewportHeight);
+      const cosine = direction.x * forward.x + direction.y * forward.y + direction.z * forward.z;
+      return cosine > 1e-6 ? value / cosine : NaN;
+    };
+
     const useBilinear = settings?.depthUseBilinear ?? DEFAULT_USE_BILINEAR;
     const kernelSize = (settings?.depthKernelSize ?? DEFAULT_KERNEL_SIZE) as 3 | 5 | 7 | 9;
     const edgeRejectThreshold = Math.max(
@@ -396,9 +405,9 @@ export function estimateDistanceToPoint(
             const refined = applyBilateralFilter(mappedX, mappedY, depthMap, 5, 1.0, 0.1);
             if (refined !== null && Number.isFinite(refined) && refined > 0) {
                 // Blend original and refined (70% refined, 30% original)
-                return refined * 0.7 + bilinearDepth * 0.3;
+                return toRange(refined * 0.7 + bilinearDepth * 0.3);
             }
-            return bilinearDepth;
+            return toRange(bilinearDepth);
         }
     }
 
@@ -412,9 +421,9 @@ export function estimateDistanceToPoint(
         const refined = applyBilateralFilter(mappedX, mappedY, depthMap, kernelSize, 1.0, 0.1);
         if (refined !== null && Number.isFinite(refined) && refined > 0) {
             // Blend robust and refined (60% refined, 40% robust)
-            return refined * 0.6 + robustDepth * 0.4;
+            return toRange(refined * 0.6 + robustDepth * 0.4);
         }
-        return robustDepth;
+        return toRange(robustDepth);
     }
 
     return null;
@@ -460,8 +469,8 @@ export function calculateEstimatedHeight(
     }
 
     const effectivePitchDeg = (cameraParams.pitch - (cameraParams.calibrationPitchOffsetDeg ?? 0));
-    const angleToBaseDeg = effectivePitchDeg + pixelOffsetToVerticalAngle(basePoint.y, viewportHeight, cameraParams.vFov);
-    const angleToTopDeg = effectivePitchDeg + pixelOffsetToVerticalAngle(topPoint.y, viewportHeight, cameraParams.vFov);
+    const angleToBaseDeg = -effectivePitchDeg + pixelOffsetToVerticalAngle(basePoint.y, viewportHeight, cameraParams.vFov);
+    const angleToTopDeg = -effectivePitchDeg + pixelOffsetToVerticalAngle(topPoint.y, viewportHeight, cameraParams.vFov);
 
     const angleToBase = degreesToRadians(angleToBaseDeg);
     const angleToTop = degreesToRadians(angleToTopDeg);

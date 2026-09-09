@@ -159,7 +159,7 @@ describe('depthGeneration helpers', () => {
       getCachedDepthMap: jest.fn().mockResolvedValue(null),
       cacheDepthMap: jest.fn(),
       invokeDepth: jest.fn(),
-    })).rejects.toThrow('Static API request failed');
+    })).rejects.toMatchObject({ message: expect.stringContaining('Static API request failed') });
   });
 
   it('throws when inference result is invalid', async () => {
@@ -180,7 +180,7 @@ describe('depthGeneration helpers', () => {
       getCachedDepthMap: jest.fn().mockResolvedValue(null),
       cacheDepthMap: jest.fn(),
       invokeDepth: jest.fn().mockResolvedValue(null),
-    })).rejects.toThrow('Main process failed to return valid depth map data');
+    })).rejects.toMatchObject({ message: expect.stringContaining('Main process failed to return valid depth map data') });
   });
 
   it('throws when panoId is missing and coordinates are invalid', async () => {
@@ -191,7 +191,7 @@ describe('depthGeneration helpers', () => {
       getCachedDepthMap: jest.fn().mockResolvedValue(null),
       cacheDepthMap: jest.fn(),
       invokeDepth: jest.fn(),
-    })).rejects.toThrow('panoId or valid coordinates');
+    })).rejects.toMatchObject({ message: expect.stringContaining('panoId or valid coordinates') });
 
     expect(fetchImage).not.toHaveBeenCalled();
   });

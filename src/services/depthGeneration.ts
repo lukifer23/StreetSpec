@@ -107,7 +107,15 @@ export async function generateDepthMap(
   if (options.enableCache !== false) {
     const cached = await getCache(cameraParams);
     if (cached) {
-      return { depthMap: cached, fromCache: true, rateLimitStatus: getDepthRateLimitStatus() };
+      const transform = cached.transform;
+      const depthMap = transform && options.viewportWidth && options.viewportHeight ? {
+        ...cached, transform: { ...transform,
+          scaleX: transform.scaleX * transform.originalWidth / options.viewportWidth,
+          scaleY: transform.scaleY * transform.originalHeight / options.viewportHeight,
+          originalWidth: options.viewportWidth, originalHeight: options.viewportHeight,
+        },
+      } : cached;
+      return { depthMap, fromCache: true, rateLimitStatus: getDepthRateLimitStatus() };
     }
   }
 
@@ -130,8 +138,9 @@ export async function generateDepthMap(
 
   while (attempts < maxAttempts && (!result || (options.progressive && currentQuality !== targetQuality))) {
     const dimensions = QUALITY_SETTINGS[currentQuality];
-    const imgWidth = options.imageWidth || dimensions.width;
-    const imgHeight = options.imageHeight || dimensions.height;
+    const aspect = (options.viewportWidth && options.viewportHeight) ? options.viewportWidth / options.viewportHeight : 1;
+    const imgWidth = options.imageWidth || Math.max(1, Math.round(dimensions.width * Math.min(1, aspect)));
+    const imgHeight = options.imageHeight || Math.max(1, Math.round(dimensions.height / Math.max(1, aspect)));
 
     const rawFov = cameraParams.fov ?? 90;
     const clampedFov = Math.min(Math.max(rawFov, 1), 120);
@@ -209,14 +218,8 @@ export async function generateDepthMap(
         originalHeight: options.viewportHeight || baseTransform.originalHeight,
         resizedWidth: baseTransform.resizedWidth ?? inferenceResult.width,
         resizedHeight: baseTransform.resizedHeight ?? inferenceResult.height,
-        scaleX:
-          baseTransform.scaleX ??
-          ((baseTransform.resizedWidth ?? inferenceResult.width) /
-            (options.viewportWidth || baseTransform.originalWidth)),
-        scaleY:
-          baseTransform.scaleY ??
-          ((baseTransform.resizedHeight ?? inferenceResult.height) /
-            (options.viewportHeight || baseTransform.originalHeight)),
+        scaleX: baseTransform.scaleX * baseTransform.originalWidth / (options.viewportWidth || baseTransform.originalWidth),
+        scaleY: baseTransform.scaleY * baseTransform.originalHeight / (options.viewportHeight || baseTransform.originalHeight),
         offsetX: baseTransform.offsetX ?? 0,
         offsetY: baseTransform.offsetY ?? 0
       } as OnnxDepthMap['transform'];
@@ -266,7 +269,7 @@ export async function generateDepthMap(
 }
 
 export function createDepthMapFetcher() {
-  return (url: string) => executeWithRateLimit('google-maps', () => fetch(url), { timeout: 15000 });
+  return (url: string) => fetch(url);
 }
 
 // Batch depth map generation for multiple camera positions

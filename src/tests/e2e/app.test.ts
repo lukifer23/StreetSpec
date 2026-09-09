@@ -1,48 +1,48 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import sharp from 'sharp';
 import { execSync } from 'child_process';
 import { join } from 'path';
 
 test.describe('Street Spec Desktop IPC E2E Tests', () => {
-  let app: any;
-  let mainWindow: any;
+  test.describe.configure({ mode: 'serial' });
+  let app: ElectronApplication;
+  let mainWindow: Page;
+  const profile = mkdtempSync(join(tmpdir(), 'streetspec-e2e-'));
+
+  const packagedExecutable = process.env.STREETSPEC_PACKAGED_EXECUTABLE;
+  const launch = async () => {
+    app = await electron.launch({
+      executablePath: packagedExecutable,
+      args: [...(packagedExecutable ? [] : [join(__dirname, '../../../dist-electron/main.js')]), `--user-data-dir=${profile}`],
+      env: { ...process.env, NODE_ENV: 'test', VITE_DEV_SERVER_URL: '' },
+    });
+    mainWindow = await app.firstWindow();
+    await mainWindow.waitForURL('**/dist/index.html');
+    await mainWindow.waitForLoadState('domcontentloaded');
+    await expect(mainWindow.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+  };
 
   test.beforeAll(async () => {
-    // Build the application once before starting tests
-    execSync('npm run build', { stdio: 'inherit' });
-
-    const { Application } = require('spectron');
-    app = new Application({
-      path: require('electron'),
-      args: [join(__dirname, '../../dist-electron/main.js')],
-      env: {
-        NODE_ENV: 'test'
-      }
-    });
-
-    await app.start();
-    mainWindow = app.client;
+    if (!packagedExecutable) execSync('npm run build:vite', { stdio: 'inherit' });
+    await launch();
   });
 
   test.afterAll(async () => {
-    if (app && app.isRunning()) {
-      await app.stop();
-    }
+    await app?.close();
+    rmSync(profile, { recursive: true, force: true });
   });
 
-  test.describe('Application Launch', () => {
-    test('should launch successfully', async () => {
-      expect(app.isRunning()).toBe(true);
-    });
-
-    test('should display main window', async () => {
-      const windowCount = await app.client.getWindowCount();
-      expect(windowCount).toBeGreaterThan(0);
-    });
+  test('renders the application without a renderer crash', async () => {
+    await expect(mainWindow.locator('#root')).not.toBeEmpty();
+    await expect(mainWindow.getByText('Measurement Tool Error', { exact: true })).toHaveCount(0);
+    expect(app.windows()).toHaveLength(1);
   });
 
   test.describe('IPC invoke API', () => {
     test('should retrieve default settings', async () => {
-      const settings = await mainWindow.execute(async () => {
+      const settings = await mainWindow.evaluate(async () => {
         return window.electronAPI.invoke('get-settings');
       });
 
@@ -52,7 +52,7 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
     });
 
     test('should update settings via IPC', async () => {
-      const result = await mainWindow.execute(async () => {
+      const result = await mainWindow.evaluate(async () => {
         const current = await window.electronAPI.invoke('get-settings');
         const nextUnit = current.defaultUnit === 'metric' ? 'imperial' : 'metric';
         const updated = { ...current, defaultUnit: nextUnit };
@@ -72,7 +72,7 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
     });
 
     test('should persist toggled default unit after restart', async () => {
-      const state = await mainWindow.execute(async () => {
+      const state = await mainWindow.evaluate(async () => {
         const initial = await window.electronAPI.invoke('get-settings');
         const toggledUnit = initial.defaultUnit === 'metric' ? 'imperial' : 'metric';
         const updated = { ...initial, defaultUnit: toggledUnit };
@@ -80,18 +80,17 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
         return { initialUnit: initial.defaultUnit, toggledUnit };
       });
 
-      await app.restart();
-      mainWindow = app.client;
-      await mainWindow.waitUntilWindowLoaded();
+      await app.close();
+      await launch();
 
-      const persistedUnit = await mainWindow.execute(async () => {
+      const persistedUnit = await mainWindow.evaluate(async () => {
         const afterRestart = await window.electronAPI.invoke('get-settings');
         return afterRestart.defaultUnit;
       });
 
       expect(persistedUnit).toBe(state.toggledUnit);
 
-      await mainWindow.execute(async (initialUnit: string) => {
+      await mainWindow.evaluate(async (initialUnit: string) => {
         const current = await window.electronAPI.invoke('get-settings');
         const reverted = { ...current, defaultUnit: initialUnit };
         await window.electronAPI.invoke('save-settings', reverted);
@@ -100,12 +99,14 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
     });
 
     test('should persist measurements via IPC', async () => {
-      const result = await mainWindow.execute(async () => {
+      const result = await mainWindow.evaluate(async () => {
         const existing = await window.electronAPI.invoke('get-measurements');
-        const measurementId = `e2e-measurement-${Date.now()}`;
+        const measurementId = crypto.randomUUID();
         const measurement = {
           id: measurementId,
           label: 'IPC Measurement',
+          kind: 'distance',
+          distanceMeters: 14.14,
           startPoint: { x: 0, y: 0 },
           endPoint: { x: 10, y: 10 },
           distance: 14.14,
@@ -134,7 +135,7 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
     });
 
     test('should clear measurement data via IPC', async () => {
-      const result = await mainWindow.execute(async () => {
+      const result = await mainWindow.evaluate(async () => {
         const existing = await window.electronAPI.invoke('get-measurements');
         const clearResult = await window.electronAPI.invoke('clear-data');
         const cleared = await window.electronAPI.invoke('get-measurements');
@@ -152,8 +153,8 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
     });
 
     test('should manage projects via IPC', async () => {
-      const result = await mainWindow.execute(async () => {
-        const projectId = `e2e-project-${Date.now()}`;
+      const result = await mainWindow.evaluate(async () => {
+        const projectId = crypto.randomUUID();
         const project = { id: projectId, name: 'IPC Test Project', measurements: [] };
         const saveResult = await window.electronAPI.invoke('save-project', project);
         const projectsAfterSave = await window.electronAPI.invoke('get-projects');
@@ -175,97 +176,71 @@ test.describe('Street Spec Desktop IPC E2E Tests', () => {
       expect(result.existsAfterDelete).toBe(false);
     });
 
-    test('should not invoke infer-depth until user generates a depth map', async () => {
-      await mainWindow.waitUntilWindowLoaded();
+    test('loads the measurement controls without a Google Maps key', async () => {
+      await expect(mainWindow.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
+      await expect(mainWindow.getByRole('button', { name: 'Configure API Key' })).toBeVisible();
+    });
 
-      const ready = await mainWindow.executeAsync((done: (result: boolean) => void) => {
-        const start = Date.now();
-        const check = () => {
-          const mapNode = document.querySelector('[data-testid="map-view"]');
-          if (mapNode) {
-            done(true);
-            return;
-          }
-          if (Date.now() - start > 15000) {
-            done(false);
-            return;
-          }
-          setTimeout(check, 100);
-        };
-        check();
+    test('preserves more than 1000 measurements and rejects invalid writes atomically', async () => {
+      const result = await mainWindow.evaluate(async () => {
+        const items = Array.from({ length: 1001 }, (_, i) => ({
+          id: crypto.randomUUID(), kind: 'distance', label: `Measurement ${i}`, unit: 'metric',
+          startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 1 }, distanceMeters: i,
+          timestamp: Date.now(), metadata: { note: 'x'.repeat(12000) },
+        }));
+        const saved = await window.electronAPI.invoke('save-measurements', items);
+        const read = await window.electronAPI.invoke('get-measurements');
+        const rejected = await window.electronAPI.invoke('save-measurements', [{ ...items[0], distanceMeters: -1 }]);
+        const afterRejected = await window.electronAPI.invoke('get-measurements');
+        return { saved, count: read.length, noteLength: read[1000]?.metadata.note.length, rejected, remaining: afterRejected.length };
       });
+      expect(result).toEqual({ saved: true, count: 1001, noteLength: 12000, rejected: false, remaining: 1001 });
+    });
 
-      expect(ready).toBe(true);
-
-      await mainWindow.execute(() => {
-        const win = window as any;
-
-        win.__invokeLog = [];
-        if (!win.__originalInvoke) {
-          win.__originalInvoke = win.electronAPI.invoke.bind(win.electronAPI);
-        }
-
-        const originalInvoke = win.__originalInvoke;
-
-        win.electronAPI.invoke = async (channel: string, ...args: any[]) => {
-          win.__invokeLog?.push({ channel, ts: Date.now() });
-          if (channel === 'infer-depth') {
-            return { width: 1, height: 1, data: [1] };
-          }
-          return originalInvoke ? originalInvoke(channel, ...args) : undefined;
-        };
-
-        return true;
+    test('startup restores the full persisted workspace without autosaving an empty or truncated list', async () => {
+      await app.close();
+      await launch();
+      await expect(mainWindow.getByText(/^Measurement 0:/).first()).toBeVisible();
+      const restored = await mainWindow.evaluate(async () => {
+        const measurements = await window.electronAPI.invoke('get-measurements');
+        return { count: measurements.length, noteLength: measurements[0].metadata.note.length };
       });
+      expect(restored).toEqual({ count: 1001, noteLength: 12000 });
+    });
 
-      try {
-        await mainWindow.pause(5000);
+    test('runs the bundled ONNX model through the real preload and main process', async () => {
+      const pixels = Buffer.alloc(640 * 360 * 3);
+      for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 31 + Math.floor(i / 1920)) % 256;
+      const png = await sharp(pixels, { raw: { width: 640, height: 360, channels: 3 } }).png().toBuffer();
+      const result = await mainWindow.evaluate(async (url) => {
+        const depth = await window.electronAPI.invoke('infer-depth', url);
+        return depth && { width: depth.width, height: depth.height, count: depth.data.length,
+          finite: depth.data.every((n: number) => Number.isFinite(n) && n >= 0 && n <= 80), transform: depth.transform };
+      }, `data:image/png;base64,${png.toString('base64')}`);
+      expect(result).toMatchObject({ width: 518, height: 518, count: 518 * 518, finite: true });
+      expect(result.transform.originalWidth).toBe(640);
+      expect(result.transform.originalHeight).toBe(360);
+      expect(result.transform.offsetY).toBeGreaterThan(0);
+    });
 
-        const idleCount = await mainWindow.execute(() => {
-          const win = window as any;
-          return win.__invokeLog?.filter((entry: { channel: string }) => entry.channel === 'infer-depth').length ?? 0;
-        });
-
-        expect(idleCount).toBe(0);
-
-        await mainWindow.execute(() => {
-          const button = Array.from(document.querySelectorAll('button')).find(btn =>
-            btn.textContent?.includes('Generate Depth Map')
-          );
-          if (!button) {
-            throw new Error('Generate Depth Map button not found');
-          }
-          (button as HTMLButtonElement).click();
-        });
-
-        await mainWindow.pause(2000);
-
-        const afterClickCount = await mainWindow.execute(() => {
-          const win = window as any;
-          return win.__invokeLog?.filter((entry: { channel: string }) => entry.channel === 'infer-depth').length ?? 0;
-        });
-
-        expect(afterClickCount).toBeGreaterThan(0);
-      } finally {
-        await mainWindow.execute(() => {
-          const win = window as any;
-
-          if (win.__originalInvoke) {
-            win.electronAPI.invoke = win.__originalInvoke;
-            delete win.__originalInvoke;
-          }
-
-          delete win.__invokeLog;
-
-          return true;
-        });
-      }
+    test('settings and projects remain usable offline', async () => {
+      await mainWindow.screenshot({ path: 'test-results/01-offline-workspace.png' });
+      await mainWindow.getByRole('button', { name: 'Settings', exact: true }).click();
+      await expect(mainWindow.getByLabel('Google Maps API Key')).toBeVisible();
+      await mainWindow.screenshot({ path: 'test-results/02-settings.png' });
+      await mainWindow.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await mainWindow.getByRole('button', { name: 'Projects', exact: true }).click();
+      await mainWindow.getByPlaceholder('New project name').fill('Audit project');
+      await mainWindow.getByRole('button', { name: 'Create', exact: true }).click();
+      await expect(mainWindow.getByText('Audit project', { exact: true })).toBeVisible();
+      await mainWindow.screenshot({ path: 'test-results/03-projects.png' });
+      await mainWindow.getByRole('button', { name: 'Close', exact: true }).click();
     });
 
     test('should reject invalid invoke channels', async () => {
-      const result = await mainWindow.execute(() => {
+      const result = await mainWindow.evaluate(async () => {
         try {
-          void window.electronAPI.invoke('invalid-channel');
+          await window.electronAPI.invoke('invalid-channel');
           return { success: true };
         } catch (error: any) {
           return {

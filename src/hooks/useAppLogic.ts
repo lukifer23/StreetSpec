@@ -138,6 +138,9 @@ export const useAppLogic = (apiKey: string) => {
     setIsCalibrated,
   } = store;
 
+  const [storageReady, setStorageReady] = useState(false);
+  const saveQueue = useRef(Promise.resolve());
+
   // Initialize store from Electron persistence on mount
   useEffect(() => {
     const initializeStore = async () => {
@@ -147,13 +150,17 @@ export const useAppLogic = (apiKey: string) => {
         // Load settings from Electron store
         const persistedSettings = await window.electronAPI.invoke('get-settings');
         if (persistedSettings && typeof persistedSettings === 'object') {
-          setSettings(persistedSettings as typeof settings);
+          setSettings({ ...useRootStore.getState().settings, ...persistedSettings });
         }
 
         // Load projects
         if (loadProjects) {
           await loadProjects();
         }
+        const savedMeasurements = await window.electronAPI.invoke('get-measurements');
+        if (!Array.isArray(savedMeasurements)) throw new Error('Invalid saved measurements');
+        useRootStore.getState().setMeasurements(savedMeasurements);
+        setStorageReady(true);
       } catch (error) {
         console.error('[app] Failed to initialize store from Electron:', error);
         pushNotification({
@@ -184,7 +191,7 @@ export const useAppLogic = (apiKey: string) => {
 
     if (!key) {
       console.error('[Google Maps] API key is missing');
-      setError("Error: Google Maps API Key is missing. Please check your .env file.");
+      setError("Add your Google Maps API key in Settings to load Street View. Projects and saved measurements remain available.");
       return;
     }
 
@@ -208,7 +215,7 @@ export const useAppLogic = (apiKey: string) => {
       console.log('[Google Maps] Loader created successfully');
     } catch (initError) {
       console.error('[Google Maps] Failed to create loader:', initError);
-      setError(`Failed to initialize Google Maps loader: ${initError?.message || 'Unknown error'}`);
+      setError(`Failed to initialize Google Maps loader: ${initError instanceof Error ? initError.message : 'Unknown error'}`);
       return;
     }
 
@@ -223,7 +230,7 @@ export const useAppLogic = (apiKey: string) => {
       // Still set loaded to true so the app can continue without Maps
       setIsApiLoaded(true);
     });
-  }, [apiKey, setError]);
+  }, [apiKey, settings.googleMapsApiKey, setError]);
 
   // Default address center once the API is ready
   useEffect(() => {
@@ -272,31 +279,11 @@ export const useAppLogic = (apiKey: string) => {
 
   // Auto-save measurements when they change
   useEffect(() => {
-    if (!settings.autoSave || !window.electronAPI?.invoke) {
+    if (!storageReady || !settings.autoSave || !window.electronAPI?.invoke) {
       return;
     }
 
-    const measurementSignature = stableStringify(
-      measurements.map((m) => ({
-        id: m.id,
-        kind: m.kind,
-        label: m.label,
-        name: m.name,
-        updatedAt: m.timestamp,
-        unit: m.unit,
-        value: m.distanceMeters ?? m.areaSquareMeters ?? m.volumeCubicMeters ?? 0,
-        distanceMeters: m.distanceMeters,
-        distance: m.distance,
-        areaSquareMeters: m.areaSquareMeters,
-        perimeterMeters: m.perimeterMeters,
-        volumeCubicMeters: m.volumeCubicMeters,
-        dimensionsMeters: m.dimensionsMeters,
-        points: m.points,
-        source: m.source,
-        confidence: m.confidence,
-        metadata: m.metadata,
-      }))
-    );
+    const measurementSignature = stableStringify(measurements);
 
     if (
       lastSavedMeasurements.current === measurementSignature &&
@@ -308,19 +295,23 @@ export const useAppLogic = (apiKey: string) => {
     lastSavedMeasurements.current = measurementSignature;
     lastSavedProjectId.current = currentProjectId ?? null;
 
+    const project = currentProjectId ? useRootStore.getState().projects[currentProjectId] : null;
+    const projectSnapshot = project ? { ...project, measurements: [...measurements] } : null;
     const saveMeasurements = async () => {
       try {
-        await window.electronAPI.invoke('save-measurements', measurements);
-        if (currentProjectId) {
-          saveCurrentProject();
+        const saved = await window.electronAPI.invoke('save-measurements', measurements);
+        if (saved !== true) throw new Error('Storage rejected measurements');
+        if (projectSnapshot && await window.electronAPI.invoke('save-project', projectSnapshot) !== true) {
+          throw new Error('Storage rejected project');
         }
       } catch {
-        // Silent error handling for production
+        lastSavedMeasurements.current = null;
+        pushNotification({ kind: 'error', message: 'Measurements could not be saved. Keep the app open and retry saving.' });
       }
     };
 
-    void saveMeasurements();
-  }, [measurements, settings.autoSave, currentProjectId, saveCurrentProject]);
+    saveQueue.current = saveQueue.current.then(saveMeasurements);
+  }, [measurements, settings.autoSave, currentProjectId, saveCurrentProject, storageReady]);
 
   // Update App state when MapView camera changes
   const handleCameraChange = useCallback((params: CameraParams) => {
@@ -354,8 +345,10 @@ export const useAppLogic = (apiKey: string) => {
       updateSettings({ calibrationPitchOffsetDeg: 0 });
     }
 
+    setOnnxDepthMap(null);
+    if (params.panoId !== currentCameraParams?.panoId) setDepthData(null);
     setCurrentCameraParams(merged);
-  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams, updateSettings, setIsCalibrated]);
+  }, [settings.calibrationPitchOffsetDeg, settings.cameraHeight, setCurrentCameraParams, currentCameraParams, updateSettings, setIsCalibrated, setOnnxDepthMap, setDepthData]);
 
   const handleCalibrateClick = useCallback((pixelY: number, viewH: number) => {
     if (
@@ -368,7 +361,7 @@ export const useAppLogic = (apiKey: string) => {
     }
     const verticalFov = currentCameraParams.vFov;
     const angle = pixelOffsetToVerticalAngle(pixelY, viewH, verticalFov);
-    const offset = -(currentCameraParams.pitch + angle);
+    const offset = currentCameraParams.pitch - angle;
     const newSettings = { ...settings, calibrationPitchOffsetDeg: offset };
     updateSettings({ calibrationPitchOffsetDeg: offset });
     window.electronAPI?.invoke('save-settings', newSettings).catch(() => { });
@@ -592,7 +585,8 @@ export const useAppLogic = (apiKey: string) => {
   const [depthGenProgress, setDepthGenProgress] = useState<{ stage: 'fetching' | 'processing' | 'complete'; quality?: 'low' | 'medium' | 'high' } | undefined>();
 
   const handleGenerateDepthMap = useCallback(async () => {
-    if (!currentCameraParams || !apiKey || isGeneratingMap) {
+    const effectiveKey = settings.googleMapsApiKey || apiKey;
+    if (!currentCameraParams || !effectiveKey || isGeneratingMap) {
       return;
     }
 
@@ -622,9 +616,9 @@ export const useAppLogic = (apiKey: string) => {
         }
       };
 
-      const result = await generateDepthMap(currentCameraParams, apiKey, deps, {
-        enableCache: true,
-        quality: 'high',
+      const result = await generateDepthMap(currentCameraParams, effectiveKey, deps, {
+        enableCache: settings.enableDepthCache !== false,
+        quality: settings.depthQuality ?? 'high',
         progressive: false,
         viewportWidth,
         viewportHeight,
@@ -633,6 +627,7 @@ export const useAppLogic = (apiKey: string) => {
         }
       });
 
+      if (useRootStore.getState().currentCameraParams !== currentCameraParams) return;
       setOnnxDepthMap(result.depthMap);
       setMapGenerationError(null);
       setDepthGenProgress({ stage: 'complete', quality: 'high' });
@@ -654,7 +649,7 @@ export const useAppLogic = (apiKey: string) => {
     } finally {
       setIsGeneratingMap(false);
     }
-  }, [currentCameraParams, apiKey, isGeneratingMap, setIsGeneratingMap, setOnnxDepthMap, setMapGenerationError]);
+  }, [currentCameraParams, apiKey, settings.googleMapsApiKey, settings.enableDepthCache, settings.depthQuality, isGeneratingMap, setIsGeneratingMap, setOnnxDepthMap, setMapGenerationError]);
 
   const handleClearMeasurements = useCallback(async () => {
     clearMeasurements();

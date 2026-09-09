@@ -147,7 +147,7 @@ describe('Measurement Logic Service', () => {
       expect(result).toBeDefined();
     });
 
-    it('respects depthEdgeRejectThreshold when filtering edge gradients', () => {
+    it('preserves the center object instead of the surrounding background at both edge thresholds', () => {
       const width = 7;
       const height = 7;
       const data = new Array(width * height).fill(100);
@@ -191,7 +191,7 @@ describe('Measurement Logic Service', () => {
         }
       );
 
-      expect(highThreshold).toBeCloseTo(100, 1);
+      expect(highThreshold).toBeCloseTo(5, 1);
       expect(lowThreshold).toBeCloseTo(5, 1);
     });
 

@@ -1,61 +1,13 @@
-# Manual QA Scenarios
+# Manual QA and remaining external checks
 
-## GPU execution provider toggle (Windows)
+The original system's accuracy was verified privately. This checklist qualifies the public configuration, which excludes custom checkpoints and private data. Do not publish private reference scenes/results.
 
-These checks assume a Windows 10/11 device with DirectML-compatible hardware and drivers. Run the Electron shell with `npm run dev:electron` so the main-process console output is visible while testing.
+1. **Startup/offline:** run compiled Electron with a blank key. Confirm the workspace renders, the offline message offers Settings, Projects opens, and no error boundary replaces the UI.
+2. **Settings:** check the scrollable dialog at ordinary and small window sizes; all labels, Save/Cancel, numeric constraints and keyboard focus must remain reachable. Escape closes Settings. Toggle units, save, restart and confirm persistence.
+3. **Saving:** create representative distance/path/area/volume measurements; save/restart; verify SI values, points, camera and metadata. Create/load/delete projects, save/restore a revision and undo a rename/deletion. Check disk-write failures leave current work available and report failure. Archive before the active-history limit removes older entries.
+4. **Online imagery/search:** with your own key, search a location and pan/zoom/resize. Confirm obsolete depth is not shown after camera changes. Exercise Google failures without losing local project controls. This requires real service access.
+5. **Depth and math:** run the public model on known images; check alignment at image center/edges, letterboxing and camera rotations. Compare heights, distances, ground areas and extruded volumes with measured reference dimensions. Record the exact public model/parameters; do not transfer private accuracy claims to it.
+6. **Exports:** save CSV through the native dialog, inspect unit labels and canonical numbers, quotes, non-ASCII names and metadata. Cancel should not report success. CSV is not a full project import format.
+7. **Packaging:** launch the packaged app, verify inference/model resolution and restart storage. Separately sign/notarize and test Gatekeeper on a clean macOS machine before publishing installers. Verify Windows/Linux on their own systems.
 
-1. **Baseline (GPU off)**
-   - Delete the Electron Store config at `%APPDATA%/<AppName>/config.json` (or use the in-app reset) to ensure default settings.
-   - Launch the desktop app and open the Settings panel. Confirm **Use GPU acceleration** is toggled off.
-   - Trigger any depth measurement (e.g., load an image and request depth). In the terminal you should see `Execution providers in use: cpu`. Depth inference completes normally.
-2. **Enable GPU**
-   - From the Settings panel toggle **Use GPU acceleration** on. The UI should not freeze while the model reloads.
-   - Observe the terminal logs: a `model-status` update is emitted followed by `Execution providers in use: dml, cpu`. Run another depth measurement to confirm results render correctly.
-3. **Fallback path**
-   - Temporarily disable the DirectML runtime (for example, run on a Windows VM without GPU support or start the app with `ORT_DML_DISABLE_DEVICE=1`).
-   - Toggle **Use GPU acceleration** on again. The console should warn `Failed to initialize GPU providers, falling back to CPU` and `GPU initialization failed; running session on CPU execution providers.`
-   - Depth inference remains functional and `Execution providers in use: cpu` is printed, confirming the automatic fallback.
-4. **Toggle back to CPU**
-   - Turn **Use GPU acceleration** off in Settings.
-   - The main process reloads once more and logs `Execution providers in use: cpu`. Depth inference should continue to succeed with CPU execution.
-
-Record pass/fail results for each step to ensure GPU preference changes behave safely on Windows hardware.
-
-## Street View rate-limit and network failure behavior
-
-1. With valid API key, quickly pan through 10+ panos and observe any `rate-limit` banners. Ensure app retries and continues using ONNX depth until SV depth returns.
-2. Temporarily block network (e.g., disable adapter) while measuring. Verify graceful degradation, notifications, and stability.
-3. Restore network; ensure recovery without restart.
-
-## Depth prefetch behavior
-
-1. Generate ONNX depth for current pano. Wait 1–2s; navigate to an adjacent pano.
-2. Confirm faster availability indicated by status banner and cache logs.
-
-## Golden-scene spot checks (manual)
-
-Use a curated set of poles/edges with known heights at 5–30 m. For each:
-- Generate depth, calibrate horizon, measure height twice.
-- Accept if relative error ≤2%; flag otherwise and capture logs.
-
-Golden fixture format (for automated tests in `src/tests/fixtures/golden/*.json`):
-
-```
-{
-  "name": "fixture-identifier",
-  "cameraParams": { "vFov": 60, "heading": 0, "pitch": 0 },
-  "viewport": { "width": 1280, "height": 720 },
-  "basePoint": { "x": 640, "y": 540 },
-  "topPoint": { "x": 640, "y": 420 },
-  "baseDistanceMeters": 15.0,
-  "expectedHeightMeters": 6.5,
-  "tolerancePercent": 2.0
-}
-```
-
-## Compliance & Keys
-
-1. Do not persist raw Street View imagery or depth payloads beyond transient processing/cache where permitted.
-2. Store only derived measurements and anonymized logs (no PII).
-3. Restrict API keys to required APIs (Maps JS, Places, Street View Static, Street View Depth); scope to Windows app.
-4. Document key handling and rotation. Keys are read via env (`VITE_GOOGLE_MAPS_API_KEY`, `GOOGLE_MAPS_API_KEY`).
+Automated local evidence and remaining limits are in [REVIEW.md](REVIEW.md). Native integration tests execute real Electron/IPC/ONNX; synthetic fixtures and isolated failure tests cover deterministic invariants, not Google service availability or field accuracy.

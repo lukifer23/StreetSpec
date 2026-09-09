@@ -1,3 +1,5 @@
+> Historical planning/implementation record. Current behavior, validation and public-release boundaries are documented in [README.md](README.md) and the September 2026 review. This file is not a current readiness or accuracy claim.
+
 ### Street Spec Desktop – Commercial-Grade P0/P1 Plan (Windows 11 x64)
 
 #### Assumptions

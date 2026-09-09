@@ -1,4 +1,3 @@
-import { AppSettings } from '../types/common';
 
 export interface SolarBuildingInsights {
   name: string;
