@@ -19,7 +19,7 @@ StreetSpec was sold and previously private under an NDA. The disclosure restrict
 | Projects/revisions | Loading truncated saved measurements; writes/deletes/restores assumed success; revision restore persisted old contents | Preserve archived records; acknowledged writes, error reporting and correctly persisted restored values; failed-write regression tests |
 | Undo | Shared measurement objects mutated old history; same-ID checks skipped real edits | Deep snapshots; rename/delete undo and redo tests |
 | UI | Offline error replaced usable app; Settings clipped; API key controls crowded; project names mouse-only; stale version label | Offline workspace/configure action, wrapped toolbar, scrollable validated Settings with focus handling, project buttons, explicit workspace save, actual version |
-| Packaging/setup | Unsupported builder options, missing macOS association icon, Node 18/no tests in CI, wrong artifact paths | Node 22 locked installs, current builder configuration, remove nonfunctional file association, real checks and release-directory artifacts |
+| Packaging/setup | Unsupported builder options, missing macOS association icon, placeholder Windows ICO, Node 18/no tests in CI, wrong artifact paths | Node 22 locked installs, current builder configuration, remove nonfunctional file association, generate a real Windows ICO from existing SVG artwork, real checks and release-directory artifacts |
 | Public documentation | Private-era instructions/readiness claims and missing provenance | Rewritten README/setup/API/architecture/manual QA, public-release boundary and private-accuracy distinction; historical plans explicitly marked historical |
 
 ## Verification
@@ -29,6 +29,7 @@ StreetSpec was sold and previously private under an NDA. The disclosure restrict
 - `npm audit`: **0 known vulnerabilities** in the repaired lockfile at review time. This is advisory evidence, not a blanket malware-free guarantee.
 - Model: `onnx.checker` passed. Two seeded conversion comparisons had maximum absolute errors **0.0000163 m** and **0.0000220 m** versus PyTorch. These are conversion errors, not scene-measurement accuracy figures.
 - Native inference returned a complete finite **518×518** depth tensor from a generated 640×360 image via real preload/main/Sharp/ONNX Runtime. No product stub or fake depth response was introduced.
+- Remote validation and macOS/Linux packaging passed. Windows packaging exposed a text placeholder masquerading as ICO; a real multi-resolution icon and reproducible conversion script replace it.
 - macOS ARM64 DMG/ZIP packaging completed. Developer ID signing/notarization remains external; this local build does not prove clean-machine Gatekeeper acceptance.
 
 Existing Jest component/service tests use isolated doubles where appropriate, including deliberate storage failure injection. Those checks are distinct from the real native E2E execution and do not claim live Google or field validation.

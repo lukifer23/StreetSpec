@@ -31,3 +31,7 @@ The script loads the metric `vits` architecture with `max_depth=80`, strictly lo
 ## Maintenance
 
 Use the single upstream branch `main`. Alerts remain enabled, while automatic security-update branches are disabled. Review advisories, apply compatible root-cause upgrades and validate before committing. Do not bypass macOS security checks or replace a failing native binary with a stub. Keep private data and credentials outside the checkout; `.local/`, `.env`, build outputs and test artifacts are ignored.
+
+## Windows icon
+
+`node scripts/build-icons.cjs` regenerates the tracked multi-resolution Windows ICO from `assets/icon.svg` using the installed Sharp dependency. The previous ICO was a text placeholder and could not be packaged.

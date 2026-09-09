@@ -10,7 +10,7 @@
 - Repair depth-cache key/compression/transform handling and stale asynchronous depth results.
 - Preserve complete IPC payloads and startup measurements; avoid truncating saved projects; deep-copy undo history; acknowledge project saves/deletes/revision restores.
 - Make Settings scrollable and keyboard usable, provide offline configuration guidance and manual workspace saving, and show the actual app version.
-- Update setup/CI/package configuration, remove the unsupported file association and correct documentation.
+- Update setup/CI/package configuration, remove the unsupported file association, replace the placeholder Windows ICO with a real icon generated from existing SVG artwork, and correct documentation.
 
 Earlier entries below are historical implementation notes, not current accuracy, readiness or coverage evidence. See [REVIEW.md](REVIEW.md).
 
